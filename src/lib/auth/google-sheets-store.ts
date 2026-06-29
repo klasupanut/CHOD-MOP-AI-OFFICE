@@ -12,6 +12,7 @@ import {
 } from "./permissions";
 import type { ApprovedUser, AuditEvent } from "./types";
 import type { AgentId } from "@/lib/types";
+import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
 
 const USER_HEADERS = [
   "userId",
@@ -30,7 +31,6 @@ const USER_HEADERS = [
 
 const USERS_TAB = "Users";
 const AUDIT_TAB = "Audit";
-const sheetsScope = "https://www.googleapis.com/auth/spreadsheets";
 let cachedToken: { value: string; expiresAt: number } | null = null;
 const characterIds: AgentId[] = ["tammasit", "film", "kla", "foreman", "moss"];
 
@@ -46,20 +46,13 @@ function getSheetId() {
   return process.env.GOOGLE_SHEET_ID_USERS || "";
 }
 
-function getServiceAccountConfig() {
-  return {
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
-    privateKey: (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-  };
-}
-
 function base64Url(value: string) {
   return Buffer.from(value).toString("base64url");
 }
 
 async function getAccessToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
-  const { email, privateKey } = getServiceAccountConfig();
+  const { email, privateKey } = getGoogleServiceAccountConfig();
   if (!email || !privateKey || !getSheetId()) {
     throw new Error("Google Sheets user store is not configured.");
   }
@@ -68,7 +61,7 @@ async function getAccessToken() {
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const payload = base64Url(JSON.stringify({
     iss: email,
-    scope: sheetsScope,
+    scope: googleSheetsScope,
     aud: "https://oauth2.googleapis.com/token",
     exp: now + 3600,
     iat: now,
@@ -77,7 +70,12 @@ async function getAccessToken() {
   const signer = createSign("RSA-SHA256");
   signer.update(unsigned);
   signer.end();
-  const assertion = `${unsigned}.${signer.sign(privateKey, "base64url")}`;
+  let assertion = "";
+  try {
+    assertion = `${unsigned}.${signer.sign(privateKey, "base64url")}`;
+  } catch (error) {
+    throw asGooglePrivateKeyError(error);
+  }
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",

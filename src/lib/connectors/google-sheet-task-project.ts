@@ -3,6 +3,7 @@ import "server-only";
 import { createSign } from "node:crypto";
 import type { ProjectRecord, ProjectPriority, ProjectStatus, ProjectType } from "@/data/projects";
 import type { TaskCategory, TaskPriority, TaskRecord, TaskStatus } from "@/data/tasks";
+import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
 
 const TASKS_TAB = "Tasks";
 const PROJECTS_TAB = "Projects";
@@ -59,19 +60,11 @@ export const taskProjectSheetConfig = {
   tabs: [PROJECTS_TAB, TASKS_TAB],
 };
 
-const sheetsScope = "https://www.googleapis.com/auth/spreadsheets";
 let cachedToken: { value: string; expiresAt: number } | null = null;
 let ensureSheetsPromise: Promise<void> | null = null;
 
 function getSheetId() {
   return process.env.GOOGLE_SHEET_ID_TASK_PROJECT || process.env.GOOGLE_SHEET_ID_USERS || "";
-}
-
-function getServiceAccountConfig() {
-  return {
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
-    privateKey: (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-  };
 }
 
 function base64Url(value: string) {
@@ -83,7 +76,7 @@ function nowStamp() {
 }
 
 function ensureConfigured() {
-  const { email, privateKey } = getServiceAccountConfig();
+  const { email, privateKey } = getGoogleServiceAccountConfig();
   if (!email || !privateKey || !getSheetId()) {
     throw new Error("Task / Project Google Sheet is not configured. Set GOOGLE_SHEET_ID_TASK_PROJECT in .env.local.");
   }
@@ -92,12 +85,12 @@ function ensureConfigured() {
 async function getAccessToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
   ensureConfigured();
-  const { email, privateKey } = getServiceAccountConfig();
+  const { email, privateKey } = getGoogleServiceAccountConfig();
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const payload = base64Url(JSON.stringify({
     iss: email,
-    scope: sheetsScope,
+    scope: googleSheetsScope,
     aud: "https://oauth2.googleapis.com/token",
     exp: now + 3600,
     iat: now,
@@ -106,7 +99,12 @@ async function getAccessToken() {
   const signer = createSign("RSA-SHA256");
   signer.update(unsigned);
   signer.end();
-  const assertion = `${unsigned}.${signer.sign(privateKey, "base64url")}`;
+  let assertion = "";
+  try {
+    assertion = `${unsigned}.${signer.sign(privateKey, "base64url")}`;
+  } catch (error) {
+    throw asGooglePrivateKeyError(error);
+  }
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",

@@ -3,6 +3,7 @@ import "server-only";
 import { createSign } from "node:crypto";
 import { defaultApprovalPermissions, type ApprovalPermission } from "@/data/approval-permissions";
 import type { QuotationApprovalScope } from "@/data/quotation-approvals";
+import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
 
 const APPROVAL_PERMISSION_TAB = "ApprovalPermissions";
 const APPROVAL_PERMISSION_HEADERS = [
@@ -17,18 +18,10 @@ const APPROVAL_PERMISSION_HEADERS = [
   "updatedAt",
 ] as const;
 
-const sheetsScope = "https://www.googleapis.com/auth/spreadsheets";
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function getSheetId() {
   return process.env.GOOGLE_SHEET_ID_USERS || "";
-}
-
-function getServiceAccountConfig() {
-  return {
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
-    privateKey: (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-  };
 }
 
 function base64Url(value: string) {
@@ -37,7 +30,7 @@ function base64Url(value: string) {
 
 async function getAccessToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
-  const { email, privateKey } = getServiceAccountConfig();
+  const { email, privateKey } = getGoogleServiceAccountConfig();
   if (!email || !privateKey || !getSheetId()) {
     throw new Error("Approval permission Google Sheet store is not configured.");
   }
@@ -46,7 +39,7 @@ async function getAccessToken() {
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const payload = base64Url(JSON.stringify({
     iss: email,
-    scope: sheetsScope,
+    scope: googleSheetsScope,
     aud: "https://oauth2.googleapis.com/token",
     exp: now + 3600,
     iat: now,
@@ -55,7 +48,12 @@ async function getAccessToken() {
   const signer = createSign("RSA-SHA256");
   signer.update(unsigned);
   signer.end();
-  const assertion = `${unsigned}.${signer.sign(privateKey, "base64url")}`;
+  let assertion = "";
+  try {
+    assertion = `${unsigned}.${signer.sign(privateKey, "base64url")}`;
+  } catch (error) {
+    throw asGooglePrivateKeyError(error);
+  }
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",

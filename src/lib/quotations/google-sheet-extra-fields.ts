@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createSign } from "node:crypto";
+import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
 
 type QuotationExtraFieldRow = {
   quotationId?: unknown;
@@ -16,7 +17,6 @@ type QuotationExtraFieldRow = {
 };
 
 const QUOTATIONS_TAB = "Quotations";
-const sheetsScope = "https://www.googleapis.com/auth/spreadsheets";
 let cachedToken: { value: string; expiresAt: number } | null = null;
 let cachedExtraMap: {
   value: Map<string, {
@@ -35,15 +35,8 @@ function getSheetId() {
   return process.env.GOOGLE_SHEET_ID_QUOTATION || "";
 }
 
-function getServiceAccountConfig() {
-  return {
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "",
-    privateKey: (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-  };
-}
-
 function isConfigured() {
-  const { email, privateKey } = getServiceAccountConfig();
+  const { email, privateKey } = getGoogleServiceAccountConfig();
   return Boolean(email && privateKey && getSheetId());
 }
 
@@ -53,14 +46,14 @@ function base64Url(value: string) {
 
 async function getAccessToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
-  const { email, privateKey } = getServiceAccountConfig();
+  const { email, privateKey } = getGoogleServiceAccountConfig();
   if (!email || !privateKey || !getSheetId()) throw new Error("Quotation Google Sheet sync is not configured.");
 
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const payload = base64Url(JSON.stringify({
     iss: email,
-    scope: sheetsScope,
+    scope: googleSheetsScope,
     aud: "https://oauth2.googleapis.com/token",
     exp: now + 3600,
     iat: now,
@@ -75,7 +68,13 @@ async function getAccessToken() {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: `${unsigned}.${signer.sign(privateKey, "base64url")}`,
+      assertion: (() => {
+        try {
+          return `${unsigned}.${signer.sign(privateKey, "base64url")}`;
+        } catch (error) {
+          throw asGooglePrivateKeyError(error);
+        }
+      })(),
     }),
     cache: "no-store",
   });
