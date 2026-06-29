@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { probeApprovedUsersSheet } from "@/lib/auth/google-sheets-store";
 import { getQuotationAppsScriptUrl, probeQuotationAppsScript } from "@/lib/quotations/apps-script-backend";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export async function GET(request: Request) {
   ];
 
   if (deep) {
+    checks.push(await probeUsersSheet(10_000));
     checks.push(await probePublicSheet(fitoutSheetId, "RESTORATION", 10_000));
     checks.push(await probePublicSheet(fitoutSheetId, "FIT-OUT", 10_000));
     const quotationProbe = await probeQuotationAppsScript(10_000);
@@ -90,6 +92,27 @@ export async function GET(request: Request) {
     },
     { status: 200 },
   );
+}
+
+async function probeUsersSheet(timeoutMs: number): Promise<HealthCheck> {
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Users Google Sheet check timed out after ${timeoutMs}ms.`)), timeoutMs);
+  });
+
+  try {
+    await Promise.race([probeApprovedUsersSheet(), timeout]);
+    return {
+      ok: true,
+      label: "users-sheet",
+      message: "Users Google Sheet responds with service account credentials.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      label: "users-sheet",
+      message: error instanceof Error ? error.message : "Users Google Sheet check failed.",
+    };
+  }
 }
 
 async function probePublicSheet(sheetId: string, sheetName: string, timeoutMs: number): Promise<HealthCheck> {

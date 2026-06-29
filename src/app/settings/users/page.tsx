@@ -13,6 +13,9 @@ function describeUserStoreError(error: unknown) {
   if (message === "fetch failed" || message.toLowerCase().includes("fetch failed")) {
     return "Google Sheets user store connection failed. Check internet / Google API access, then refresh this page.";
   }
+  if (/DECODER routines|unsupported|PEM|private key/i.test(message)) {
+    return "Google service account private key is invalid. Re-copy GOOGLE_PRIVATE_KEY in Vercel with the full BEGIN/END PRIVATE KEY value.";
+  }
   return message;
 }
 

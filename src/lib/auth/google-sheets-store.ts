@@ -183,6 +183,11 @@ export async function listApprovedUsers() {
   return users;
 }
 
+export async function probeApprovedUsersSheet() {
+  await sheetsFetch("?fields=spreadsheetId");
+  return true;
+}
+
 export async function findApprovedUser(email: string) {
   const normalized = normalizeEmail(email);
   if (normalized === getSuperAdminEmail()) {
