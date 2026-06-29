@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+.env.local
+.next
+node_modules
+backups
+tmp
+*.tsbuildinfo
+__pycache__
+*.pyc
+*.bak-*
+supabase/.temp

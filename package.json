@@ -1,0 +1,40 @@
+{
+  "name": "chod-mop-ai-office",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3010",
+    "dev:lan": "next dev -H 0.0.0.0 -p 3010",
+    "dev:local": "next dev -p 3010",
+    "dev:chod": "next dev -H 0.0.0.0 -p 3010",
+    "dev:3000": "next dev -H 0.0.0.0 -p 3000",
+    "dev:repair": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\User\\.codex\\skills\\chod-local-dev-server\\scripts\\repair-chod-dev-server.ps1\" -HealthPath \"/api/health\"",
+    "dev:3001": "next dev -H 0.0.0.0 -p 3001",
+    "preflight": "powershell -ExecutionPolicy Bypass -File scripts\\preflight-chod.ps1",
+    "preflight:repair": "powershell -ExecutionPolicy Bypass -File scripts\\preflight-chod.ps1 -Repair",
+    "cleanup:test": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\User\\.codex\\skills\\chod-mock-data-cleanup\\scripts\\cleanup-chod-test-artifacts.ps1\"",
+    "tunnel:cloudflare": "cloudflared tunnel --url http://localhost:3010",
+    "tunnel:chod": "cloudflared tunnel --url http://localhost:3010",
+    "build": "next build",
+    "start": "next start -p 3010",
+    "start:chod": "next start -p 3010",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "framer-motion": "^12.4.7",
+    "lucide-react": "^0.468.0",
+    "next": "^15.2.4",
+    "next-auth": "^5.0.0-beta.31",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
+  }
+}

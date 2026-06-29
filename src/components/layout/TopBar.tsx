@@ -1,0 +1,108 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Bell, Cloud, ExternalLink, ShieldCheck } from "lucide-react";
+import { useThailandTime } from "@/components/office/ThailandTimeController";
+import { CHOD_LOGO_DATA_URI } from "@/lib/brand/chod-logo";
+import { getApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
+import {
+  getReadNotificationIds,
+  getWorkspaceNotifications,
+  writeReadNotificationIds,
+} from "@/lib/notifications/workspace-notifications";
+
+export function TopBar() {
+  const [open, setOpen] = useState(false);
+  const [readIds, setReadIds] = useState<string[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [approvalPendingCount, setApprovalPendingCount] = useState(0);
+  const { now, timeLabel } = useThailandTime();
+  const dateLabel = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Bangkok",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  useEffect(() => {
+    setIsHydrated(true);
+    setReadIds(getReadNotificationIds());
+    setApprovalPendingCount(getApprovalNotificationSnapshot(1).pendingCount);
+    return subscribeApprovalNotifications((snapshot) => setApprovalPendingCount(snapshot.pendingCount));
+  }, []);
+
+  const notifications = useMemo(() => {
+    return getWorkspaceNotifications(approvalPendingCount, isHydrated);
+  }, [approvalPendingCount, isHydrated]);
+
+  const unreadNotifications = useMemo(
+    () => notifications.filter((item) => !readIds.includes(item.id)),
+    [notifications, readIds],
+  );
+
+  function markRead(notificationId: string) {
+    setReadIds((current) => {
+      const next = current.includes(notificationId) ? current : [...current, notificationId];
+      return writeReadNotificationIds(next);
+    });
+    setOpen(false);
+  }
+
+  return (
+    <header className="topbar">
+      <div>
+        <h1 aria-label="CHOD MOP OFFICE" className="project-title">
+          <img alt="CHOD" className="project-title-logo" decoding="async" src={CHOD_LOGO_DATA_URI} />
+          <span>MOP OFFICE</span>
+        </h1>
+        <p>Integrated Operations Command</p>
+      </div>
+      <div className="topbar-tools">
+        <div className="secure-state"><ShieldCheck size={18} /> Secure workspace</div>
+        <div className="weather-state"><Cloud size={18} /> Bangkok</div>
+        <div className="time-state"><strong>{timeLabel}</strong><span>{now ? dateLabel.format(now) : "THAILAND TIME"} · ICT</span></div>
+        <div className="notification-menu">
+          <button
+            aria-expanded={open}
+            aria-label="Notifications"
+            onClick={() => setOpen((value) => !value)}
+            type="button"
+          >
+            <Bell size={20} />
+            {unreadNotifications.length ? <em>{unreadNotifications.length}</em> : null}
+          </button>
+          {open ? (
+            <div className="notification-popover">
+              <header>
+                <strong>Notifications</strong>
+                <span>{unreadNotifications.length} unread</span>
+              </header>
+              <div className="notification-list">
+                {notifications.map((item) => {
+                  const isRead = readIds.includes(item.id);
+                  return (
+                    <Link
+                      aria-label={`Open ${item.meta}: ${item.title}`}
+                      className={`notification-item ${item.tone} ${isRead ? "is-read" : ""}`}
+                      href={item.href}
+                      key={item.id}
+                      onClick={() => markRead(item.id)}
+                    >
+                      <i />
+                      <span>
+                        <strong>{item.title}</strong>
+                        <small>{item.detail}</small>
+                        <em>{isRead ? `Read · Open ${item.meta}` : `Open ${item.meta}`}</em>
+                      </span>
+                      <ExternalLink size={15} />
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </header>
+  );
+}

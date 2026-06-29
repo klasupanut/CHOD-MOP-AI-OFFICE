@@ -1,0 +1,210 @@
+export type TaskCategory = "PM" | "Renovation" | "Fit-out" | "Solar" | "Electrical" | "Quotation" | "Document" | "Approval" | "Site" | "General";
+export type TaskStatus = "To Do" | "In Progress" | "Waiting Approval" | "Done" | "Overdue";
+export type TaskPriority = "Low" | "Medium" | "High" | "Critical";
+
+export type TaskRecord = {
+  taskId: string;
+  projectId?: string;
+  taskTitle: string;
+  taskDescription: string;
+  category: TaskCategory;
+  assignedTo: string;
+  assignedBy: string;
+  updatedBy: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: string;
+  progress: number;
+  note: string;
+  sourceModule: string;
+  lastUpdate: string;
+  createdAt: string;
+};
+
+export const mockTasks: TaskRecord[] = [
+  {
+    taskId: "TSK-FIT-B8-001",
+    projectId: "PRJ-FITOUT-B8",
+    taskTitle: "Prepare Fit-out B8 quotation",
+    taskDescription: "Build quotation package with BOQ and fit-out scope.",
+    category: "Quotation",
+    assignedTo: "Film",
+    assignedBy: "Tammasit",
+    updatedBy: "Film",
+    status: "In Progress",
+    priority: "High",
+    dueDate: "2026-06-24",
+    progress: 65,
+    note: "Waiting final contractor cost before submit.",
+    sourceModule: "Fit-out Project",
+    lastUpdate: "2026-06-23 15:10",
+    createdAt: "2026-06-17 09:15",
+  },
+  {
+    taskId: "TSK-FIT-B8-002",
+    projectId: "PRJ-FITOUT-B8",
+    taskTitle: "Upload Fit-out document package",
+    taskDescription: "Collect site photos, BOQ, quotation draft and approval file.",
+    category: "Document",
+    assignedTo: "Film",
+    assignedBy: "Kla",
+    updatedBy: "Film",
+    status: "To Do",
+    priority: "Medium",
+    dueDate: "2026-06-25",
+    progress: 20,
+    note: "Document folder created.",
+    sourceModule: "Document Center",
+    lastUpdate: "2026-06-23 10:30",
+    createdAt: "2026-06-17 09:20",
+  },
+  {
+    taskId: "TSK-FIT-B8-003",
+    projectId: "PRJ-FITOUT-B8",
+    taskTitle: "Review shop drawing for Fit-out B8",
+    taskDescription: "Review layout, elevations and revision notes.",
+    category: "Fit-out",
+    assignedTo: "Kla",
+    assignedBy: "Tammasit",
+    updatedBy: "Kla",
+    status: "Waiting Approval",
+    priority: "High",
+    dueDate: "2026-06-24",
+    progress: 80,
+    note: "Rev.01 checked. Need Tammasit approval.",
+    sourceModule: "Projects",
+    lastUpdate: "2026-06-23 15:40",
+    createdAt: "2026-06-17 09:30",
+  },
+  {
+    taskId: "TSK-FIT-B8-004",
+    projectId: "PRJ-FITOUT-B8",
+    taskTitle: "Review electrical scope and quotation",
+    taskDescription: "Check load, outlet quantity, lighting and electrical quotation.",
+    category: "Electrical",
+    assignedTo: "Moss",
+    assignedBy: "Kla",
+    updatedBy: "Moss",
+    status: "In Progress",
+    priority: "Medium",
+    dueDate: "2026-06-26",
+    progress: 55,
+    note: "Power point count confirmed. Lighting still open.",
+    sourceModule: "Fit-out Project",
+    lastUpdate: "2026-06-23 13:50",
+    createdAt: "2026-06-17 09:35",
+  },
+  {
+    taskId: "TSK-FIT-B8-005",
+    projectId: "PRJ-FITOUT-B8",
+    taskTitle: "Update site progress",
+    taskDescription: "Daily site progress memo and issue photo.",
+    category: "Site",
+    assignedTo: "Foreman",
+    assignedBy: "Kla",
+    updatedBy: "Foreman",
+    status: "Overdue",
+    priority: "High",
+    dueDate: "2026-06-22",
+    progress: 40,
+    note: "Need site measurement update today.",
+    sourceModule: "Fit-out Project",
+    lastUpdate: "2026-06-23 09:25",
+    createdAt: "2026-06-17 09:40",
+  },
+  {
+    taskId: "TSK-FIT-B8-006",
+    projectId: "PRJ-FITOUT-B8",
+    taskTitle: "Site measurement - B8",
+    taskDescription: "Confirm actual site measurement before handover plan.",
+    category: "Site",
+    assignedTo: "Foreman",
+    assignedBy: "Tammasit",
+    updatedBy: "Kla",
+    status: "To Do",
+    priority: "Medium",
+    dueDate: "2026-06-25",
+    progress: 10,
+    note: "Kla can update after checking site photo.",
+    sourceModule: "Projects",
+    lastUpdate: "2026-06-23 12:20",
+    createdAt: "2026-06-17 09:45",
+  },
+  {
+    taskId: "TSK-PM-F7-001",
+    projectId: "PRJ-PM-F7",
+    taskTitle: "Close overdue PM work orders",
+    taskDescription: "Follow contractor and close F7 overdue work order list.",
+    category: "PM",
+    assignedTo: "Foreman",
+    assignedBy: "Foreman",
+    updatedBy: "Film",
+    status: "Overdue",
+    priority: "Critical",
+    dueDate: "2026-06-22",
+    progress: 35,
+    note: "Film updated memo: contractor confirmed 2 items.",
+    sourceModule: "PM Loop",
+    lastUpdate: "2026-06-23 14:10",
+    createdAt: "2026-06-20 08:00",
+  },
+  {
+    taskId: "TSK-APP-001",
+    projectId: "PRJ-PM-F7",
+    taskTitle: "Tammasit approve PM exception",
+    taskDescription: "Approve exception for delayed PM cycle.",
+    category: "Approval",
+    assignedTo: "Tammasit",
+    assignedBy: "Foreman",
+    updatedBy: "Tammasit",
+    status: "Waiting Approval",
+    priority: "High",
+    dueDate: "2026-06-24",
+    progress: 50,
+    note: "Waiting final photo before signing.",
+    sourceModule: "Approvals",
+    lastUpdate: "2026-06-23 14:50",
+    createdAt: "2026-06-20 09:00",
+  },
+  {
+    taskId: "TSK-SOL-003",
+    projectId: "PRJ-SOLAR-03",
+    taskTitle: "Check inverter output variance",
+    taskDescription: "Review Solar CHOD-03 inverter log and output graph.",
+    category: "Solar",
+    assignedTo: "Moss",
+    assignedBy: "Moss",
+    updatedBy: "Moss",
+    status: "In Progress",
+    priority: "Medium",
+    dueDate: "2026-06-25",
+    progress: 60,
+    note: "Variance found at 13:20.",
+    sourceModule: "Solar Projects",
+    lastUpdate: "2026-06-23 13:20",
+    createdAt: "2026-06-21 10:30",
+  },
+  {
+    taskId: "TSK-GEN-001",
+    taskTitle: "Team memo: prepare weekly operation summary",
+    taskDescription: "Standalone team reminder, not linked to a project.",
+    category: "General",
+    assignedTo: "Film",
+    assignedBy: "Tammasit",
+    updatedBy: "Kla",
+    status: "To Do",
+    priority: "Medium",
+    dueDate: "2026-06-27",
+    progress: 15,
+    note: "Kla added renovation risk section.",
+    sourceModule: "Tasks",
+    lastUpdate: "2026-06-23 16:00",
+    createdAt: "2026-06-23 09:00",
+  },
+];
+
+export const teamMembers = ["Film", "Moss", "Kla", "Foreman", "Tammasit"] as const;
+
+export function getTasks() {
+  return mockTasks;
+}
