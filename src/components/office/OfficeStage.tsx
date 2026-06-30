@@ -16,15 +16,25 @@ import { TammasitDashboardWall } from "./TammasitDashboardWall";
 import { useThailandTime } from "./ThailandTimeController";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { LiveDashboardData } from "@/lib/dashboard/live-dashboard-data";
+import type { AgentId } from "@/lib/types";
 
 const frontFacingAgents = new Set<Agent["id"]>(["tammasit", "film", "kla", "moss"]);
 const showAiHq = process.env.NEXT_PUBLIC_SHOW_AI_HQ === "true";
 
-export function OfficeStage({ currentUser, dashboardData }: { currentUser: ApprovedUser; dashboardData: LiveDashboardData }) {
+export function OfficeStage({
+  currentUser,
+  dashboardData,
+  onlineCharacterIds,
+}: {
+  currentUser: ApprovedUser;
+  dashboardData: LiveDashboardData;
+  onlineCharacterIds: AgentId[];
+}) {
   const { period, timeLabel } = useThailandTime();
   const [activeAgent, setActiveAgent] = useState<Agent["id"] | null>(null);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentUserCharacterId = currentUser.characterId || (currentUser.email.toLowerCase() === "chod.mopteam@gmail.com" ? "kla" : "");
+  const onlineCharacters = new Set<AgentId>(onlineCharacterIds.length ? onlineCharacterIds : currentUserCharacterId ? [currentUserCharacterId] : []);
   const director = agents.find((agent) => agent.id === "tammasit");
   const middleAgents = agents.filter((agent) => agent.id === "film" || agent.id === "kla");
   const frontAgents = agents.filter((agent) => agent.id === "foreman" || agent.id === "moss");
@@ -64,7 +74,7 @@ export function OfficeStage({ currentUser, dashboardData }: { currentUser: Appro
           agent={agent}
           active={activeAgent === agent.id}
           canFaceFront={frontFacingAgents.has(agent.id)}
-          online={currentUserCharacterId === agent.id}
+          online={onlineCharacters.has(agent.id)}
           onSelect={showFrontView}
           key={agent.id}
         />
