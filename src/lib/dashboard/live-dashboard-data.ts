@@ -53,8 +53,12 @@ export type LiveDashboardData = {
   quotation: {
     waitingApproval: number;
     approvedThisMonth: number;
+    signedThisMonth: number;
     rejectedOrRevision: number;
     totalPendingValue: number;
+    actualWorkValue: number;
+    notAcceptedValue: number;
+    internalApprovedNotSigned: number;
     mainApprover: string;
   };
   annualDivisionRevenue: {
@@ -122,6 +126,10 @@ function formatTime(value?: string) {
 
 function timestamp(value?: string) {
   return parseDate(value)?.getTime() || 0;
+}
+
+function isCustomerSigned(approval: Awaited<ReturnType<typeof listApprovalRows>>[number]) {
+  return String(approval.clientSigningStatus || "").trim().toLowerCase() === "signed" || Boolean(approval.clientSignedAt);
 }
 
 function statusTone(status: string): Tone {
@@ -252,6 +260,13 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     const date = parseDate(approval.lastUpdate || approval.requestedAt);
     return approval.status === "Approved" && !!date && date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
   });
+  const customerSignedQuotations = liveApprovals.filter(isCustomerSigned);
+  const signedThisMonth = customerSignedQuotations.filter((approval) => {
+    const date = parseDate(approval.clientSignedAt || approval.lastUpdate || approval.requestedAt);
+    return !!date && date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
+  });
+  const unsignedQuotations = liveApprovals.filter((approval) => !isCustomerSigned(approval));
+  const internalApprovedNotSigned = unsignedQuotations.filter((approval) => approval.status === "Approved");
   const rejectedOrRevision = liveApprovals.filter((approval) => ["Rejected", "Revision Required"].includes(approval.status));
   const fitoutAnnual = currentYearFitoutRevenue(fitoutData);
   const annualProjects = projects.filter((project) => isCurrentYearProject(project, today.getFullYear()));
@@ -401,8 +416,12 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     quotation: {
       waitingApproval: pendingApprovals.length,
       approvedThisMonth: approvedThisMonth.length,
+      signedThisMonth: signedThisMonth.length,
       rejectedOrRevision: rejectedOrRevision.length,
       totalPendingValue: pendingApprovals.reduce((sum, approval) => sum + approval.amount, 0),
+      actualWorkValue: customerSignedQuotations.reduce((sum, approval) => sum + approval.amount, 0),
+      notAcceptedValue: unsignedQuotations.reduce((sum, approval) => sum + approval.amount, 0),
+      internalApprovedNotSigned: internalApprovedNotSigned.length,
       mainApprover: "Tammasit",
     },
     annualDivisionRevenue: {

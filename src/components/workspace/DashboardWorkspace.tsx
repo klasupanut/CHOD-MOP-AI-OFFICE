@@ -201,7 +201,11 @@ export function DashboardWorkspace({ data }: { data: LiveDashboardData }) {
         ]} />
         <ModuleCard title="Quotation / Approval Overview" icon={<ClipboardCheck size={20} />} items={[
           ["Waiting Approval", quotation.waitingApproval],
-          ["Approved This Month", quotation.approvedThisMonth],
+          ["Internal Approved This Month", quotation.approvedThisMonth],
+          ["Customer Signed This Month", quotation.signedThisMonth],
+          ["Actual Work Value", money(quotation.actualWorkValue)],
+          ["Not Accepted Value", money(quotation.notAcceptedValue)],
+          ["Internal Approved / Not Signed", quotation.internalApprovedNotSigned],
           ["Rejected / Revision Required", quotation.rejectedOrRevision],
           ["Total Pending Value", money(quotation.totalPendingValue)],
           ["Main Approver", quotation.mainApprover],

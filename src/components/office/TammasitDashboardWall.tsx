@@ -115,7 +115,7 @@ export function TammasitDashboardWall({ data }: { data: LiveDashboardData }) {
               <div>
                 <p><b>Pending</b><strong>{data.quotation.waitingApproval}</strong></p>
                 <p><b>In Review</b><strong>{data.taskOverview.waitingApproval}</strong></p>
-                <p><b>Approved</b><strong>{data.quotation.approvedThisMonth}</strong></p>
+                <p><b>Signed</b><strong>{data.quotation.signedThisMonth}</strong></p>
               </div>
             </article>
           </div>
