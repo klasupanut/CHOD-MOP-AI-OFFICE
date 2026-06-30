@@ -124,6 +124,14 @@ function formatTime(value?: string) {
   });
 }
 
+function formatBaht(value: number) {
+  return new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency: "THB",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 function timestamp(value?: string) {
   return parseDate(value)?.getTime() || 0;
 }
@@ -367,8 +375,8 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
       { id: "open-tasks", label: "Open Tasks", value: tasks.filter((task) => task.status !== "Done").length, detail: "From live Tasks sheet", tone: "blue" },
       { id: "budget-utilization", label: "Budget Utilization", value: `${utilization}%`, detail: "Approved annual cost / total budget", tone: "success" },
       { id: "pending-approvals", label: "Pending Approvals", value: pendingApprovals.length, detail: "From live quotation approvals", tone: "warning" },
-      { id: "fitout-revenue", label: "Fit-out Revenue", value: fitoutAnnual.fitoutRevenue, detail: "Current year live Fit-out sheet", tone: "solar" },
-      { id: "restoration-revenue", label: "Restoration Revenue", value: fitoutAnnual.restorationRevenue, detail: "Current year live Fit-out sheet", tone: "success" },
+      { id: "fitout-revenue", label: "Fit-out Revenue", value: formatBaht(fitoutAnnual.fitoutRevenue), detail: "Current year live Fit-out sheet", tone: "solar" },
+      { id: "restoration-revenue", label: "Restoration Revenue", value: formatBaht(fitoutAnnual.restorationRevenue), detail: "Current year live Fit-out sheet", tone: "success" },
     ],
     projectStatus: projectStatusSummary(projects),
     taskOverview: {
