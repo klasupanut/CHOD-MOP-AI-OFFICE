@@ -110,20 +110,20 @@ export async function getSettingsDataConnectors(input: {
     },
     {
       id: "tasks-projects-sheet",
-      name: "Tasks / Projects Sheet",
+      name: "Tasks / Projects / Schedule Sheet",
       category: "Google Sheets",
       status: configured(taskProjectSheetId) ? "connected" : "not-configured",
-      description: "Live task board, project parent records, team assignment and timelines.",
+      description: "Live task board, project parent records, team assignment, calendar events and timelines.",
       source: `Sheet ID: ${maskValue(taskProjectSheetId)}`,
-      tabs: ["Tasks", "Projects"],
+      tabs: ["Tasks", "Projects", "Schedule"],
       envKeys: ["GOOGLE_SHEET_ID_TASK_PROJECT"],
       openUrl: sheetUrl(taskProjectSheetId),
-      testUrl: "/tasks",
+      testUrl: "/calendar-schedule",
       message: process.env.GOOGLE_SHEET_ID_TASK_PROJECT
-        ? "Dedicated Task / Project sheet is configured."
+        ? "Dedicated Task / Project / Schedule sheet is configured."
         : configured(usersSheetId)
-          ? "Using Users sheet as the current shared Task / Project database."
-          : "No Google Sheet is configured for Tasks / Projects.",
+          ? "Using Users sheet as the current shared Task / Project / Schedule database."
+          : "No Google Sheet is configured for Tasks / Projects / Schedule.",
       enabled: true,
     },
     {
@@ -199,7 +199,7 @@ export async function getSettingsDataConnectors(input: {
       enabled: supabaseEnabled,
     },
     ...projectConnectors
-      .filter((connector) => !["task-project-database", "quotation-generator", "fitout-project"].includes(connector.id))
+      .filter((connector) => !["task-project-database", "calendar-schedule", "quotation-generator", "fitout-project"].includes(connector.id))
       .map((connector): SettingsConnectorItem => ({
         id: connector.id,
         name: connector.name,

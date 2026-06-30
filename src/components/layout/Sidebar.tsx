@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  BarChart3, BriefcaseBusiness, Building2, CheckCheck, ClipboardList, LogOut,
+  BarChart3, BriefcaseBusiness, Building2, CalendarDays, CheckCheck, ClipboardList, LogOut,
   FolderKanban, Gauge, Hammer, LayoutDashboard, Settings, SunMedium, Wrench, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -24,6 +24,7 @@ const nav: Array<{ label: "Office" | ModulePermission; icon: LucideIcon; href?: 
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { label: "Tasks", icon: ClipboardList, href: "/tasks" },
   { label: "Projects", icon: FolderKanban, href: "/projects" },
+  { label: "Calendar / Schedule", icon: CalendarDays, href: "/calendar-schedule" },
   { label: "PM Loop", icon: Gauge, pendingConnector: true },
   { label: "Renovation", icon: Wrench, pendingConnector: true },
   { label: "Fit-out Project", icon: Hammer, href: "/fit-out-project" },
@@ -43,6 +44,9 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
     if (item.label === "Office") return true;
     if (item.label === "Settings") return ["Admin", "Super Admin"].includes(user.role) && user.modulePermissions.includes("Settings");
     if (item.label === "Quotations") return user.modulePermissions.includes("Quotations") && user.quotationPermissions.includes("quotation.view");
+    if (item.label === "Calendar / Schedule") {
+      return user.modulePermissions.includes("Calendar / Schedule") || user.modulePermissions.includes("Tasks") || user.modulePermissions.includes("Projects");
+    }
     return user.modulePermissions.includes(item.label);
   });
 

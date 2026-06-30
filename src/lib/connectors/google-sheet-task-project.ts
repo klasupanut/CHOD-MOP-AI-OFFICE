@@ -2,11 +2,13 @@ import "server-only";
 
 import { createSign } from "node:crypto";
 import type { ProjectRecord, ProjectPriority, ProjectStatus, ProjectType } from "@/data/projects";
+import { deriveScheduleEventsFromTasksProjects, type ScheduleData, type ScheduleEvent, type ScheduleEventType, type ScheduleStatus } from "@/data/schedule";
 import type { TaskCategory, TaskPriority, TaskRecord, TaskStatus } from "@/data/tasks";
 import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
 
 const TASKS_TAB = "Tasks";
 const PROJECTS_TAB = "Projects";
+const SCHEDULE_TAB = "Schedule";
 
 const TASK_HEADERS = [
   "taskId",
@@ -48,6 +50,25 @@ const PROJECT_HEADERS = [
   "lastUpdate",
 ] as const;
 
+const SCHEDULE_HEADERS = [
+  "eventId",
+  "title",
+  "eventType",
+  "location",
+  "owner",
+  "attendees",
+  "startAt",
+  "endAt",
+  "status",
+  "priority",
+  "relatedModule",
+  "relatedId",
+  "note",
+  "createdBy",
+  "lastUpdate",
+  "source",
+] as const;
+
 export const taskProjectSheetConfig = {
   mode: "google-sheet",
   spreadsheetName: "CHOD MOP OFFICE - Task & Project Database",
@@ -57,7 +78,7 @@ export const taskProjectSheetConfig = {
     privateKey: "GOOGLE_PRIVATE_KEY",
     sheetId: "GOOGLE_SHEET_ID_TASK_PROJECT",
   },
-  tabs: [PROJECTS_TAB, TASKS_TAB],
+  tabs: [PROJECTS_TAB, TASKS_TAB, SCHEDULE_TAB],
 };
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -247,12 +268,57 @@ function projectToRow(project: ProjectRecord) {
   ];
 }
 
+function rowToScheduleEvent(row: unknown[]): ScheduleEvent | null {
+  const eventId = safeString(row[0]);
+  const title = safeString(row[1]);
+  if (!eventId || !title) return null;
+  return {
+    eventId,
+    title,
+    eventType: (safeString(row[2]) || "Meeting") as ScheduleEventType,
+    location: safeString(row[3]) || "Head Office",
+    owner: safeString(row[4]) || "Team",
+    attendees: parseList(row[5]),
+    startAt: safeString(row[6]),
+    endAt: safeString(row[7]),
+    status: (safeString(row[8]) || "Scheduled") as ScheduleStatus,
+    priority: (safeString(row[9]) || "Medium") as ScheduleEvent["priority"],
+    relatedModule: safeString(row[10]) || "Schedule",
+    relatedId: safeString(row[11]),
+    note: safeString(row[12]),
+    createdBy: safeString(row[13]) || "System",
+    lastUpdate: safeString(row[14]),
+    source: "manual",
+  };
+}
+
+function scheduleEventToRow(event: ScheduleEvent) {
+  return [
+    event.eventId,
+    event.title,
+    event.eventType,
+    event.location,
+    event.owner,
+    event.attendees.join(","),
+    event.startAt,
+    event.endAt,
+    event.status,
+    event.priority,
+    event.relatedModule,
+    event.relatedId,
+    event.note,
+    event.createdBy,
+    event.lastUpdate,
+    event.source,
+  ];
+}
+
 async function ensureTaskProjectSheetsOnce() {
   ensureConfigured();
   const metadataResponse = await sheetsFetch("?fields=sheets.properties.title");
   const metadata = (await metadataResponse.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
   const existing = new Set(metadata.sheets?.map((sheet) => sheet.properties?.title).filter(Boolean));
-  const missing = [PROJECTS_TAB, TASKS_TAB].filter((title) => !existing.has(title));
+  const missing = [PROJECTS_TAB, TASKS_TAB, SCHEDULE_TAB].filter((title) => !existing.has(title));
   if (missing.length) {
     await sheetsFetch(":batchUpdate", {
       method: "POST",
@@ -263,6 +329,7 @@ async function ensureTaskProjectSheetsOnce() {
   }
   const projectsRange = encodeURIComponent(`${PROJECTS_TAB}!A1:R1`);
   const tasksRange = encodeURIComponent(`${TASKS_TAB}!A1:P1`);
+  const scheduleRange = encodeURIComponent(`${SCHEDULE_TAB}!A1:P1`);
   await Promise.all([
     sheetsFetch(`/values/${projectsRange}?valueInputOption=RAW`, {
       method: "PUT",
@@ -271,6 +338,10 @@ async function ensureTaskProjectSheetsOnce() {
     sheetsFetch(`/values/${tasksRange}?valueInputOption=RAW`, {
       method: "PUT",
       body: JSON.stringify({ values: [[...TASK_HEADERS]] }),
+    }),
+    sheetsFetch(`/values/${scheduleRange}?valueInputOption=RAW`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [[...SCHEDULE_HEADERS]] }),
     }),
   ]);
 }
@@ -327,6 +398,29 @@ export async function listTaskProjectData() {
     mode: "google-sheet" as const,
     projects: projectRows.map(rowToProject).filter((item): item is ProjectRecord => Boolean(item)),
     tasks: taskRows.map(rowToTask).filter((item): item is TaskRecord => Boolean(item)),
+    message: "",
+  };
+}
+
+export async function listScheduleData(): Promise<ScheduleData> {
+  const taskProjectData = await listTaskProjectData();
+  const derivedEvents = deriveScheduleEventsFromTasksProjects(taskProjectData.tasks, taskProjectData.projects);
+  if (!getSheetId()) {
+    return {
+      mode: "not-configured" as const,
+      events: derivedEvents,
+      manualEvents: [] as ScheduleEvent[],
+      derivedEvents,
+      message: "GOOGLE_SHEET_ID_TASK_PROJECT is not configured. Showing schedule from visible Task / Project dates only.",
+    };
+  }
+  const rows = await readTabRows(SCHEDULE_TAB, "P");
+  const manualEvents = rows.map(rowToScheduleEvent).filter((item): item is ScheduleEvent => Boolean(item));
+  return {
+    mode: "google-sheet" as const,
+    events: [...manualEvents, ...derivedEvents].sort((a, b) => a.startAt.localeCompare(b.startAt)),
+    manualEvents,
+    derivedEvents,
     message: "",
   };
 }
@@ -425,6 +519,30 @@ export async function createProjectInSheet(input: ProjectRecord) {
   };
   await appendRows(PROJECTS_TAB, [projectToRow(project)]);
   return project;
+}
+
+export async function createScheduleEventInSheet(input: ScheduleEvent) {
+  const now = nowStamp();
+  const event: ScheduleEvent = {
+    ...input,
+    eventId: input.eventId || `EVT-${Date.now()}`,
+    eventType: input.eventType || "Meeting",
+    location: input.location || "Head Office",
+    owner: input.owner || "Team",
+    attendees: input.attendees || [],
+    startAt: input.startAt || "",
+    endAt: input.endAt || input.startAt || "",
+    status: input.status || "Scheduled",
+    priority: input.priority || "Medium",
+    relatedModule: input.relatedModule || "Schedule",
+    relatedId: input.relatedId || "",
+    note: input.note || "",
+    createdBy: input.createdBy || "System",
+    lastUpdate: input.lastUpdate || now,
+    source: "manual",
+  };
+  await appendRows(SCHEDULE_TAB, [scheduleEventToRow(event)]);
+  return event;
 }
 
 export async function deleteProjectInSheet(projectId: string) {

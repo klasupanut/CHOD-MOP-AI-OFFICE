@@ -13,6 +13,7 @@ export const modulePermissions = [
   "Dashboard",
   "Tasks",
   "Projects",
+  "Calendar / Schedule",
   "PM Loop",
   "Renovation",
   "Fit-out Project",
@@ -65,17 +66,17 @@ export const roleDefaults: Record<
     quotations: allQuotationPermissions.filter((permission) => permission !== "quotation.manageSettings"),
   },
   "Quotation Staff": {
-    modules: ["Dashboard", "Projects", "Fit-out Project", "Quotations", "Documents", "Approvals", "Reports"],
+    modules: ["Dashboard", "Projects", "Calendar / Schedule", "Fit-out Project", "Quotations", "Documents", "Approvals", "Reports"],
     quotations: quotationPermissions.filter(
       (permission) => !["quotation.delete", "quotation.manageSettings"].includes(permission),
     ),
   },
   Operations: {
-    modules: ["Dashboard", "Tasks", "Projects", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Documents", "Reports"],
+    modules: ["Dashboard", "Tasks", "Projects", "Calendar / Schedule", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Documents", "Reports"],
     quotations: ["quotation.view"],
   },
   Viewer: {
-    modules: ["Dashboard", "Projects", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Documents", "Reports"],
+    modules: ["Dashboard", "Projects", "Calendar / Schedule", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Documents", "Reports"],
     quotations: [],
   },
 };

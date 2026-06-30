@@ -32,7 +32,7 @@ export const operationalRoleCapabilities: Record<
 > = {
   director: {
     summary: "Tammasit: view all, assign team, approve all quotations, final approval authority.",
-    modules: ["Dashboard", "Tasks", "Projects", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Quotations", "Approvals", "Reports", "Settings"],
+    modules: ["Dashboard", "Tasks", "Projects", "Calendar / Schedule", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Quotations", "Approvals", "Reports", "Settings"],
     quotations: ["quotation.view", "quotation.create", "quotation.edit", "quotation.viewInternalCost", "quotation.viewMarkupProfit", "quotation.exportPdf", "quotation.createSigningLink", "quotation.changeStatus", "quotation.manageSignatures", "quotation.manageSettings"],
     canEditApprovalPermissions: true,
     canFinalApproveQuotation: true,
@@ -40,7 +40,7 @@ export const operationalRoleCapabilities: Record<
   },
   engineer: {
     summary: "Film/Kla: view all work, create/edit engineering, fit-out, renovation, document, quotation data within allowed scopes.",
-    modules: ["Dashboard", "Tasks", "Projects", "PM Loop", "Renovation", "Fit-out Project", "Quotations", "Approvals", "Reports"],
+    modules: ["Dashboard", "Tasks", "Projects", "Calendar / Schedule", "PM Loop", "Renovation", "Fit-out Project", "Quotations", "Approvals", "Reports"],
     quotations: ["quotation.view", "quotation.create", "quotation.edit", "quotation.exportPdf", "quotation.createSigningLink"],
     canEditApprovalPermissions: false,
     canFinalApproveQuotation: false,
@@ -48,7 +48,7 @@ export const operationalRoleCapabilities: Record<
   },
   electrical_engineer: {
     summary: "Moss: create/edit solar/electrical data and electrical quotations; approval only if Settings allows.",
-    modules: ["Dashboard", "Tasks", "Projects", "Solar Projects", "Fit-out Project", "Quotations", "Approvals", "Reports"],
+    modules: ["Dashboard", "Tasks", "Projects", "Calendar / Schedule", "Solar Projects", "Fit-out Project", "Quotations", "Approvals", "Reports"],
     quotations: ["quotation.view", "quotation.create", "quotation.edit", "quotation.exportPdf", "quotation.createSigningLink"],
     canEditApprovalPermissions: false,
     canFinalApproveQuotation: false,
@@ -56,7 +56,7 @@ export const operationalRoleCapabilities: Record<
   },
   foreman: {
     summary: "Foreman: site/PM task progress and alerts; no quotation approval by default.",
-    modules: ["Dashboard", "Tasks", "Projects", "PM Loop", "Renovation", "Fit-out Project", "Reports"],
+    modules: ["Dashboard", "Tasks", "Projects", "Calendar / Schedule", "PM Loop", "Renovation", "Fit-out Project", "Reports"],
     quotations: ["quotation.view"],
     canEditApprovalPermissions: false,
     canFinalApproveQuotation: false,
@@ -64,7 +64,7 @@ export const operationalRoleCapabilities: Record<
   },
   admin: {
     summary: "Admin: operational administrator with settings access, but Tammasit remains final business approver.",
-    modules: ["Dashboard", "Tasks", "Projects", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Quotations", "Approvals", "Reports", "Settings"],
+    modules: ["Dashboard", "Tasks", "Projects", "Calendar / Schedule", "PM Loop", "Renovation", "Fit-out Project", "Solar Projects", "Quotations", "Approvals", "Reports", "Settings"],
     quotations: ["quotation.view", "quotation.create", "quotation.edit", "quotation.viewInternalCost", "quotation.viewMarkupProfit", "quotation.exportPdf", "quotation.createSigningLink", "quotation.changeStatus", "quotation.manageSignatures", "quotation.manageSettings"],
     canEditApprovalPermissions: true,
     canFinalApproveQuotation: false,
