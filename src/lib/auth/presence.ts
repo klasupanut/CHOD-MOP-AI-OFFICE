@@ -9,7 +9,7 @@ function fallbackCharacterId(email: string): AgentId | "" {
 
 function isRecentlySeen(user: ApprovedUser, now: Date) {
   if (!user.active || !user.lastSignInProvider) return false;
-  const lastTouched = Date.parse(user.updatedAt || "");
+  const lastTouched = Date.parse(user.lastSeenAt || user.updatedAt || "");
   if (Number.isNaN(lastTouched)) return false;
   return now.getTime() - lastTouched <= SESSION_WINDOW_MS;
 }

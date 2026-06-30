@@ -12,6 +12,7 @@ export type ApprovedUser = {
   quotationPermissions: QuotationPermission[];
   characterId?: AgentId | "";
   lastSignInProvider: string;
+  lastSeenAt?: string;
   createdAt: string;
   updatedAt: string;
 };

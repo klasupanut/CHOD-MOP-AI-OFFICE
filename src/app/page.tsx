@@ -8,6 +8,9 @@ import { requireApprovedUser } from "@/lib/auth/session";
 import { getLiveDashboardData } from "@/lib/dashboard/live-dashboard-data";
 import { getOfficePanelData } from "@/lib/office/office-panel-data";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function Home() {
   const user = await requireApprovedUser();
   const [panelData, dashboardData, approvedUsers] = await Promise.all([

@@ -12,7 +12,7 @@ import {
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { AgentId } from "@/lib/types";
 
-type EditorState = Omit<ApprovedUser, "userId" | "createdAt" | "updatedAt" | "lastSignInProvider"> & {
+type EditorState = Omit<ApprovedUser, "userId" | "createdAt" | "updatedAt" | "lastSignInProvider" | "lastSeenAt"> & {
   userId?: string;
 };
 

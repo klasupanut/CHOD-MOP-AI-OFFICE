@@ -25,6 +25,7 @@ const USER_HEADERS = [
   "quotationPermissions",
   "characterId",
   "lastSignInProvider",
+  "lastSeenAt",
   "createdAt",
   "updatedAt",
 ] as const;
@@ -123,13 +124,19 @@ function rowToUser(row: unknown[]): ApprovedUser | null {
   if (!email) return null;
   const role = roles.includes(String(row[4]) as Role) ? (String(row[4]) as Role) : "Viewer";
   const isSuperAdmin = email === getSuperAdminEmail();
+  const hasPresenceColumn = row.length >= 13;
   const hasCharacterColumn = characterIds.includes(String(row[8]) as AgentId) || row.length >= 12;
   const characterId = characterIds.includes(String(row[8]) as AgentId)
     ? (String(row[8]) as AgentId)
     : isSuperAdmin ? "kla" : "";
   const lastSignInProvider = hasCharacterColumn ? String(row[9] || "") : String(row[8] || "");
-  const createdAt = hasCharacterColumn ? String(row[10] || new Date().toISOString()) : String(row[9] || new Date().toISOString());
-  const updatedAt = hasCharacterColumn ? String(row[11] || new Date().toISOString()) : String(row[10] || new Date().toISOString());
+  const lastSeenAt = hasPresenceColumn ? String(row[10] || "") : "";
+  const createdAt = hasPresenceColumn
+    ? String(row[11] || new Date().toISOString())
+    : hasCharacterColumn ? String(row[10] || new Date().toISOString()) : String(row[9] || new Date().toISOString());
+  const updatedAt = hasPresenceColumn
+    ? String(row[12] || new Date().toISOString())
+    : hasCharacterColumn ? String(row[11] || new Date().toISOString()) : String(row[10] || new Date().toISOString());
   return {
     userId: String(row[0] || randomUUID()),
     name: String(row[1] || email.split("@")[0]),
@@ -145,6 +152,7 @@ function rowToUser(row: unknown[]): ApprovedUser | null {
       : parseList(row[7], quotationPermissions),
     characterId,
     lastSignInProvider,
+    lastSeenAt,
     createdAt,
     updatedAt,
   };
@@ -162,13 +170,14 @@ function userToRow(user: ApprovedUser) {
     user.quotationPermissions.join(","),
     user.characterId || "",
     user.lastSignInProvider,
+    user.lastSeenAt || "",
     user.createdAt,
     user.updatedAt,
   ];
 }
 
 async function readRows() {
-  const range = encodeURIComponent(`${USERS_TAB}!A2:L`);
+  const range = encodeURIComponent(`${USERS_TAB}!A2:M`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
   return payload.values || [];
@@ -218,6 +227,7 @@ function createSuperAdmin(): ApprovedUser {
     quotationPermissions: roleDefaults["Super Admin"].quotations,
     characterId: "kla",
     lastSignInProvider: "",
+    lastSeenAt: "",
     createdAt: now,
     updatedAt: now,
   };
@@ -244,7 +254,7 @@ export async function ensureSheetHeaders() {
       }),
     });
   }
-  const usersRange = encodeURIComponent(`${USERS_TAB}!A1:L1`);
+  const usersRange = encodeURIComponent(`${USERS_TAB}!A1:M1`);
   const auditRange = encodeURIComponent(`${AUDIT_TAB}!A1:F1`);
   await Promise.all([
     sheetsFetch(`/values/${usersRange}?valueInputOption=RAW`, {
@@ -270,13 +280,14 @@ async function ensureSuperAdminRow() {
     userId: current?.userId || "super-admin",
     name: current?.name || "CHODTHANAWAT OPERATION TEAM",
     lastSignInProvider: current?.lastSignInProvider || "",
+    lastSeenAt: current?.lastSeenAt || "",
     createdAt: current?.createdAt || now,
     updatedAt: now,
   };
 
   if (index >= 0) {
     const rowNumber = index + 2;
-    const range = encodeURIComponent(`${USERS_TAB}!A${rowNumber}:L${rowNumber}`);
+    const range = encodeURIComponent(`${USERS_TAB}!A${rowNumber}:M${rowNumber}`);
     await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
       method: "PUT",
       body: JSON.stringify({ values: [userToRow(superAdmin)] }),
@@ -305,6 +316,7 @@ export async function createApprovedUser(
     userId: randomUUID(),
     email,
     lastSignInProvider: "",
+    lastSeenAt: "",
     createdAt: now,
     updatedAt: now,
   };
@@ -341,7 +353,7 @@ export async function updateApprovedUser(userId: string, patch: Partial<Approved
     updated.quotationPermissions = roleDefaults["Super Admin"].quotations;
   }
   const rowNumber = index + 2;
-  const range = encodeURIComponent(`${USERS_TAB}!A${rowNumber}:L${rowNumber}`);
+  const range = encodeURIComponent(`${USERS_TAB}!A${rowNumber}:M${rowNumber}`);
   await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
     method: "PUT",
     body: JSON.stringify({ values: [userToRow(updated)] }),
@@ -367,20 +379,22 @@ export async function recordAudit(event: AuditEvent) {
 export async function recordSuccessfulLogin(email: string, provider: string, name: string) {
   const user = await findApprovedUser(email);
   if (!user) return;
+  const now = new Date().toISOString();
   try {
     const rows = await readRows();
     const stored = rows.map(rowToUser).find((candidate) => candidate?.email === user.email);
     if (stored) {
       await updateApprovedUser(stored.userId, {
         lastSignInProvider: provider,
+        lastSeenAt: now,
         name: name || stored.name,
       });
     } else if (user.email === getSuperAdminEmail()) {
-      const now = new Date().toISOString();
       await appendRows(USERS_TAB, [userToRow({
         ...createSuperAdmin(),
         name: name || user.name,
         lastSignInProvider: provider,
+        lastSeenAt: now,
         createdAt: now,
         updatedAt: now,
       })]);
