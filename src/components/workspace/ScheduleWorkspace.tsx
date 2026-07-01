@@ -4,11 +4,9 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
-  Clock3,
   MapPin,
   Plus,
   ShieldAlert,
-  SunMedium,
   Users,
   Wrench,
 } from "lucide-react";
@@ -20,17 +18,17 @@ const teamMembers = ["Tammasit", "Film", "Kla", "Foreman", "Moss"];
 const commonEventTypes: ScheduleEventType[] = ["Meeting", "Site Visit", "PM Loop", "Approval Deadline", "Quotation Follow-up", "Fit-out Handover", "Solar Check"];
 
 const eventIconMap: Record<ScheduleEventType, string> = {
-  Meeting: "👥",
-  "Site Visit": "📍",
-  "PM Loop": "🛠",
-  "Approval Deadline": "✅",
-  "Quotation Follow-up": "฿",
-  "Fit-out Handover": "🏁",
-  "Solar Check": "☀",
-  Renovation: "🔧",
-  "Task Due": "⏱",
-  "Project Milestone": "◆",
-  Other: "•",
+  Meeting: "MTG",
+  "Site Visit": "SITE",
+  "PM Loop": "PM",
+  "Approval Deadline": "OK",
+  "Quotation Follow-up": "QT",
+  "Fit-out Handover": "HD",
+  "Solar Check": "SOL",
+  Renovation: "REN",
+  "Task Due": "DUE",
+  "Project Milestone": "MS",
+  Other: "*",
 };
 
 function todayKey() {
@@ -141,12 +139,14 @@ export function ScheduleWorkspace({
 }) {
   const [events, setEvents] = useState(initialEvents);
   const [editor, setEditor] = useState(() => newDefaultEvent(currentUser));
+  const [selectedEventId, setSelectedEventId] = useState("");
   const [notice, setNotice] = useState(dataMessage || "");
   const [isPending, startTransition] = useTransition();
   const days = useMemo(weekDays, []);
   const today = todayKey();
 
   const visibleEvents = useMemo(() => [...events].sort((a, b) => a.startAt.localeCompare(b.startAt)), [events]);
+  const selectedEvent = visibleEvents.find((event) => event.eventId === selectedEventId) || null;
   const todayEvents = visibleEvents.filter((event) => dateKey(event.startAt) === today);
   const delayedEvents = visibleEvents
     .filter((event) => visualStatus(event) === "Delayed")
@@ -182,6 +182,7 @@ export function ScheduleWorkspace({
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Unable to create schedule event.");
         setEvents((current) => [payload.event, ...current]);
+        setSelectedEventId(payload.event.eventId);
         setEditor(newDefaultEvent(currentUser));
         setNotice("Schedule event saved to Google Sheet.");
       } catch (error) {
@@ -222,11 +223,16 @@ export function ScheduleWorkspace({
                   <header><strong>{day.label}</strong><span>{day.date}</span></header>
                   <div className="schedule-day-events">
                     {dayEvents.slice(0, 5).map((event) => (
-                      <div className={`schedule-event-pill status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")} type-${event.eventType.toLowerCase().replace(/\s+/g, "-")}`} key={event.eventId}>
+                      <button
+                        className={`schedule-event-pill ${selectedEventId === event.eventId ? "selected" : ""} status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")} type-${event.eventType.toLowerCase().replace(/\s+/g, "-")}`}
+                        key={event.eventId}
+                        onClick={() => setSelectedEventId(event.eventId)}
+                        type="button"
+                      >
                         <b>{eventIconMap[event.eventType]}</b>
                         <span>{timeLabel(event.startAt)} {event.title}</span>
                         {visualStatus(event) === "Delayed" ? <em>+{delayDays(event.startAt)}D</em> : null}
-                      </div>
+                      </button>
                     ))}
                     {!dayEvents.length ? <p>No schedule</p> : null}
                   </div>
@@ -237,13 +243,47 @@ export function ScheduleWorkspace({
         </section>
 
         <aside className="workspace-detail-panel schedule-side-panel">
+          {selectedEvent ? (
+            <section className="schedule-event-detail">
+              <div className="schedule-detail-heading">
+                <i>{eventIconMap[selectedEvent.eventType]}</i>
+                <div>
+                  <span>SELECTED EVENT</span>
+                  <h3>{selectedEvent.title}</h3>
+                </div>
+              </div>
+              <div className="schedule-detail-grid">
+                <article><span>Type</span><strong>{selectedEvent.eventType}</strong></article>
+                <article><span>Status</span><strong>{visualStatus(selectedEvent)}</strong></article>
+                <article><span>Start</span><strong>{dateLabel(selectedEvent.startAt)} · {timeLabel(selectedEvent.startAt)}</strong></article>
+                <article><span>End</span><strong>{dateLabel(selectedEvent.endAt)} · {timeLabel(selectedEvent.endAt)}</strong></article>
+                <article><span>Location</span><strong>{selectedEvent.location}</strong></article>
+                <article><span>Owner</span><strong>{selectedEvent.owner}</strong></article>
+                <article><span>Source</span><strong>{selectedEvent.source}</strong></article>
+                <article><span>Related</span><strong>{selectedEvent.relatedModule || "-"} {selectedEvent.relatedId ? `/ ${selectedEvent.relatedId}` : ""}</strong></article>
+              </div>
+              <div className="schedule-detail-note">
+                <span>Attendees</span>
+                <strong>{selectedEvent.attendees.length ? selectedEvent.attendees.join(", ") : "-"}</strong>
+              </div>
+              <div className="schedule-detail-note">
+                <span>Note</span>
+                <strong>{selectedEvent.note || "No note."}</strong>
+              </div>
+            </section>
+          ) : null}
           <section>
             <h3>Today Agenda</h3>
             {todayEvents.slice(0, 6).map((event) => (
-              <article className={`agenda-item status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")}`} key={event.eventId}>
+              <button
+                className={`agenda-item ${selectedEventId === event.eventId ? "selected" : ""} status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")}`}
+                key={event.eventId}
+                onClick={() => setSelectedEventId(event.eventId)}
+                type="button"
+              >
                 <i>{eventIconMap[event.eventType]}</i>
                 <div><strong>{timeLabel(event.startAt)} · {event.title}</strong><span>{event.owner} / {event.location}</span></div>
-              </article>
+              </button>
             ))}
             {!todayEvents.length ? <p className="empty-workspace">No events today.</p> : null}
           </section>
@@ -300,12 +340,17 @@ export function ScheduleWorkspace({
         </div>
         <div className="schedule-upcoming-rail">
           {upcomingEvents.slice(0, 14).map((event) => (
-            <article className={`status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")}`} key={event.eventId}>
+            <button
+              className={`${selectedEventId === event.eventId ? "selected" : ""} status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")}`}
+              key={event.eventId}
+              onClick={() => setSelectedEventId(event.eventId)}
+              type="button"
+            >
               <b>{eventIconMap[event.eventType]}</b>
               <span>{dateLabel(event.startAt)} · {timeLabel(event.startAt)}</span>
               <strong>{event.title}</strong>
               <small>{event.location} / {event.owner}</small>
-            </article>
+            </button>
           ))}
           {!upcomingEvents.length ? <p className="empty-workspace">No upcoming schedule in the next 14 days.</p> : null}
         </div>
