@@ -16,6 +16,7 @@ import type { ApprovedUser } from "@/lib/auth/types";
 
 const teamMembers = ["Tammasit", "Film", "Kla", "Foreman", "Moss"];
 const commonEventTypes: ScheduleEventType[] = ["Meeting", "Site Visit", "PM Loop", "Approval Deadline", "Quotation Follow-up", "Fit-out Handover", "Solar Check"];
+const hiddenAttendeeNames = new Set(["CHODTHANAWAT OPERATION TEAM"]);
 
 const eventIconMap: Record<ScheduleEventType, string> = {
   Meeting: "MTG",
@@ -114,7 +115,7 @@ function newDefaultEvent(user: ApprovedUser): ScheduleEvent {
     eventType: "Meeting",
     location: "Head Office",
     owner: user.name,
-    attendees: [user.name],
+    attendees: hiddenAttendeeNames.has(user.name.trim().toUpperCase()) ? [] : [user.name],
     startAt: localDateTimeValue(start),
     endAt: localDateTimeValue(end),
     status: "Scheduled",
@@ -147,6 +148,7 @@ export function ScheduleWorkspace({
 
   const visibleEvents = useMemo(() => [...events].sort((a, b) => a.startAt.localeCompare(b.startAt)), [events]);
   const selectedEvent = visibleEvents.find((event) => event.eventId === selectedEventId) || null;
+  const selectedEventAttendees = selectedEvent?.attendees.filter((attendee) => !hiddenAttendeeNames.has(attendee.trim().toUpperCase())) || [];
   const todayEvents = visibleEvents.filter((event) => dateKey(event.startAt) === today);
   const delayedEvents = visibleEvents
     .filter((event) => visualStatus(event) === "Delayed")
@@ -177,7 +179,12 @@ export function ScheduleWorkspace({
         const response = await fetch("/api/schedule", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ event: editor }),
+          body: JSON.stringify({
+            event: {
+              ...editor,
+              attendees: editor.attendees.filter((attendee) => !hiddenAttendeeNames.has(attendee.trim().toUpperCase())),
+            },
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Unable to create schedule event.");
@@ -264,7 +271,7 @@ export function ScheduleWorkspace({
               </div>
               <div className="schedule-detail-note">
                 <span>Attendees</span>
-                <strong>{selectedEvent.attendees.length ? selectedEvent.attendees.join(", ") : "-"}</strong>
+                <strong>{selectedEventAttendees.length ? selectedEventAttendees.join(", ") : "-"}</strong>
               </div>
               <div className="schedule-detail-note">
                 <span>Note</span>
