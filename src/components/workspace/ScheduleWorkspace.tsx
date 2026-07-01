@@ -16,7 +16,14 @@ import type { ApprovedUser } from "@/lib/auth/types";
 
 const teamMembers = ["Tammasit", "Film", "Kla", "Foreman", "Moss"];
 const commonEventTypes: ScheduleEventType[] = ["Meeting", "Site Visit", "PM Loop", "Approval Deadline", "Quotation Follow-up", "Fit-out Handover", "Solar Check"];
-const hiddenAttendeeNames = new Set(["CHODTHANAWAT OPERATION TEAM"]);
+const hiddenPeopleNames = new Set(["CHODTHANAWAT OPERATION TEAM"]);
+const characterNameMap = {
+  tammasit: "Tammasit",
+  film: "Film",
+  kla: "Kla",
+  moss: "Moss",
+  foreman: "Foreman",
+} as const;
 
 const eventIconMap: Record<ScheduleEventType, string> = {
   Meeting: "MTG",
@@ -50,6 +57,21 @@ function localDateKey(date: Date) {
 
 function localDateTimeValue(date: Date) {
   return `${localDateKey(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function isHiddenPeopleName(value: string) {
+  return hiddenPeopleNames.has(value.trim().toUpperCase());
+}
+
+function displayPersonName(value: string, fallback = "Team") {
+  return value && !isHiddenPeopleName(value) ? value : fallback;
+}
+
+function ownerNameForUser(user: ApprovedUser) {
+  if (user.characterId && user.characterId in characterNameMap) {
+    return characterNameMap[user.characterId as keyof typeof characterNameMap];
+  }
+  return displayPersonName(user.name);
 }
 
 function timeLabel(value: string) {
@@ -114,8 +136,8 @@ function newDefaultEvent(user: ApprovedUser): ScheduleEvent {
     title: "",
     eventType: "Meeting",
     location: "Head Office",
-    owner: user.name,
-    attendees: hiddenAttendeeNames.has(user.name.trim().toUpperCase()) ? [] : [user.name],
+    owner: ownerNameForUser(user),
+    attendees: isHiddenPeopleName(user.name) ? [] : [user.name],
     startAt: localDateTimeValue(start),
     endAt: localDateTimeValue(end),
     status: "Scheduled",
@@ -148,7 +170,7 @@ export function ScheduleWorkspace({
 
   const visibleEvents = useMemo(() => [...events].sort((a, b) => a.startAt.localeCompare(b.startAt)), [events]);
   const selectedEvent = visibleEvents.find((event) => event.eventId === selectedEventId) || null;
-  const selectedEventAttendees = selectedEvent?.attendees.filter((attendee) => !hiddenAttendeeNames.has(attendee.trim().toUpperCase())) || [];
+  const selectedEventAttendees = selectedEvent?.attendees.filter((attendee) => !isHiddenPeopleName(attendee)) || [];
   const todayEvents = visibleEvents.filter((event) => dateKey(event.startAt) === today);
   const delayedEvents = visibleEvents
     .filter((event) => visualStatus(event) === "Delayed")
@@ -182,7 +204,8 @@ export function ScheduleWorkspace({
           body: JSON.stringify({
             event: {
               ...editor,
-              attendees: editor.attendees.filter((attendee) => !hiddenAttendeeNames.has(attendee.trim().toUpperCase())),
+              owner: displayPersonName(editor.owner),
+              attendees: editor.attendees.filter((attendee) => !isHiddenPeopleName(attendee)),
             },
           }),
         });
@@ -265,7 +288,7 @@ export function ScheduleWorkspace({
                 <article><span>Start</span><strong>{dateLabel(selectedEvent.startAt)} · {timeLabel(selectedEvent.startAt)}</strong></article>
                 <article><span>End</span><strong>{dateLabel(selectedEvent.endAt)} · {timeLabel(selectedEvent.endAt)}</strong></article>
                 <article><span>Location</span><strong>{selectedEvent.location}</strong></article>
-                <article><span>Owner</span><strong>{selectedEvent.owner}</strong></article>
+                <article><span>Owner</span><strong>{displayPersonName(selectedEvent.owner)}</strong></article>
                 <article><span>Source</span><strong>{selectedEvent.source}</strong></article>
                 <article><span>Related</span><strong>{selectedEvent.relatedModule || "-"} {selectedEvent.relatedId ? `/ ${selectedEvent.relatedId}` : ""}</strong></article>
               </div>
@@ -289,7 +312,7 @@ export function ScheduleWorkspace({
                 type="button"
               >
                 <i>{eventIconMap[event.eventType]}</i>
-                <div><strong>{timeLabel(event.startAt)} · {event.title}</strong><span>{event.owner} / {event.location}</span></div>
+                <div><strong>{timeLabel(event.startAt)} · {event.title}</strong><span>{displayPersonName(event.owner)} / {event.location}</span></div>
               </button>
             ))}
             {!todayEvents.length ? <p className="empty-workspace">No events today.</p> : null}
@@ -299,7 +322,7 @@ export function ScheduleWorkspace({
             {delayedEvents.slice(0, 5).map((event) => (
               <article className="schedule-risk-item" key={event.eventId}>
                 <AlertTriangle size={17} />
-                <div><strong>{event.title}</strong><span>{event.owner} delayed {delayDays(event.startAt)} day{delayDays(event.startAt) === 1 ? "" : "s"}</span></div>
+                <div><strong>{event.title}</strong><span>{displayPersonName(event.owner)} delayed {delayDays(event.startAt)} day{delayDays(event.startAt) === 1 ? "" : "s"}</span></div>
               </article>
             ))}
             {!delayedEvents.length ? <p className="empty-workspace">No schedule delay detected.</p> : null}
@@ -356,7 +379,7 @@ export function ScheduleWorkspace({
               <b>{eventIconMap[event.eventType]}</b>
               <span>{dateLabel(event.startAt)} · {timeLabel(event.startAt)}</span>
               <strong>{event.title}</strong>
-              <small>{event.location} / {event.owner}</small>
+              <small>{event.location} / {displayPersonName(event.owner)}</small>
             </button>
           ))}
           {!upcomingEvents.length ? <p className="empty-workspace">No upcoming schedule in the next 14 days.</p> : null}
