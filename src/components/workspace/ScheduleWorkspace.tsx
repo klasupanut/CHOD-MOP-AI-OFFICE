@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   Clock3,
   Diamond,
@@ -120,7 +122,7 @@ function visualStatus(event: ScheduleEvent) {
   return event.status;
 }
 
-function weekDays() {
+function currentWeekKeys() {
   const now = new Date();
   const day = now.getDay() || 7;
   const monday = new Date(now);
@@ -129,10 +131,43 @@ function weekDays() {
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(monday);
     date.setDate(monday.getDate() + index);
+    return localDateKey(date);
+  });
+}
+
+function monthStartKey(date = new Date()) {
+  const month = new Date(date);
+  month.setDate(1);
+  month.setHours(0, 0, 0, 0);
+  return localDateKey(month);
+}
+
+function monthFromKey(value: string) {
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return new Date();
+  return parsed;
+}
+
+function monthLabel(date: Date) {
+  return date.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+function monthDays(monthDate: Date) {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const mondayIndex = first.getDay() || 7;
+  const gridStart = new Date(first);
+  gridStart.setDate(first.getDate() - mondayIndex + 1);
+  gridStart.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
     return {
       key: localDateKey(date),
-      label: date.toLocaleDateString("en-GB", { weekday: "short" }),
-      date: date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
+      weekday: date.toLocaleDateString("en-GB", { weekday: "short" }),
+      day: date.toLocaleDateString("en-GB", { day: "2-digit" }),
+      month: date.toLocaleDateString("en-GB", { month: "short" }),
+      isCurrentMonth: date.getMonth() === monthDate.getMonth(),
     };
   });
 }
@@ -174,10 +209,13 @@ export function ScheduleWorkspace({
 }) {
   const [events, setEvents] = useState(initialEvents);
   const [editor, setEditor] = useState(() => newDefaultEvent(currentUser));
+  const [monthCursor, setMonthCursor] = useState(() => monthStartKey());
   const [selectedEventId, setSelectedEventId] = useState("");
   const [notice, setNotice] = useState(dataMessage || "");
   const [isPending, startTransition] = useTransition();
-  const days = useMemo(weekDays, []);
+  const currentMonth = useMemo(() => monthFromKey(monthCursor), [monthCursor]);
+  const days = useMemo(() => monthDays(currentMonth), [currentMonth]);
+  const weekKeys = useMemo(currentWeekKeys, []);
   const today = todayKey();
 
   const visibleEvents = useMemo(() => [...events].sort((a, b) => a.startAt.localeCompare(b.startAt)), [events]);
@@ -193,9 +231,13 @@ export function ScheduleWorkspace({
     const diff = (parsed.getTime() - Date.now()) / 86_400_000;
     return diff >= -1 && diff <= 14;
   });
-  const pmDueThisWeek = visibleEvents.filter((event) => event.eventType === "PM Loop" && days.some((day) => day.key === dateKey(event.startAt))).length;
+  const pmDueThisWeek = visibleEvents.filter((event) => event.eventType === "PM Loop" && weekKeys.includes(dateKey(event.startAt))).length;
   const approvalDeadlines = visibleEvents.filter((event) => event.eventType === "Approval Deadline" && visualStatus(event) !== "Done").length;
   const siteVisits = visibleEvents.filter((event) => event.eventType === "Site Visit").length;
+  const monthEventCount = visibleEvents.filter((event) => {
+    const key = dateKey(event.startAt);
+    return days.some((day) => day.isCurrentMonth && day.key === key);
+  }).length;
 
   function toggleAttendee(name: string) {
     setEditor((event) => ({
@@ -233,6 +275,14 @@ export function ScheduleWorkspace({
     });
   }
 
+  function changeMonth(offset: number) {
+    setMonthCursor((current) => {
+      const next = monthFromKey(current);
+      next.setMonth(next.getMonth() + offset);
+      return monthStartKey(next);
+    });
+  }
+
   return (
     <div className="workspace-page schedule-workspace">
       <div className="workspace-hero schedule-hero">
@@ -254,15 +304,23 @@ export function ScheduleWorkspace({
       <div className="schedule-layout">
         <section className="workspace-main-card schedule-calendar-card">
           <div className="workspace-section-title">
-            <div><span>WEEKLY GRID</span><h2>Team calendar control board</h2></div>
-            <small>Manual events stay in Schedule tab. Task / Project due dates appear as derived events until dedicated modules go live.</small>
+            <div><span>MONTHLY CALENDAR</span><h2>{monthLabel(currentMonth)}</h2></div>
+            <div className="schedule-month-controls">
+              <small>{monthEventCount} event{monthEventCount === 1 ? "" : "s"} this month</small>
+              <button aria-label="Previous month" onClick={() => changeMonth(-1)} type="button"><ChevronLeft size={16} /></button>
+              <button onClick={() => setMonthCursor(monthStartKey())} type="button">Today</button>
+              <button aria-label="Next month" onClick={() => changeMonth(1)} type="button"><ChevronRight size={16} /></button>
+            </div>
           </div>
-          <div className="schedule-week-grid">
+          <div className="schedule-month-weekdays">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}
+          </div>
+          <div className="schedule-month-grid">
             {days.map((day) => {
               const dayEvents = visibleEvents.filter((event) => dateKey(event.startAt) === day.key);
               return (
-                <article className={day.key === today ? "today" : ""} key={day.key}>
-                  <header><strong>{day.label}</strong><span>{day.date}</span></header>
+                <article className={`${day.key === today ? "today" : ""} ${day.isCurrentMonth ? "" : "outside-month"}`} key={day.key}>
+                  <header><strong>{day.day}</strong><span>{day.weekday} · {day.month}</span></header>
                   <div className="schedule-day-events">
                     {dayEvents.slice(0, 5).map((event) => (
                       <button
@@ -276,6 +334,7 @@ export function ScheduleWorkspace({
                         {visualStatus(event) === "Delayed" ? <em>+{delayDays(event.startAt)}D</em> : null}
                       </button>
                     ))}
+                    {dayEvents.length > 5 ? <p>+{dayEvents.length - 5} more</p> : null}
                     {!dayEvents.length ? <p>No schedule</p> : null}
                   </div>
                 </article>
