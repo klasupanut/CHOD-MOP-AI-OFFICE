@@ -4,11 +4,18 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  CircleDollarSign,
+  Clock3,
+  Diamond,
+  Flag,
+  Hammer,
   MapPin,
   Plus,
   ShieldAlert,
+  SunMedium,
   Users,
   Wrench,
+  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { scheduleEventTypes, scheduleLocations, scheduleStatuses, type ScheduleEvent, type ScheduleEventType } from "@/data/schedule";
@@ -25,19 +32,24 @@ const characterNameMap = {
   foreman: "Foreman",
 } as const;
 
-const eventIconMap: Record<ScheduleEventType, string> = {
-  Meeting: "MTG",
-  "Site Visit": "SITE",
-  "PM Loop": "PM",
-  "Approval Deadline": "OK",
-  "Quotation Follow-up": "QT",
-  "Fit-out Handover": "HD",
-  "Solar Check": "SOL",
-  Renovation: "REN",
-  "Task Due": "DUE",
-  "Project Milestone": "MS",
-  Other: "*",
+const eventIconMap: Record<ScheduleEventType, LucideIcon> = {
+  Meeting: Users,
+  "Site Visit": MapPin,
+  "PM Loop": Wrench,
+  "Approval Deadline": CheckCircle2,
+  "Quotation Follow-up": CircleDollarSign,
+  "Fit-out Handover": Flag,
+  "Solar Check": SunMedium,
+  Renovation: Hammer,
+  "Task Due": Clock3,
+  "Project Milestone": Diamond,
+  Other: CalendarClock,
 };
+
+function EventTypeIcon({ type, size = 16 }: { type: ScheduleEventType; size?: number }) {
+  const Icon = eventIconMap[type] || CalendarClock;
+  return <Icon size={size} strokeWidth={2.2} />;
+}
 
 function todayKey() {
   return localDateKey(new Date());
@@ -259,7 +271,7 @@ export function ScheduleWorkspace({
                         onClick={() => setSelectedEventId(event.eventId)}
                         type="button"
                       >
-                        <b>{eventIconMap[event.eventType]}</b>
+                        <b><EventTypeIcon type={event.eventType} /></b>
                         <span>{timeLabel(event.startAt)} {event.title}</span>
                         {visualStatus(event) === "Delayed" ? <em>+{delayDays(event.startAt)}D</em> : null}
                       </button>
@@ -276,7 +288,7 @@ export function ScheduleWorkspace({
           {selectedEvent ? (
             <section className="schedule-event-detail">
               <div className="schedule-detail-heading">
-                <i>{eventIconMap[selectedEvent.eventType]}</i>
+                <i><EventTypeIcon type={selectedEvent.eventType} size={20} /></i>
                 <div>
                   <span>SELECTED EVENT</span>
                   <h3>{selectedEvent.title}</h3>
@@ -311,7 +323,7 @@ export function ScheduleWorkspace({
                 onClick={() => setSelectedEventId(event.eventId)}
                 type="button"
               >
-                <i>{eventIconMap[event.eventType]}</i>
+                <i><EventTypeIcon type={event.eventType} /></i>
                 <div><strong>{timeLabel(event.startAt)} · {event.title}</strong><span>{displayPersonName(event.owner)} / {event.location}</span></div>
               </button>
             ))}
@@ -339,7 +351,7 @@ export function ScheduleWorkspace({
         <div className="schedule-common-types">
           {commonEventTypes.map((type) => (
             <button className={editor.eventType === type ? "active" : ""} key={type} onClick={() => setEditor((event) => ({ ...event, eventType: type }))} type="button">
-              <b>{eventIconMap[type]}</b>{type}
+              <b><EventTypeIcon type={type} /></b>{type}
             </button>
           ))}
         </div>
@@ -376,7 +388,7 @@ export function ScheduleWorkspace({
               onClick={() => setSelectedEventId(event.eventId)}
               type="button"
             >
-              <b>{eventIconMap[event.eventType]}</b>
+              <b><EventTypeIcon type={event.eventType} /></b>
               <span>{dateLabel(event.startAt)} · {timeLabel(event.startAt)}</span>
               <strong>{event.title}</strong>
               <small>{event.location} / {displayPersonName(event.owner)}</small>

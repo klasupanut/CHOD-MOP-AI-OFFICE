@@ -2344,14 +2344,27 @@ a { color: inherit; text-decoration: none; }
   outline-offset: 2px;
 }
 .schedule-event-pill b {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  color: white;
-  background: rgba(57,208,255,.14);
-  font-size: 14px;
+  border: 1px solid rgba(102,230,255,.32);
+  border-radius: 10px;
+  color: #bff5ff;
+  background:
+    radial-gradient(circle at 50% 25%, rgba(255,255,255,.18), transparent 34%),
+    rgba(57,208,255,.12);
+  box-shadow: inset 0 0 10px rgba(57,208,255,.16), 0 0 12px rgba(57,208,255,.08);
+}
+.schedule-event-pill:hover b,
+.schedule-event-pill.selected b,
+.agenda-item:hover i,
+.agenda-item.selected i,
+.schedule-upcoming-rail button:hover b,
+.schedule-upcoming-rail button.selected b {
+  color: #effcff;
+  border-color: rgba(102,230,255,.58);
+  box-shadow: inset 0 0 12px rgba(57,208,255,.22), 0 0 16px rgba(57,208,255,.22);
 }
 .schedule-event-pill span {
   color: #eaf6ff;
@@ -2414,9 +2427,12 @@ a { color: inherit; text-decoration: none; }
   height: 36px;
   display: grid;
   place-items: center;
+  border: 1px solid rgba(102,230,255,.28);
   border-radius: 11px;
-  color: white;
-  background: rgba(57,208,255,.13);
+  color: #bff5ff;
+  background:
+    radial-gradient(circle at 50% 25%, rgba(255,255,255,.16), transparent 34%),
+    rgba(57,208,255,.13);
   font-style: normal;
 }
 .agenda-item strong,
@@ -2457,8 +2473,10 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid rgba(57,208,255,.28);
   border-radius: 13px;
   color: #eafcff;
-  background: rgba(57,208,255,.12);
-  font-size: 12px;
+  background:
+    radial-gradient(circle at 50% 25%, rgba(255,255,255,.18), transparent 34%),
+    rgba(57,208,255,.12);
+  box-shadow: inset 0 0 14px rgba(57,208,255,.18), 0 0 18px rgba(57,208,255,.12);
   font-style: normal;
   font-weight: 950;
 }
@@ -2529,10 +2547,25 @@ a { color: inherit; text-decoration: none; }
   font-size: 13px;
   font-weight: 850;
 }
+.schedule-common-types button b {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(102,230,255,.24);
+  border-radius: 9px;
+  color: #bff5ff;
+  background: rgba(57,208,255,.11);
+}
 .schedule-common-types button.active {
   color: #001018;
   border-color: rgba(90,225,255,.7);
   background: var(--cyan);
+}
+.schedule-common-types button.active b {
+  color: #001018;
+  border-color: rgba(0,16,24,.22);
+  background: rgba(255,255,255,.34);
 }
 .schedule-create-grid { margin-top: 2px; }
 .schedule-attendee-picker {
