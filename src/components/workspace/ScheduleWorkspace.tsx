@@ -212,6 +212,7 @@ export function ScheduleWorkspace({
   const [monthCursor, setMonthCursor] = useState(() => monthStartKey());
   const [selectedEventId, setSelectedEventId] = useState("");
   const [notice, setNotice] = useState(dataMessage || "");
+  const [statusUpdatingEventId, setStatusUpdatingEventId] = useState("");
   const [isPending, startTransition] = useTransition();
   const currentMonth = useMemo(() => monthFromKey(monthCursor), [monthCursor]);
   const days = useMemo(() => monthDays(currentMonth), [currentMonth]);
@@ -273,6 +274,26 @@ export function ScheduleWorkspace({
         setNotice(error instanceof Error ? error.message : "Unable to create schedule event.");
       }
     });
+  }
+
+  async function updateEventStatus(eventId: string, status: ScheduleEvent["status"]) {
+    setNotice("");
+    setStatusUpdatingEventId(eventId);
+    try {
+      const response = await fetch("/api/schedule", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, status }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to update schedule event.");
+      setEvents((current) => current.map((event) => (event.eventId === eventId ? { ...event, ...payload.event } : event)));
+      setNotice(status === "Done" ? "Event marked as done. Alert cleared." : `Event status updated to ${status}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to update schedule event.");
+    } finally {
+      setStatusUpdatingEventId("");
+    }
   }
 
   function changeMonth(offset: number) {
@@ -370,6 +391,30 @@ export function ScheduleWorkspace({
               <div className="schedule-detail-note">
                 <span>Note</span>
                 <strong>{selectedEvent.note || "No note."}</strong>
+              </div>
+              <div className="schedule-status-actions">
+                <span>Update event status</span>
+                <div>
+                  {scheduleStatuses.map((status) => (
+                    <button
+                      className={selectedEvent.status === status ? "active" : ""}
+                      disabled={statusUpdatingEventId === selectedEvent.eventId}
+                      key={status}
+                      onClick={() => updateEventStatus(selectedEvent.eventId, status)}
+                      type="button"
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="schedule-mark-done"
+                  disabled={statusUpdatingEventId === selectedEvent.eventId || selectedEvent.status === "Done"}
+                  onClick={() => updateEventStatus(selectedEvent.eventId, "Done")}
+                  type="button"
+                >
+                  <CheckCircle2 size={17} /> {statusUpdatingEventId === selectedEvent.eventId ? "Updating..." : "Mark Done / Clear Alert"}
+                </button>
               </div>
             </section>
           ) : null}

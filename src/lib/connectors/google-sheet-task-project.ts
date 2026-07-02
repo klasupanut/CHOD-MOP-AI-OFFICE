@@ -545,6 +545,26 @@ export async function createScheduleEventInSheet(input: ScheduleEvent) {
   return event;
 }
 
+export async function updateScheduleEventStatusInSheet(eventId: string, status: ScheduleStatus) {
+  const rows = await readTabRows(SCHEDULE_TAB, "P");
+  const index = rows.findIndex((row) => safeString(row[0]) === eventId);
+  if (index < 0) throw new Error("Schedule event not found in Google Sheet.");
+  const current = rowToScheduleEvent(rows[index]);
+  if (!current) throw new Error("Schedule event row is invalid.");
+  const next: ScheduleEvent = {
+    ...current,
+    status,
+    lastUpdate: nowStamp(),
+  };
+  const rowNumber = index + 2;
+  const range = encodeURIComponent(`${SCHEDULE_TAB}!A${rowNumber}:P${rowNumber}`);
+  await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [scheduleEventToRow(next)] }),
+  });
+  return next;
+}
+
 export async function deleteProjectInSheet(projectId: string) {
   const rows = await readTabRows(PROJECTS_TAB, "R");
   const index = rows.findIndex((row) => safeString(row[0]) === projectId);
