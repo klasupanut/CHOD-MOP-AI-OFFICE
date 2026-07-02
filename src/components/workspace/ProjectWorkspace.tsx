@@ -17,6 +17,7 @@ const statusTone: Record<string, string> = {
   Cancelled: "bg-red-400/12 text-red-100 border-red-300/30",
 };
 
+const projectStatuses: ProjectRecord["status"][] = ["Planning", "In Progress", "Waiting Approval", "On Hold", "Completed", "Cancelled"];
 const projectTeamMembers = teamMembers.filter((person) => person !== "Foreman");
 
 function money(value: number) {
@@ -334,6 +335,12 @@ function ProjectAdminEditor({
         <label>
           <CalendarDays size={16} /> End date
           <input type="date" value={project.dueDate} onChange={(event) => onPatch({ dueDate: event.target.value })} />
+        </label>
+        <label>
+          <ClipboardList size={16} /> Project status
+          <select value={project.status} onChange={(event) => onPatch({ status: event.target.value as ProjectRecord["status"] })}>
+            {projectStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
         </label>
         <label>
           <WalletCards size={16} /> Project value

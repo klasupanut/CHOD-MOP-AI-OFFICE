@@ -286,7 +286,7 @@ export function TaskWorkspace({
                     <span>{task.category}</span>
                     <strong>{task.taskTitle}</strong>
                     <small>{task.assignedTo} · due {task.dueDate || "-"}</small>
-                    <div className="progress-line"><i style={{ width: `${task.progress}%` }} /></div>
+                    <div className={`progress-line ${task.status === "Done" ? "done" : ""}`}><i style={{ width: `${task.progress}%` }} /></div>
                   </button>
                 ))}
               </div>
