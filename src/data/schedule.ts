@@ -103,7 +103,7 @@ function projectEventType(project: ProjectRecord): ScheduleEventType {
 
 export function deriveScheduleEventsFromTasksProjects(tasks: TaskRecord[], projects: ProjectRecord[]) {
   const taskEvents: ScheduleEvent[] = tasks
-    .filter((task) => task.dueDate && task.status !== "Done")
+    .filter((task) => task.dueDate)
     .map((task) => {
       const startAt = normalizeDateTime(task.dueDate, "10:00");
       return {
@@ -115,7 +115,7 @@ export function deriveScheduleEventsFromTasksProjects(tasks: TaskRecord[], proje
         attendees: [task.assignedTo].filter(Boolean),
         startAt,
         endAt: addHours(startAt, 1),
-        status: task.status === "Overdue" ? "Delayed" : task.status === "In Progress" ? "In Progress" : "Scheduled",
+        status: task.status === "Done" ? "Done" : task.status === "Overdue" ? "Delayed" : task.status === "In Progress" ? "In Progress" : "Scheduled",
         priority: task.priority,
         relatedModule: task.sourceModule || "Tasks",
         relatedId: task.taskId,
