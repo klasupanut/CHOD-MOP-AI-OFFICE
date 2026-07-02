@@ -6,7 +6,7 @@ import { CalendarDays, ClipboardList, Plus, Trash2, Users, WalletCards } from "l
 import { chodProjectSites, projectPriorities, projectTypes, type ProjectRecord } from "@/data/projects";
 import { teamMembers, type TaskRecord } from "@/data/tasks";
 import type { ApprovedUser } from "@/lib/auth/types";
-import { calculateProjectProgressFromTasks, getProjectProgress } from "@/lib/projects/project-utils";
+import { calculateProjectProgressFromTasks, calculateProjectTimeProgress, getProjectProgress } from "@/lib/projects/project-utils";
 
 const statusTone: Record<string, string> = {
   Planning: "bg-slate-500/15 text-slate-200 border-slate-400/20",
@@ -236,18 +236,19 @@ export function ProjectWorkspace({
         <section className="workspace-main-card">
           <div className="workspace-section-title">
             <div><span>PROJECT CARDS</span><h2>Main work list</h2></div>
-            <small>Progress calculates from linked tasks unless manual progress exists.</small>
+            <small>Main bar shows time elapsed from start to finish date. Work progress is shown separately.</small>
           </div>
           <div className="project-card-grid">
             {projects.map((project) => {
-              const progress = getProjectProgress(project, tasks);
+              const timeProgress = calculateProjectTimeProgress(project);
+              const workProgress = getProjectProgress(project, tasks);
               return (
                 <button key={project.projectId} type="button" onClick={() => setSelectedId(project.projectId)} className={`project-card ${selectedProject?.projectId === project.projectId ? "selected" : ""}`}>
                   <div className="project-card-top"><span>{project.projectType}</span><em className={statusTone[project.status]}>{project.status}</em></div>
                   <h3>{project.projectName}</h3>
                   <p>{project.site}</p>
-                  <div className="progress-line"><i style={{ width: `${progress}%` }} /></div>
-                  <footer><span>{progress}% progress</span><strong>{project.priority}</strong></footer>
+                  <div className="progress-line time"><i style={{ width: `${timeProgress}%` }} /></div>
+                  <footer><span>{timeProgress}% time elapsed</span><strong>{workProgress}% work</strong></footer>
                 </button>
               );
             })}
@@ -291,7 +292,8 @@ export function ProjectWorkspace({
               {tab === "Overview" ? (
                 <>
                   <div className="detail-stack">
-                    <div className="detail-kpi"><span>Progress</span><strong>{calculateProjectProgressFromTasks(selectedProject.projectId, tasks)}%</strong></div>
+                    <div className="detail-kpi"><span>Time Progress</span><strong>{calculateProjectTimeProgress(selectedProject)}%</strong></div>
+                    <div className="detail-kpi"><span>Work Progress</span><strong>{getProjectProgress(selectedProject, tasks)}%</strong></div>
                     <div className="detail-kpi"><span>Priority</span><strong>{selectedProject.priority}</strong></div>
                     <div className="detail-kpi"><span>Start date</span><strong>{selectedProject.startDate}</strong></div>
                     <div className="detail-kpi"><span>Due date</span><strong>{selectedProject.dueDate}</strong></div>
@@ -359,7 +361,8 @@ function ProjectAdminEditor({
 }
 
 function ProjectTimeline({ project, tasks }: { project: ProjectRecord; tasks: TaskRecord[] }) {
-  const progress = calculateProjectProgressFromTasks(project.projectId, tasks);
+  const workProgress = calculateProjectProgressFromTasks(project.projectId, tasks);
+  const timeProgress = calculateProjectTimeProgress(project);
   const doneCount = tasks.filter((task) => task.status === "Done").length;
   return (
     <div className="project-timeline">
@@ -372,8 +375,8 @@ function ProjectTimeline({ project, tasks }: { project: ProjectRecord; tasks: Ta
       <article>
         <span className="timeline-dot active" />
         <small>NOW</small>
-        <strong>{progress}% progress</strong>
-        <p>{doneCount}/{tasks.length || 0} linked tasks done · value ฿{moneyFull(project.budget)}</p>
+        <strong>{timeProgress}% time elapsed</strong>
+        <p>{workProgress}% work progress / {doneCount}/{tasks.length || 0} linked tasks done / value ฿{moneyFull(project.budget)}</p>
       </article>
       <article>
         <span className="timeline-dot" />
