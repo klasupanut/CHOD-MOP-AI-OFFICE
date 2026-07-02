@@ -7,16 +7,19 @@ import { useThailandTime } from "@/components/office/ThailandTimeController";
 import { CHOD_LOGO_DATA_URI } from "@/lib/brand/chod-logo";
 import { getApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
 import {
+  fetchLiveWorkspaceNotifications,
   getReadNotificationIds,
   getWorkspaceNotifications,
   writeReadNotificationIds,
 } from "@/lib/notifications/workspace-notifications";
+import type { WorkspaceNotification } from "@/lib/notifications/types";
 
 export function TopBar() {
   const [open, setOpen] = useState(false);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [approvalPendingCount, setApprovalPendingCount] = useState(0);
+  const [liveNotifications, setLiveNotifications] = useState<WorkspaceNotification[]>([]);
   const { now, timeLabel } = useThailandTime();
   const dateLabel = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Bangkok",
@@ -31,9 +34,29 @@ export function TopBar() {
     return subscribeApprovalNotifications((snapshot) => setApprovalPendingCount(snapshot.pendingCount));
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    async function loadNotifications() {
+      try {
+        const notifications = await fetchLiveWorkspaceNotifications();
+        if (mounted) setLiveNotifications(notifications);
+      } catch {
+        if (mounted) setLiveNotifications([]);
+      }
+    }
+    loadNotifications();
+    const interval = window.setInterval(loadNotifications, 60_000);
+    window.addEventListener("focus", loadNotifications);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", loadNotifications);
+    };
+  }, []);
+
   const notifications = useMemo(() => {
-    return getWorkspaceNotifications(approvalPendingCount, isHydrated);
-  }, [approvalPendingCount, isHydrated]);
+    return getWorkspaceNotifications(approvalPendingCount, isHydrated, liveNotifications);
+  }, [approvalPendingCount, isHydrated, liveNotifications]);
 
   const unreadNotifications = useMemo(
     () => notifications.filter((item) => !readIds.includes(item.id)),
@@ -98,6 +121,7 @@ export function TopBar() {
                     </Link>
                   );
                 })}
+                {!notifications.length ? <p className="notification-empty">No due-date alerts right now.</p> : null}
               </div>
             </div>
           ) : null}

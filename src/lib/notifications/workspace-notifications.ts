@@ -1,36 +1,14 @@
 "use client";
 
+import type { WorkspaceNotification } from "./types";
+
 export const WORKSPACE_NOTIFICATION_EVENT = "chod-workspace-notification-change";
 export const READ_NOTIFICATION_STORAGE_KEY = "chod-read-notification-ids-v1";
 
-export type WorkspaceNotification = {
-  id: string;
-  title: string;
-  detail: string;
-  href: string;
-  tone: "critical" | "warning" | "info";
-  meta: "Tasks" | "Approvals" | "Quotations";
-  badgeValue?: number;
+let liveNotificationCache: { expiresAt: number; notifications: WorkspaceNotification[]; promise?: Promise<WorkspaceNotification[]> } = {
+  expiresAt: 0,
+  notifications: [],
 };
-
-export const staticWorkspaceNotifications: WorkspaceNotification[] = [
-  {
-    id: "notif-task-overdue",
-    title: "Foreman PM task overdue",
-    detail: "Close overdue PM work orders needs update today.",
-    href: "/tasks",
-    tone: "critical",
-    meta: "Tasks",
-  },
-  {
-    id: "notif-quotation",
-    title: "Auto Quotation follow-up",
-    detail: "Fit-out quotation workspace has pending follow-up.",
-    href: "/quotations",
-    tone: "info",
-    meta: "Quotations",
-  },
-];
 
 export function getReadNotificationIds() {
   if (typeof window === "undefined") return [];
@@ -66,7 +44,31 @@ export function subscribeWorkspaceNotificationReads(listener: (readIds: string[]
   return () => window.removeEventListener(WORKSPACE_NOTIFICATION_EVENT, handler);
 }
 
-export function getWorkspaceNotifications(approvalPendingCount: number, isHydrated: boolean) {
+export async function fetchLiveWorkspaceNotifications() {
+  if (typeof window === "undefined") return [];
+  const now = Date.now();
+  if (liveNotificationCache.expiresAt > now) return liveNotificationCache.notifications;
+  if (liveNotificationCache.promise) return liveNotificationCache.promise;
+
+  liveNotificationCache.promise = fetch("/api/notifications", { cache: "no-store" })
+    .then(async (response) => {
+      if (!response.ok) throw new Error("Unable to load notifications.");
+      const payload = await response.json() as { notifications?: WorkspaceNotification[] };
+      const notifications = payload.notifications || [];
+      liveNotificationCache = {
+        expiresAt: Date.now() + 30_000,
+        notifications,
+      };
+      return notifications;
+    })
+    .catch((error) => {
+      liveNotificationCache.promise = undefined;
+      throw error;
+    });
+  return liveNotificationCache.promise;
+}
+
+export function getWorkspaceNotifications(approvalPendingCount: number, isHydrated: boolean, liveNotifications: WorkspaceNotification[] = []) {
   const approvalNotification: WorkspaceNotification[] = isHydrated && approvalPendingCount > 0 ? [{
     id: "notif-approval-pending",
     title: `${approvalPendingCount} quotation approval pending`,
@@ -77,7 +79,7 @@ export function getWorkspaceNotifications(approvalPendingCount: number, isHydrat
     badgeValue: approvalPendingCount,
   }] : [];
 
-  return [...approvalNotification, ...staticWorkspaceNotifications];
+  return [...approvalNotification, ...liveNotifications];
 }
 
 export function getSidebarNotificationBadges(notifications: WorkspaceNotification[], readIds: string[]) {

@@ -12,12 +12,14 @@ import type { ApprovedUser } from "@/lib/auth/types";
 import type { ModulePermission } from "@/lib/auth/permissions";
 import { getApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
 import {
+  fetchLiveWorkspaceNotifications,
   getReadNotificationIds,
   getSidebarNotificationBadges,
   getWorkspaceNotifications,
   markWorkspaceNotificationsRead,
   subscribeWorkspaceNotificationReads,
 } from "@/lib/notifications/workspace-notifications";
+import type { WorkspaceNotification } from "@/lib/notifications/types";
 
 const nav: Array<{ label: "Office" | ModulePermission; icon: LucideIcon; href?: string; pendingConnector?: boolean }> = [
   { label: "Office", icon: Building2, href: "/" },
@@ -40,6 +42,7 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [approvalBadgeCount, setApprovalBadgeCount] = useState(0);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [liveNotifications, setLiveNotifications] = useState<WorkspaceNotification[]>([]);
   const visibleNav = nav.filter((item) => {
     if (item.label === "Office") return true;
     if (item.label === "Settings") return ["Admin", "Super Admin"].includes(user.role) && user.modulePermissions.includes("Settings");
@@ -62,7 +65,27 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
     };
   }, []);
 
-  const notifications = getWorkspaceNotifications(approvalBadgeCount, isHydrated);
+  useEffect(() => {
+    let mounted = true;
+    async function loadNotifications() {
+      try {
+        const notifications = await fetchLiveWorkspaceNotifications();
+        if (mounted) setLiveNotifications(notifications);
+      } catch {
+        if (mounted) setLiveNotifications([]);
+      }
+    }
+    loadNotifications();
+    const interval = window.setInterval(loadNotifications, 60_000);
+    window.addEventListener("focus", loadNotifications);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", loadNotifications);
+    };
+  }, []);
+
+  const notifications = getWorkspaceNotifications(approvalBadgeCount, isHydrated, liveNotifications);
   const sidebarBadges = getSidebarNotificationBadges(notifications, readNotificationIds);
 
   function markMenuNotificationsRead(href?: string) {
