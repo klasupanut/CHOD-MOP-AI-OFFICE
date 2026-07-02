@@ -8,6 +8,7 @@ import {
   listScheduleData,
   listTasks,
   updateProjectInSheet,
+  updateScheduleEventInSheet,
   updateScheduleEventStatusInSheet,
   updateTaskInSheet,
 } from "@/lib/connectors/google-sheet-task-project";
@@ -51,6 +52,10 @@ function scheduleStatusToProjectStatus(status: ScheduleStatus): ProjectStatus {
   return "Planning";
 }
 
+function dateOnly(value?: string) {
+  return String(value || "").slice(0, 10);
+}
+
 export async function POST(request: Request) {
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -79,9 +84,8 @@ export async function PATCH(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const body = (await request.json()) as { eventId?: string; status?: ScheduleStatus };
+    const body = (await request.json()) as { eventId?: string; status?: ScheduleStatus; event?: Partial<ScheduleEvent> };
     if (!body.eventId) throw new Error("Event ID is required.");
-    if (!body.status) throw new Error("Event status is required.");
 
     const schedule = await listScheduleData();
     const event = schedule.events.find((item) => item.eventId === body.eventId);
@@ -89,6 +93,8 @@ export async function PATCH(request: Request) {
 
     const owner = userDisplayName(user);
     const canManageAll = canManageAllSchedule(user);
+    const requestedStatus = body.event?.status || body.status;
+    if (!requestedStatus && !body.event) throw new Error("Event update data is required.");
 
     if (event.source === "task") {
       const tasks = await listTasks();
@@ -97,16 +103,29 @@ export async function PATCH(request: Request) {
       if (!canManageAll && !samePerson(task.assignedTo, owner)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      const taskStatus = scheduleStatusToTaskStatus(body.status);
+      const nextScheduleStatus = requestedStatus || event.status;
+      const taskStatus = scheduleStatusToTaskStatus(nextScheduleStatus);
       const updatedTask = await updateTaskInSheet(
         task.taskId,
-        { status: taskStatus, progress: body.status === "Done" ? 100 : task.progress },
+        {
+          taskTitle: body.event?.title || task.taskTitle,
+          dueDate: dateOnly(body.event?.startAt) || task.dueDate,
+          status: taskStatus,
+          priority: body.event?.priority || task.priority,
+          note: body.event?.note ?? task.note,
+          progress: nextScheduleStatus === "Done" ? 100 : Math.min(task.progress || 0, 99),
+        },
         user.name,
       );
       return NextResponse.json({
         event: {
           ...event,
-          status: updatedTask.status === "Done" ? "Done" : body.status,
+          status: updatedTask.status === "Done" ? "Done" : nextScheduleStatus,
+          title: updatedTask.taskTitle,
+          startAt: body.event?.startAt || event.startAt,
+          endAt: body.event?.endAt || event.endAt,
+          priority: updatedTask.priority,
+          note: updatedTask.note,
           lastUpdate: updatedTask.lastUpdate,
         },
         mode: "google-sheet",
@@ -118,14 +137,26 @@ export async function PATCH(request: Request) {
       const projects = await listProjects();
       const project = projects.find((item) => item.projectId === event.relatedId);
       if (!project) throw new Error("Related project not found.");
+      const nextScheduleStatus = requestedStatus || event.status;
       const updatedProject = await updateProjectInSheet(project.projectId, {
-        status: scheduleStatusToProjectStatus(body.status),
-        progress: body.status === "Done" ? 100 : project.progress,
+        projectName: body.event?.title ? body.event.title.replace(/\s+milestone$/i, "") : project.projectName,
+        dueDate: dateOnly(body.event?.startAt) || project.dueDate,
+        site: body.event?.location && body.event.location !== "Related Site" ? String(body.event.location) : project.site,
+        status: scheduleStatusToProjectStatus(nextScheduleStatus),
+        priority: body.event?.priority || project.priority,
+        description: body.event?.note ?? project.description,
+        progress: nextScheduleStatus === "Done" ? 100 : Math.min(project.progress || 0, 99),
       });
       return NextResponse.json({
         event: {
           ...event,
-          status: updatedProject.status === "Completed" ? "Done" : body.status,
+          status: updatedProject.status === "Completed" ? "Done" : nextScheduleStatus,
+          title: `${updatedProject.projectName} milestone`,
+          location: updatedProject.site || event.location,
+          startAt: body.event?.startAt || event.startAt,
+          endAt: body.event?.endAt || event.endAt,
+          priority: updatedProject.priority,
+          note: updatedProject.description,
           lastUpdate: updatedProject.lastUpdate,
         },
         mode: "google-sheet",
@@ -135,7 +166,14 @@ export async function PATCH(request: Request) {
     if (!canManageAll && !samePerson(event.owner, owner)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    const updatedEvent = await updateScheduleEventStatusInSheet(event.eventId, body.status);
+    const updatedEvent = body.event
+      ? await updateScheduleEventInSheet(event.eventId, {
+          ...body.event,
+          owner: body.event.owner || event.owner,
+          attendees: body.event.attendees || event.attendees,
+          source: "manual",
+        })
+      : await updateScheduleEventStatusInSheet(event.eventId, requestedStatus as ScheduleStatus);
     return NextResponse.json({ event: updatedEvent, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(

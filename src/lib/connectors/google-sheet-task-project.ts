@@ -565,6 +565,40 @@ export async function updateScheduleEventStatusInSheet(eventId: string, status: 
   return next;
 }
 
+export async function updateScheduleEventInSheet(eventId: string, patch: Partial<ScheduleEvent>) {
+  const rows = await readTabRows(SCHEDULE_TAB, "P");
+  const index = rows.findIndex((row) => safeString(row[0]) === eventId);
+  if (index < 0) throw new Error("Schedule event not found in Google Sheet.");
+  const current = rowToScheduleEvent(rows[index]);
+  if (!current) throw new Error("Schedule event row is invalid.");
+  const next: ScheduleEvent = {
+    ...current,
+    ...patch,
+    eventId: current.eventId,
+    title: patch.title || current.title,
+    eventType: patch.eventType || current.eventType,
+    location: patch.location || current.location,
+    owner: patch.owner || current.owner,
+    attendees: Array.isArray(patch.attendees) ? patch.attendees : current.attendees,
+    startAt: patch.startAt || current.startAt,
+    endAt: patch.endAt || patch.startAt || current.endAt,
+    status: patch.status || current.status,
+    priority: patch.priority || current.priority,
+    relatedModule: patch.relatedModule || current.relatedModule,
+    relatedId: current.relatedId,
+    createdBy: current.createdBy,
+    lastUpdate: nowStamp(),
+    source: "manual",
+  };
+  const rowNumber = index + 2;
+  const range = encodeURIComponent(`${SCHEDULE_TAB}!A${rowNumber}:P${rowNumber}`);
+  await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [scheduleEventToRow(next)] }),
+  });
+  return next;
+}
+
 export async function deleteProjectInSheet(projectId: string) {
   const rows = await readTabRows(PROJECTS_TAB, "R");
   const index = rows.findIndex((row) => safeString(row[0]) === projectId);

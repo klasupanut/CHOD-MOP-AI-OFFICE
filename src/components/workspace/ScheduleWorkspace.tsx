@@ -12,11 +12,14 @@ import {
   Flag,
   Hammer,
   MapPin,
+  Pencil,
   Plus,
+  Save,
   ShieldAlert,
   SunMedium,
   Users,
   Wrench,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
@@ -211,6 +214,7 @@ export function ScheduleWorkspace({
   const [editor, setEditor] = useState(() => newDefaultEvent(currentUser));
   const [monthCursor, setMonthCursor] = useState(() => monthStartKey());
   const [selectedEventId, setSelectedEventId] = useState("");
+  const [editEvent, setEditEvent] = useState<ScheduleEvent | null>(null);
   const [notice, setNotice] = useState(dataMessage || "");
   const [statusUpdatingEventId, setStatusUpdatingEventId] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -221,6 +225,7 @@ export function ScheduleWorkspace({
 
   const visibleEvents = useMemo(() => [...events].sort((a, b) => a.startAt.localeCompare(b.startAt)), [events]);
   const selectedEvent = visibleEvents.find((event) => event.eventId === selectedEventId) || null;
+  const isEditingSelectedEvent = !!selectedEvent && editEvent?.eventId === selectedEvent.eventId;
   const selectedEventAttendees = selectedEvent?.attendees.filter((attendee) => !isHiddenPeopleName(attendee)) || [];
   const todayEvents = visibleEvents.filter((event) => dateKey(event.startAt) === today);
   const delayedEvents = visibleEvents
@@ -247,6 +252,23 @@ export function ScheduleWorkspace({
         ? event.attendees.filter((item) => item !== name)
         : [...event.attendees, name],
     }));
+  }
+
+  function selectEvent(eventId: string) {
+    setSelectedEventId(eventId);
+    setEditEvent(null);
+  }
+
+  function toggleEditAttendee(name: string) {
+    setEditEvent((event) => {
+      if (!event) return event;
+      return {
+        ...event,
+        attendees: event.attendees.includes(name)
+          ? event.attendees.filter((item) => item !== name)
+          : [...event.attendees, name],
+      };
+    });
   }
 
   async function createEvent() {
@@ -289,6 +311,35 @@ export function ScheduleWorkspace({
       if (!response.ok) throw new Error(payload.error || "Unable to update schedule event.");
       setEvents((current) => current.map((event) => (event.eventId === eventId ? { ...event, ...payload.event } : event)));
       setNotice(status === "Done" ? "Event marked as done. Alert cleared." : `Event status updated to ${status}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to update schedule event.");
+    } finally {
+      setStatusUpdatingEventId("");
+    }
+  }
+
+  async function saveEventEdit() {
+    if (!editEvent) return;
+    setNotice("");
+    setStatusUpdatingEventId(editEvent.eventId);
+    try {
+      const response = await fetch("/api/schedule", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: editEvent.eventId,
+          event: {
+            ...editEvent,
+            owner: displayPersonName(editEvent.owner),
+            attendees: editEvent.attendees.filter((attendee) => !isHiddenPeopleName(attendee)),
+          },
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to update schedule event.");
+      setEvents((current) => current.map((event) => (event.eventId === editEvent.eventId ? { ...event, ...payload.event } : event)));
+      setEditEvent(null);
+      setNotice("Schedule event updated.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Unable to update schedule event.");
     } finally {
@@ -347,7 +398,7 @@ export function ScheduleWorkspace({
                       <button
                         className={`schedule-event-pill ${selectedEventId === event.eventId ? "selected" : ""} status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")} type-${event.eventType.toLowerCase().replace(/\s+/g, "-")}`}
                         key={event.eventId}
-                        onClick={() => setSelectedEventId(event.eventId)}
+                        onClick={() => selectEvent(event.eventId)}
                         type="button"
                       >
                         <b><EventTypeIcon type={event.eventType} /></b>
@@ -373,7 +424,45 @@ export function ScheduleWorkspace({
                   <span>SELECTED EVENT</span>
                   <h3>{selectedEvent.title}</h3>
                 </div>
+                <div className="schedule-detail-actions">
+                  {isEditingSelectedEvent ? (
+                    <>
+                      <button onClick={() => setEditEvent(null)} type="button"><X size={15} /> Cancel</button>
+                      <button className="primary" disabled={statusUpdatingEventId === selectedEvent.eventId || !editEvent?.title || !editEvent?.startAt} onClick={saveEventEdit} type="button">
+                        <Save size={15} /> {statusUpdatingEventId === selectedEvent.eventId ? "Saving..." : "Save"}
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setEditEvent(selectedEvent)} type="button"><Pencil size={15} /> Edit Event</button>
+                  )}
+                </div>
               </div>
+              {isEditingSelectedEvent && editEvent ? (
+                <div className="schedule-edit-form">
+                  <small>
+                    {selectedEvent.source === "manual"
+                      ? "Manual schedule event: full event detail can be edited."
+                      : `Linked ${selectedEvent.source} event: title/date/status/priority/note update the source ${selectedEvent.source} record.`}
+                  </small>
+                  <div className="task-create-grid schedule-edit-grid">
+                    <label>Event title<input value={editEvent.title} onChange={(event) => setEditEvent((item) => item ? { ...item, title: event.target.value } : item)} /></label>
+                    <label>Event type<select disabled={editEvent.source !== "manual"} value={editEvent.eventType} onChange={(event) => setEditEvent((item) => item ? { ...item, eventType: event.target.value as ScheduleEventType } : item)}>{scheduleEventTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
+                    <label>Location<select disabled={editEvent.source === "task"} value={editEvent.location} onChange={(event) => setEditEvent((item) => item ? { ...item, location: event.target.value } : item)}>{scheduleLocations.map((location) => <option key={location}>{location}</option>)}</select></label>
+                    <label>Owner<select disabled={editEvent.source !== "manual"} value={editEvent.owner} onChange={(event) => setEditEvent((item) => item ? { ...item, owner: event.target.value } : item)}>{teamMembers.map((name) => <option key={name}>{name}</option>)}</select></label>
+                    <label>Start<input type="datetime-local" value={editEvent.startAt} onChange={(event) => setEditEvent((item) => item ? { ...item, startAt: event.target.value } : item)} /></label>
+                    <label>End<input type="datetime-local" value={editEvent.endAt} onChange={(event) => setEditEvent((item) => item ? { ...item, endAt: event.target.value } : item)} /></label>
+                    <label>Status<select value={editEvent.status} onChange={(event) => setEditEvent((item) => item ? { ...item, status: event.target.value as ScheduleEvent["status"] } : item)}>{scheduleStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>
+                    <label>Priority<select value={editEvent.priority} onChange={(event) => setEditEvent((item) => item ? { ...item, priority: event.target.value as ScheduleEvent["priority"] } : item)}>{["Low", "Medium", "High", "Critical"].map((priority) => <option key={priority}>{priority}</option>)}</select></label>
+                    <label className="task-create-wide">Note<textarea value={editEvent.note} onChange={(event) => setEditEvent((item) => item ? { ...item, note: event.target.value } : item)} /></label>
+                    {editEvent.source === "manual" ? (
+                      <div className="task-create-wide schedule-attendee-picker">
+                        <strong>Attendees</strong>
+                        <div>{teamMembers.map((name) => <button className={editEvent.attendees.includes(name) ? "on" : ""} key={name} onClick={() => toggleEditAttendee(name)} type="button"><span />{name}</button>)}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               <div className="schedule-detail-grid">
                 <article><span>Type</span><strong>{selectedEvent.eventType}</strong></article>
                 <article><span>Status</span><strong>{visualStatus(selectedEvent)}</strong></article>
@@ -424,7 +513,7 @@ export function ScheduleWorkspace({
               <button
                 className={`agenda-item ${selectedEventId === event.eventId ? "selected" : ""} status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")}`}
                 key={event.eventId}
-                onClick={() => setSelectedEventId(event.eventId)}
+                onClick={() => selectEvent(event.eventId)}
                 type="button"
               >
                 <i><EventTypeIcon type={event.eventType} /></i>
@@ -489,7 +578,7 @@ export function ScheduleWorkspace({
             <button
               className={`${selectedEventId === event.eventId ? "selected" : ""} status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")}`}
               key={event.eventId}
-              onClick={() => setSelectedEventId(event.eventId)}
+              onClick={() => selectEvent(event.eventId)}
               type="button"
             >
               <b><EventTypeIcon type={event.eventType} /></b>
