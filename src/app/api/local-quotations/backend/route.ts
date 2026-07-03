@@ -33,9 +33,16 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "internalVerifyQuotation") {
-    const payload = body.payload && typeof body.payload === "object" ? body.payload as { quotationId?: unknown; quotationNo?: unknown } : {};
+    const payload = body.payload && typeof body.payload === "object" ? body.payload as {
+      quotationId?: unknown;
+      quotationNo?: unknown;
+      signedPdfUrl?: unknown;
+      signedPdfFilename?: unknown;
+    } : {};
     const quotationId = String(payload.quotationId || "").trim();
     const quotationNo = String(payload.quotationNo || "").trim();
+    const signedPdfUrl = String(payload.signedPdfUrl || "").trim();
+    const signedPdfFilename = String(payload.signedPdfFilename || "").trim();
     if (!quotationId && !quotationNo) {
       return NextResponse.json({ ok: false, error: "Missing quotation id/no for Internal Verify." }, { status: 400 });
     }
@@ -45,6 +52,8 @@ export async function POST(request: NextRequest) {
       quotationNo,
       verifiedAt,
       verifiedBy: "local-wifi-internal-verify",
+      signedPdfUrl,
+      signedPdfFilename,
     });
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error || "Internal Verify failed." }, { status: 400 });
@@ -56,6 +65,8 @@ export async function POST(request: NextRequest) {
         signedAt: verifiedAt,
         signedByName: "Internal Verification",
         signedByEmail: "local-wifi-internal-verify",
+        signedPdfUrl,
+        signedPdfFilename,
         internalVerifiedAt: verifiedAt,
       },
     });

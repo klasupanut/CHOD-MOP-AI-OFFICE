@@ -17,6 +17,8 @@ type QuotationExtraFieldRow = {
   signingStatus?: unknown;
   signedAt?: unknown;
   signedByName?: unknown;
+  signedByEmail?: unknown;
+  signedPdfUrl?: unknown;
   internalVerifiedAt?: unknown;
 };
 
@@ -34,6 +36,8 @@ let cachedExtraMap: {
     signingStatus: string;
     signedAt: string;
     signedByName: string;
+    signedByEmail: string;
+    signedPdfUrl: string;
     internalVerifiedAt: string;
   }>;
   expiresAt: number;
@@ -169,6 +173,8 @@ async function readExtraFieldMap() {
   const signingStatusIndex = getHeaderIndex(["signing_status", "signingStatus", "customer_signing_status"]);
   const signedAtIndex = getHeaderIndex(["signed_at", "signedAt", "client_signed_at"]);
   const signedByNameIndex = getHeaderIndex(["signed_by_name", "signedByName", "signer_name", "client_signed_by"]);
+  const signedByEmailIndex = getHeaderIndex(["signed_by_email", "signedByEmail", "signer_email", "client_signed_email"]);
+  const signedPdfUrlIndex = getHeaderIndex(["signed_pdf_url", "signedPdfUrl", "client_signed_pdf_url", "signed_pdf", "clientSignedPdfUrl"]);
   const internalVerifiedAtIndex = getHeaderIndex(["internal_verified_at", "internalVerifiedAt"]);
 
   const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:AZ`);
@@ -185,6 +191,8 @@ async function readExtraFieldMap() {
     signingStatus: string;
     signedAt: string;
     signedByName: string;
+    signedByEmail: string;
+    signedPdfUrl: string;
     internalVerifiedAt: string;
   }>();
   for (const row of payload.values || []) {
@@ -201,6 +209,8 @@ async function readExtraFieldMap() {
       signingStatus: signingStatusIndex >= 0 ? asString(row[signingStatusIndex]) : "",
       signedAt: signedAtIndex >= 0 ? asString(row[signedAtIndex]) : "",
       signedByName: signedByNameIndex >= 0 ? asString(row[signedByNameIndex]) : "",
+      signedByEmail: signedByEmailIndex >= 0 ? asString(row[signedByEmailIndex]) : "",
+      signedPdfUrl: signedPdfUrlIndex >= 0 ? asString(row[signedPdfUrlIndex]) : "",
       internalVerifiedAt: internalVerifiedAtIndex >= 0 ? asString(row[internalVerifiedAtIndex]) : "",
     });
   }
@@ -347,6 +357,8 @@ export async function updateQuotationSheetInternalVerification(input: {
   quotationNo: string;
   verifiedBy: string;
   verifiedAt: string;
+  signedPdfUrl?: string;
+  signedPdfFilename?: string;
 }) {
   if (!isConfigured()) return { ok: true, skipped: true as const };
 
@@ -367,6 +379,8 @@ export async function updateQuotationSheetInternalVerification(input: {
   const signedAtIndex = findHeaderIndex(headers, ["signed_at", "signedAt", "client_signed_at"]);
   const signedByNameIndex = findHeaderIndex(headers, ["signed_by_name", "signedByName", "signer_name", "client_signed_by"]);
   const signedByEmailIndex = findHeaderIndex(headers, ["signed_by_email", "signedByEmail", "signer_email", "client_signed_email"]);
+  const signedPdfUrlIndex = findHeaderIndex(headers, ["signed_pdf_url", "signedPdfUrl", "client_signed_pdf_url", "signed_pdf", "clientSignedPdfUrl"]);
+  const signedPdfFilenameIndex = findHeaderIndex(headers, ["signed_pdf_filename", "signedPdfFilename", "client_signed_pdf_filename"]);
   const updatedAtIndex = findHeaderIndex(headers, ["updated_at", "updatedAt"]);
   const rowNumber = index + 2;
 
@@ -375,6 +389,8 @@ export async function updateQuotationSheetInternalVerification(input: {
     { index: signedAtIndex, value: input.verifiedAt },
     { index: signedByNameIndex, value: "Internal Verification" },
     { index: signedByEmailIndex, value: input.verifiedBy },
+    { index: signedPdfUrlIndex, value: input.signedPdfUrl || "" },
+    { index: signedPdfFilenameIndex, value: input.signedPdfFilename || "" },
     { index: updatedAtIndex, value: input.verifiedAt },
   ].filter((entry) => entry.index >= 0);
 
@@ -403,6 +419,8 @@ export async function updateQuotationSheetInternalVerification(input: {
     signedAt: input.verifiedAt,
     signedByName: "Internal Verification",
     signedByEmail: input.verifiedBy,
+    signedPdfUrl: input.signedPdfUrl || "",
+    signedPdfFilename: input.signedPdfFilename || "",
   };
 }
 
@@ -427,6 +445,12 @@ export async function enrichQuotationExtraFields<T>(data: T): Promise<T> {
         signingStatus: asString(row.signingStatus) || extra.signingStatus,
         signedAt: asString(row.signedAt) || extra.signedAt,
         signedByName: asString(row.signedByName) || extra.signedByName,
+        signedByEmail: asString(row.signedByEmail) || extra.signedByEmail,
+        signedPdfUrl: asString(row.signedPdfUrl) || extra.signedPdfUrl || (
+          (asString(row.signingStatus) || extra.signingStatus).toUpperCase() === "INTERNAL_VERIFIED"
+            ? asString((row as { pdfUrl?: unknown }).pdfUrl)
+            : ""
+        ),
         internalVerifiedAt: asString(row.internalVerifiedAt) || extra.internalVerifiedAt,
       } as V;
     };
