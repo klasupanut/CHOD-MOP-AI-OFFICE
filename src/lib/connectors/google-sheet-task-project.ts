@@ -599,6 +599,16 @@ export async function updateScheduleEventInSheet(eventId: string, patch: Partial
   return next;
 }
 
+export async function deleteScheduleEventInSheet(eventId: string) {
+  const rows = await readTabRows(SCHEDULE_TAB, "P");
+  const index = rows.findIndex((row) => safeString(row[0]) === eventId);
+  if (index < 0) throw new Error("Schedule event not found in Google Sheet.");
+  const current = rowToScheduleEvent(rows[index]);
+  if (!current) throw new Error("Schedule event row is invalid.");
+  await clearRow(SCHEDULE_TAB, index + 2, "P", SCHEDULE_HEADERS.length);
+  return current;
+}
+
 export async function deleteProjectInSheet(projectId: string) {
   const rows = await readTabRows(PROJECTS_TAB, "R");
   const index = rows.findIndex((row) => safeString(row[0]) === projectId);

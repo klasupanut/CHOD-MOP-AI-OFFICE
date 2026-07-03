@@ -127,7 +127,7 @@ export function deriveScheduleEventsFromTasksProjects(tasks: TaskRecord[], proje
     });
 
   const projectEvents: ScheduleEvent[] = projects
-    .filter((project) => project.dueDate && !["Completed", "Cancelled"].includes(project.status))
+    .filter((project) => project.dueDate)
     .map((project) => {
       const startAt = normalizeDateTime(project.dueDate, "16:00");
       return {
@@ -139,7 +139,7 @@ export function deriveScheduleEventsFromTasksProjects(tasks: TaskRecord[], proje
         attendees: project.assignedTeam,
         startAt,
         endAt: addHours(startAt, 1),
-        status: project.status === "In Progress" ? "In Progress" : "Scheduled",
+        status: project.status === "Completed" ? "Done" : project.status === "Cancelled" ? "Cancelled" : project.status === "In Progress" ? "In Progress" : "Scheduled",
         priority: project.priority,
         relatedModule: "Projects",
         relatedId: project.projectId,

@@ -4,6 +4,7 @@ import type { ScheduleEvent, ScheduleStatus } from "@/data/schedule";
 import type { TaskStatus } from "@/data/tasks";
 import {
   createScheduleEventInSheet,
+  deleteScheduleEventInSheet,
   listProjects,
   listScheduleData,
   listTasks,
@@ -104,6 +105,12 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       const nextScheduleStatus = requestedStatus || event.status;
+      if (nextScheduleStatus === "Cancelled") {
+        return NextResponse.json(
+          { error: "Task-linked events cannot be cancelled from Calendar because Tasks do not have a Cancelled status. Delete or update the task record instead." },
+          { status: 400 },
+        );
+      }
       const taskStatus = scheduleStatusToTaskStatus(nextScheduleStatus);
       const updatedTask = await updateTaskInSheet(
         task.taskId,
@@ -178,6 +185,40 @@ export async function PATCH(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to update schedule event." },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  const user = await getApiUser("Calendar / Schedule");
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  try {
+    const body = (await request.json()) as { eventId?: string };
+    if (!body.eventId) throw new Error("Event ID is required.");
+
+    const schedule = await listScheduleData();
+    const event = schedule.events.find((item) => item.eventId === body.eventId);
+    if (!event) throw new Error("Schedule event not found.");
+    if (event.source !== "manual") {
+      return NextResponse.json(
+        { error: "Linked task/project events cannot be deleted from Calendar. For project events, change status to Cancelled. For task events, delete or update the source task instead." },
+        { status: 400 },
+      );
+    }
+
+    const owner = userDisplayName(user);
+    const canManageAll = canManageAllSchedule(user);
+    if (!canManageAll && !samePerson(event.owner, owner)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const deletedEvent = await deleteScheduleEventInSheet(event.eventId);
+    return NextResponse.json({ event: deletedEvent, mode: "google-sheet" });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to delete schedule event." },
       { status: 400 },
     );
   }

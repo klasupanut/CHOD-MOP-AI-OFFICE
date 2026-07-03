@@ -17,6 +17,7 @@ import {
   Save,
   ShieldAlert,
   SunMedium,
+  Trash2,
   Users,
   Wrench,
   X,
@@ -347,6 +348,34 @@ export function ScheduleWorkspace({
     }
   }
 
+  async function deleteSelectedEvent() {
+    if (!selectedEvent) return;
+    if (selectedEvent.source !== "manual") {
+      setNotice("Linked task/project events cannot be deleted from Calendar. For project events, change status to Cancelled. For task events, delete or update the source task instead.");
+      return;
+    }
+    if (!window.confirm(`Delete schedule event "${selectedEvent.title}" from Google Sheet?`)) return;
+    setNotice("");
+    setStatusUpdatingEventId(selectedEvent.eventId);
+    try {
+      const response = await fetch("/api/schedule", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: selectedEvent.eventId }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to delete schedule event.");
+      setEvents((current) => current.filter((event) => event.eventId !== selectedEvent.eventId));
+      setSelectedEventId("");
+      setEditEvent(null);
+      setNotice("Schedule event deleted from Google Sheet.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Unable to delete schedule event.");
+    } finally {
+      setStatusUpdatingEventId("");
+    }
+  }
+
   function changeMonth(offset: number) {
     setMonthCursor((current) => {
       const next = monthFromKey(current);
@@ -433,7 +462,12 @@ export function ScheduleWorkspace({
                       </button>
                     </>
                   ) : (
-                    <button onClick={() => setEditEvent(selectedEvent)} type="button"><Pencil size={15} /> Edit Event</button>
+                    <>
+                      <button onClick={() => setEditEvent(selectedEvent)} type="button"><Pencil size={15} /> Edit Event</button>
+                      <button className="danger" disabled={statusUpdatingEventId === selectedEvent.eventId} onClick={deleteSelectedEvent} type="button">
+                        <Trash2 size={15} /> {statusUpdatingEventId === selectedEvent.eventId ? "Deleting..." : "Delete Event"}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -486,7 +520,7 @@ export function ScheduleWorkspace({
                 <div>
                   {scheduleStatuses.map((status) => (
                     <button
-                      className={selectedEvent.status === status ? "active" : ""}
+                      className={`status-action-${status.toLowerCase().replace(/\s+/g, "-")} ${selectedEvent.status === status ? "active" : ""}`}
                       disabled={statusUpdatingEventId === selectedEvent.eventId}
                       key={status}
                       onClick={() => updateEventStatus(selectedEvent.eventId, status)}
