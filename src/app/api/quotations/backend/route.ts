@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/api";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { QuotationPermission } from "@/lib/auth/permissions";
-import { enrichQuotationExtraFields, syncQuotationExtraFields } from "@/lib/quotations/google-sheet-extra-fields";
+import { enrichQuotationExtraFields, syncQuotationExtraFields, updateQuotationSheetInternalVerification } from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript, formatAppsScriptError, getQuotationAppsScriptUrl, isSigningAction } from "@/lib/quotations/apps-script-backend";
 
 type BackendRequest = {
@@ -32,6 +32,7 @@ const actionPermissions: Record<string, QuotationPermission[]> = {
   uploadPdf: ["quotation.exportPdf"],
   createSigningLink: ["quotation.createSigningLink"],
   revokeSigningLink: ["quotation.createSigningLink"],
+  internalVerifyQuotation: ["quotation.createSigningLink"],
 };
 
 const sensitiveCostKeys = new Set([
@@ -93,6 +94,35 @@ export async function POST(request: NextRequest) {
   const action = body.action?.trim() ?? "";
   if (!canRun(user, action)) {
     return NextResponse.json({ ok: false, error: "Permission denied" }, { status: 403 });
+  }
+
+  if (action === "internalVerifyQuotation") {
+    const payload = body.payload && typeof body.payload === "object" ? body.payload as { quotationId?: unknown; quotationNo?: unknown } : {};
+    const quotationId = String(payload.quotationId || "").trim();
+    const quotationNo = String(payload.quotationNo || "").trim();
+    if (!quotationId && !quotationNo) {
+      return NextResponse.json({ ok: false, error: "Missing quotation id/no for Internal Verify." }, { status: 400 });
+    }
+    const verifiedAt = new Date().toISOString();
+    const result = await updateQuotationSheetInternalVerification({
+      quotationId,
+      quotationNo,
+      verifiedAt,
+      verifiedBy: user.email,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, error: result.error || "Internal Verify failed." }, { status: 400 });
+    }
+    return NextResponse.json({
+      ok: true,
+      data: {
+        signingStatus: "INTERNAL_VERIFIED",
+        signedAt: verifiedAt,
+        signedByName: "Internal Verification",
+        signedByEmail: user.email,
+        internalVerifiedAt: verifiedAt,
+      },
+    });
   }
 
   const backendUrl = getQuotationAppsScriptUrl();

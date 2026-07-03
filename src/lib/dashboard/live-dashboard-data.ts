@@ -137,7 +137,8 @@ function timestamp(value?: string) {
 }
 
 function isCustomerSigned(approval: Awaited<ReturnType<typeof listApprovalRows>>[number]) {
-  return String(approval.clientSigningStatus || "").trim().toLowerCase() === "signed" || Boolean(approval.clientSignedAt);
+  const status = String(approval.clientSigningStatus || "").trim().toLowerCase();
+  return status === "signed" || status === "internal_verified" || Boolean(approval.clientSignedAt);
 }
 
 function statusTone(status: string): Tone {

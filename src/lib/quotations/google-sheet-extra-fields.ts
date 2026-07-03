@@ -14,6 +14,10 @@ type QuotationExtraFieldRow = {
   approvalBy?: unknown;
   approvalNote?: unknown;
   approvalUpdatedAt?: unknown;
+  signingStatus?: unknown;
+  signedAt?: unknown;
+  signedByName?: unknown;
+  internalVerifiedAt?: unknown;
 };
 
 const QUOTATIONS_TAB = "Quotations";
@@ -27,6 +31,10 @@ let cachedExtraMap: {
     approvalBy: string;
     approvalNote: string;
     approvalUpdatedAt: string;
+    signingStatus: string;
+    signedAt: string;
+    signedByName: string;
+    internalVerifiedAt: string;
   }>;
   expiresAt: number;
 } | null = null;
@@ -106,6 +114,21 @@ function asString(value: unknown) {
   return String(value || "").trim();
 }
 
+function normalizeHeader(value: unknown) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function columnLetter(indexZeroBased: number) {
+  let index = indexZeroBased + 1;
+  let column = "";
+  while (index > 0) {
+    const remainder = (index - 1) % 26;
+    column = String.fromCharCode(65 + remainder) + column;
+    index = Math.floor((index - 1) / 26);
+  }
+  return column;
+}
+
 function asQuotationRow(value: unknown): QuotationExtraFieldRow | null {
   return value && typeof value === "object" ? value as QuotationExtraFieldRow : null;
 }
@@ -131,7 +154,24 @@ async function ensureExtraHeaders() {
 async function readExtraFieldMap() {
   if (cachedExtraMap && cachedExtraMap.expiresAt > Date.now()) return cachedExtraMap.value;
 
-  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:AW`);
+  const headerRange = encodeURIComponent(`${QUOTATIONS_TAB}!A1:AZ1`);
+  const headerResponse = await sheetsFetch(`/values/${headerRange}`);
+  const headerPayload = (await headerResponse.json()) as { values?: unknown[][] };
+  const headers = headerPayload.values?.[0] || [];
+  const headerIndex = new Map(headers.map((header, index) => [normalizeHeader(header), index]));
+  const getHeaderIndex = (aliases: string[]) => {
+    for (const alias of aliases) {
+      const index = headerIndex.get(normalizeHeader(alias));
+      if (typeof index === "number") return index;
+    }
+    return -1;
+  };
+  const signingStatusIndex = getHeaderIndex(["signing_status", "signingStatus", "customer_signing_status"]);
+  const signedAtIndex = getHeaderIndex(["signed_at", "signedAt", "client_signed_at"]);
+  const signedByNameIndex = getHeaderIndex(["signed_by_name", "signedByName", "signer_name", "client_signed_by"]);
+  const internalVerifiedAtIndex = getHeaderIndex(["internal_verified_at", "internalVerifiedAt"]);
+
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:AZ`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
   const map = new Map<string, {
@@ -142,6 +182,10 @@ async function readExtraFieldMap() {
     approvalBy: string;
     approvalNote: string;
     approvalUpdatedAt: string;
+    signingStatus: string;
+    signedAt: string;
+    signedByName: string;
+    internalVerifiedAt: string;
   }>();
   for (const row of payload.values || []) {
     const quotationId = asString(row[0]);
@@ -154,6 +198,10 @@ async function readExtraFieldMap() {
       approvalBy: asString(row[46]),
       approvalNote: asString(row[47]),
       approvalUpdatedAt: asString(row[48]),
+      signingStatus: signingStatusIndex >= 0 ? asString(row[signingStatusIndex]) : "",
+      signedAt: signedAtIndex >= 0 ? asString(row[signedAtIndex]) : "",
+      signedByName: signedByNameIndex >= 0 ? asString(row[signedByNameIndex]) : "",
+      internalVerifiedAt: internalVerifiedAtIndex >= 0 ? asString(row[internalVerifiedAtIndex]) : "",
     });
   }
   cachedExtraMap = { value: map, expiresAt: Date.now() + 30_000 };
@@ -278,6 +326,86 @@ export async function updateQuotationSheetInternalApproval(input: {
   return { ok: true, skipped: false as const };
 }
 
+async function readQuotationHeaders() {
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A1:AZ1`);
+  const response = await sheetsFetch(`/values/${range}`);
+  const payload = (await response.json()) as { values?: unknown[][] };
+  const headers = payload.values?.[0] || [];
+  return new Map(headers.map((header, index) => [normalizeHeader(header), index]));
+}
+
+function findHeaderIndex(headers: Map<string, number>, aliases: string[]) {
+  for (const alias of aliases) {
+    const index = headers.get(normalizeHeader(alias));
+    if (typeof index === "number") return index;
+  }
+  return -1;
+}
+
+export async function updateQuotationSheetInternalVerification(input: {
+  quotationId: string;
+  quotationNo: string;
+  verifiedBy: string;
+  verifiedAt: string;
+}) {
+  if (!isConfigured()) return { ok: true, skipped: true as const };
+
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:B`);
+  const response = await sheetsFetch(`/values/${range}`);
+  const payload = (await response.json()) as { values?: unknown[][] };
+  const index = (payload.values || []).findIndex((entry) => {
+    const quotationId = asString(entry[0]);
+    const quotationNo = asString(entry[1]);
+    return quotationId === input.quotationId || quotationNo === input.quotationNo;
+  });
+  if (index < 0) {
+    return { ok: false, skipped: false as const, error: `Quotation ${input.quotationNo} was not found in the quotation sheet.` };
+  }
+
+  const headers = await readQuotationHeaders();
+  const signingStatusIndex = findHeaderIndex(headers, ["signing_status", "signingStatus", "customer_signing_status"]);
+  const signedAtIndex = findHeaderIndex(headers, ["signed_at", "signedAt", "client_signed_at"]);
+  const signedByNameIndex = findHeaderIndex(headers, ["signed_by_name", "signedByName", "signer_name", "client_signed_by"]);
+  const signedByEmailIndex = findHeaderIndex(headers, ["signed_by_email", "signedByEmail", "signer_email", "client_signed_email"]);
+  const updatedAtIndex = findHeaderIndex(headers, ["updated_at", "updatedAt"]);
+  const rowNumber = index + 2;
+
+  const updates: Array<{ index: number; value: string }> = [
+    { index: signingStatusIndex, value: "INTERNAL_VERIFIED" },
+    { index: signedAtIndex, value: input.verifiedAt },
+    { index: signedByNameIndex, value: "Internal Verification" },
+    { index: signedByEmailIndex, value: input.verifiedBy },
+    { index: updatedAtIndex, value: input.verifiedAt },
+  ].filter((entry) => entry.index >= 0);
+
+  if (!updates.some((entry) => entry.index === signingStatusIndex)) {
+    return {
+      ok: false,
+      skipped: false as const,
+      error: "Quotation sheet does not have a signing_status column. Deploy/update the Auto Quotation sheet schema before using Internal Verify.",
+    };
+  }
+
+  await Promise.all(updates.map((entry) => {
+    const column = columnLetter(entry.index);
+    const updateRange = encodeURIComponent(`${QUOTATIONS_TAB}!${column}${rowNumber}:${column}${rowNumber}`);
+    return sheetsFetch(`/values/${updateRange}?valueInputOption=RAW`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [[entry.value]] }),
+    });
+  }));
+
+  cachedExtraMap = null;
+  return {
+    ok: true,
+    skipped: false as const,
+    signingStatus: "INTERNAL_VERIFIED",
+    signedAt: input.verifiedAt,
+    signedByName: "Internal Verification",
+    signedByEmail: input.verifiedBy,
+  };
+}
+
 export async function enrichQuotationExtraFields<T>(data: T): Promise<T> {
   if (!isConfigured()) return data;
   try {
@@ -296,6 +424,10 @@ export async function enrichQuotationExtraFields<T>(data: T): Promise<T> {
         approvalBy: asString(row.approvalBy) || extra.approvalBy,
         approvalNote: asString(row.approvalNote) || extra.approvalNote,
         approvalUpdatedAt: asString(row.approvalUpdatedAt) || extra.approvalUpdatedAt,
+        signingStatus: asString(row.signingStatus) || extra.signingStatus,
+        signedAt: asString(row.signedAt) || extra.signedAt,
+        signedByName: asString(row.signedByName) || extra.signedByName,
+        internalVerifiedAt: asString(row.internalVerifiedAt) || extra.internalVerifiedAt,
       } as V;
     };
     return Array.isArray(data) ? data.map((entry) => enrichOne(entry)) as T : enrichOne(data);

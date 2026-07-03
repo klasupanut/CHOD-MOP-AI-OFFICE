@@ -86,7 +86,7 @@ function approvalStatusFromQuotation(row: QuotationBackendRow): QuotationApprova
 
   // Customer signing is client acceptance. It must not be treated as Tammasit's approval.
   // Legacy signed rows may have status=Approved only because the old signing flow wrote it.
-  if (signingStatus === "signed" && String(row.status || "").trim().toLowerCase() === "approved") {
+  if ((signingStatus === "signed" || signingStatus === "internal_verified") && String(row.status || "").trim().toLowerCase() === "approved") {
     return "Waiting Approval";
   }
 
@@ -151,7 +151,7 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
     status: approvalStatusFromQuotation(row),
     priority: row.status?.toLowerCase() === "rejected" ? "High" : "Medium",
     dueDate: String(row.date || updatedAt.slice(0, 10)),
-    remark: `Internal approval: ${row.approvalStatus || row.status || "Waiting Approval"} | Customer signing: ${row.signingStatus || "Not sent/signed"}`,
+    remark: `Internal approval: ${row.approvalStatus || row.status || "Waiting Approval"} | Customer signing: ${row.signingStatus === "INTERNAL_VERIFIED" ? "Internal verified hard copy" : row.signingStatus || "Not sent/signed"}`,
     quotationPdfUrl: pdfUrl,
     quotationPreviewUrl: pdfUrl || `/approvals/APR-${quotationId}/preview`,
     validity: "From quotation record",

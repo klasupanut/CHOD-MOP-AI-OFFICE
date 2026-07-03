@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isLocalNetworkRequest } from "@/lib/local-network";
-import { enrichQuotationExtraFields, syncQuotationExtraFields } from "@/lib/quotations/google-sheet-extra-fields";
+import { enrichQuotationExtraFields, syncQuotationExtraFields, updateQuotationSheetInternalVerification } from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript, formatAppsScriptError, getQuotationAppsScriptUrl, isSigningAction } from "@/lib/quotations/apps-script-backend";
 
 type BackendRequest = {
@@ -30,6 +30,35 @@ export async function POST(request: NextRequest) {
   const action = body.action?.trim() ?? "";
   if (!action) {
     return NextResponse.json({ ok: false, error: "Missing quotation action." }, { status: 400 });
+  }
+
+  if (action === "internalVerifyQuotation") {
+    const payload = body.payload && typeof body.payload === "object" ? body.payload as { quotationId?: unknown; quotationNo?: unknown } : {};
+    const quotationId = String(payload.quotationId || "").trim();
+    const quotationNo = String(payload.quotationNo || "").trim();
+    if (!quotationId && !quotationNo) {
+      return NextResponse.json({ ok: false, error: "Missing quotation id/no for Internal Verify." }, { status: 400 });
+    }
+    const verifiedAt = new Date().toISOString();
+    const result = await updateQuotationSheetInternalVerification({
+      quotationId,
+      quotationNo,
+      verifiedAt,
+      verifiedBy: "local-wifi-internal-verify",
+    });
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, error: result.error || "Internal Verify failed." }, { status: 400 });
+    }
+    return NextResponse.json({
+      ok: true,
+      data: {
+        signingStatus: "INTERNAL_VERIFIED",
+        signedAt: verifiedAt,
+        signedByName: "Internal Verification",
+        signedByEmail: "local-wifi-internal-verify",
+        internalVerifiedAt: verifiedAt,
+      },
+    });
   }
 
   const backendUrl = getQuotationAppsScriptUrl();
