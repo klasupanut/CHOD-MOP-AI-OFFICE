@@ -216,7 +216,7 @@ export function ApprovalsWorkspace({
                 <header>
                   <div>
                     <span>IN-HOUSE QUOTATION DATA</span>
-                    <strong>{selectedPdfUrl ? "PDF available, table shown for approval check" : "Unsigned PDF not saved yet โ€” review data table instead"}</strong>
+                    <strong>{selectedPdfUrl ? "PDF available, table shown for approval check" : "Unsigned PDF not saved yet — review data table instead"}</strong>
                   </div>
                 </header>
                 <div className="approval-inhouse-scroll">
