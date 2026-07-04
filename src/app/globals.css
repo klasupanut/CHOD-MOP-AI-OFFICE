@@ -4291,17 +4291,47 @@ a { color: inherit; text-decoration: none; }
   color: white;
   font-size: 15px;
 }
-.side-feed, .dashboard-side-section article {
+.dashboard-side-section article {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 7px;
   align-items: center;
   border-top: 1px solid rgba(82,157,204,.12);
   padding-top: 8px;
 }
-.side-feed strong { color: var(--cyan); font-size: 12px; text-transform: uppercase; }
-.side-feed span, .dashboard-side-section article span { color: #d9f7ff; font-size: 13px; line-height: 1.35; }
-.side-feed small, .dashboard-side-section article strong { color: #8ca5b8; font-size: 12px; }
+.side-feed {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: start;
+  overflow-wrap: normal;
+}
+.side-feed strong {
+  min-width: 0;
+  color: var(--cyan);
+  font-size: 12px;
+  line-height: 1.25;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.side-feed span {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: #d9f7ff;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
+}
+.side-feed small {
+  justify-self: end;
+  color: #8ca5b8;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.dashboard-side-section article:not(.side-feed) span { color: #d9f7ff; font-size: 13px; line-height: 1.35; }
+.dashboard-side-section article:not(.side-feed) strong { color: #8ca5b8; font-size: 12px; white-space: nowrap; }
 .deadline-danger svg, .deadline-warning svg { color: #ffd28a; }
 .deadline-info svg { color: var(--cyan); }
 .dashboard-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
