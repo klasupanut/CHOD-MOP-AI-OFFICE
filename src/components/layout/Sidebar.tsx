@@ -56,7 +56,7 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
   useEffect(() => {
     setIsHydrated(true);
     setReadNotificationIds(getReadNotificationIds());
-    setApprovalBadgeCount(getApprovalNotificationSnapshot(1).pendingCount);
+    setApprovalBadgeCount(getApprovalNotificationSnapshot(0).pendingCount);
     const unsubscribeApprovals = subscribeApprovalNotifications((snapshot) => setApprovalBadgeCount(snapshot.pendingCount));
     const unsubscribeReads = subscribeWorkspaceNotificationReads(setReadNotificationIds);
     return () => {

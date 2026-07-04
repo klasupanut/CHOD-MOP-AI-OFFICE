@@ -30,7 +30,7 @@ export function TopBar() {
   useEffect(() => {
     setIsHydrated(true);
     setReadIds(getReadNotificationIds());
-    setApprovalPendingCount(getApprovalNotificationSnapshot(1).pendingCount);
+    setApprovalPendingCount(getApprovalNotificationSnapshot(0).pendingCount);
     return subscribeApprovalNotifications((snapshot) => setApprovalPendingCount(snapshot.pendingCount));
   }, []);
 

@@ -138,7 +138,7 @@ export function TaskWorkspace({
   const updateSelectedStatus = (status: TaskStatus) => {
     if (!selectedTask) return;
     setTasks((current) => updateTaskStatus(selectedTask.taskId, status, taskOwner, current));
-    void persistTask(selectedTask.taskId, { status });
+    void persistTask(selectedTask.taskId, status === "Done" ? { status, progress: 100 } : { status });
   };
 
   const updateSelectedProgress = (progress: number) => {
