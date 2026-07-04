@@ -4851,6 +4851,719 @@ a { color: inherit; text-decoration: none; }
   .dashboard-sync-badge { justify-items: start; }
 }
 
+/* Global responsive workspace scale layer
+   Keeps the premium desktop layout intact while making every menu usable on
+   tablet and smartphone portrait/landscape screens. */
+.center-deck,
+.module-main,
+.admin-main,
+.workspace-page,
+.workspace-main-card,
+.workspace-detail-panel,
+.workspace-create-panel,
+.right-panel {
+  min-width: 0;
+}
+
+.workspace-page,
+.dashboard-workspace,
+.schedule-workspace,
+.reports-workspace,
+.fitout-workspace {
+  width: 100%;
+  max-width: 1920px;
+  margin-inline: auto;
+}
+
+.workspace-main-card,
+.workspace-detail-panel,
+.workspace-create-panel,
+.dashboard-side-section,
+.reports-member-card,
+.fitout-donut-card,
+.schedule-event-detail {
+  overflow-wrap: anywhere;
+}
+
+.workspace-table-wrap,
+.task-board,
+.reports-member-tabs,
+.quotation-module-actions,
+.schedule-common-types,
+.schedule-attendee-picker div {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 981px) and (max-width: 1240px) {
+  .module-shell,
+  .admin-shell {
+    grid-template-columns: 84px minmax(0, 1fr) !important;
+  }
+
+  .module-main,
+  .admin-main {
+    grid-column: 2;
+  }
+
+  .module-main {
+    padding-inline: 14px;
+  }
+
+  .topbar h1 {
+    font-size: 27px;
+  }
+
+  .workspace-page {
+    padding-inline: 10px;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .workspace-hero,
+  .workspace-create-panel {
+    padding: 14px 15px;
+  }
+
+  .workspace-hero h1 {
+    font-size: clamp(26px, 3.2vw, 34px);
+  }
+
+  .workspace-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-create-grid,
+  .schedule-edit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-create-wide,
+  .task-create-actions {
+    grid-column: 1 / -1;
+  }
+
+  .workspace-table {
+    min-width: 760px;
+  }
+
+  .project-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .office-frame {
+    align-items: flex-start;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) and (orientation: portrait) {
+  .topbar {
+    gap: 12px;
+  }
+
+  .topbar-tools {
+    gap: 9px;
+  }
+
+  .project-title-logo {
+    max-width: 112px;
+  }
+
+  .dashboard-metric-grid,
+  .reports-kpi-grid,
+  .fitout-mini-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-grid,
+  .workspace-grid,
+  .schedule-layout,
+  .reports-main-grid,
+  .reports-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-trend,
+  .schedule-month-weekdays,
+  .schedule-month-grid {
+    min-width: 720px;
+  }
+
+  .dashboard-command-card,
+  .schedule-workspace .workspace-main-card {
+    overflow-x: auto;
+  }
+
+  .right-panel {
+    display: block;
+    padding: 18px;
+  }
+}
+
+@media (max-width: 760px) {
+  html,
+  body {
+    min-width: 320px;
+    overflow-x: hidden;
+  }
+
+  .hq-shell,
+  .admin-shell,
+  .module-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 220;
+    width: 100%;
+    height: auto;
+    max-height: 136px;
+    padding: 8px 10px;
+    overflow: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, .28);
+  }
+
+  .sidebar-user-header {
+    min-height: 42px;
+    margin: 0;
+    padding: 0 2px 7px;
+    justify-content: flex-start;
+    border-bottom: 0;
+  }
+
+  .sidebar-user-header .team-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .sidebar-user-header .sidebar-user-copy,
+  .sidebar-user-header form {
+    display: block !important;
+  }
+
+  .sidebar-user-copy strong {
+    font-size: 12px;
+  }
+
+  .sidebar-user-copy span {
+    display: none;
+  }
+
+  .sidebar-user-copy small {
+    font-size: 9px;
+  }
+
+  .logout-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .sidebar nav {
+    flex: none;
+    flex-direction: row;
+    gap: 8px;
+    padding: 3px 0 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior-inline: contain;
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar nav a,
+  .sidebar nav button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 76px;
+    min-height: 44px;
+    padding: 4px 8px !important;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    border-color: rgba(82, 157, 204, .12);
+    background: rgba(7, 25, 42, .46);
+  }
+
+  .sidebar nav a.active::before,
+  .sidebar nav button.active::before {
+    left: 10px;
+    right: 10px;
+    bottom: -4px;
+    top: auto;
+    width: auto;
+    height: 2px;
+  }
+
+  .sidebar nav a span,
+  .sidebar nav button span {
+    display: block !important;
+    max-width: 86px;
+    overflow: hidden;
+    color: inherit;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar nav a em,
+  .sidebar nav button em {
+    right: 2px;
+    top: 2px;
+  }
+
+  .sidebar-system {
+    display: none;
+  }
+
+  .center-deck,
+  .module-main,
+  .admin-main {
+    min-height: auto;
+    padding: 0 10px 18px;
+  }
+
+  .topbar {
+    height: auto;
+    min-height: 58px;
+    gap: 10px;
+    padding: 9px 0;
+  }
+
+  .topbar h1 {
+    font-size: clamp(18px, 5.8vw, 24px);
+    letter-spacing: .025em;
+  }
+
+  .topbar h1.project-title {
+    gap: 7px;
+  }
+
+  .project-title-logo {
+    height: 1.03em;
+    max-width: 96px;
+  }
+
+  .topbar-tools {
+    gap: 8px;
+  }
+
+  .topbar-tools .secure-state,
+  .topbar-tools .weather-state,
+  .topbar-tools .time-state {
+    display: none;
+  }
+
+  .notification-popover {
+    position: fixed;
+    top: 104px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-height: calc(100dvh - 118px);
+    overflow: auto;
+  }
+
+  .office-frame {
+    padding-top: 10px;
+  }
+
+  .office-stage {
+    border-radius: 10px;
+    max-height: none;
+  }
+
+  .stage-topline {
+    top: 8px;
+    left: 10px;
+    right: 10px;
+    font-size: 8px;
+    letter-spacing: .08em;
+  }
+
+  .character-info {
+    transform: scale(.68);
+  }
+
+  .info-tammasit {
+    transform: translateX(-50%) scale(.68);
+  }
+
+  .ask-hq {
+    bottom: 7px;
+    width: calc(100% - 16px);
+  }
+
+  .ask-hq form {
+    height: 48px;
+  }
+
+  .ask-icon {
+    width: 42px;
+  }
+
+  .ask-hq input {
+    font-size: 13px;
+    padding-inline: 9px;
+  }
+
+  .mock-label {
+    display: none;
+  }
+
+  .send-button {
+    width: 38px;
+    height: 38px;
+  }
+
+  .prompt-row {
+    gap: 6px;
+    padding-inline: 18px;
+  }
+
+  .prompt-row button {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+
+  .right-panel {
+    position: relative;
+    display: block;
+    height: auto;
+    padding: 12px 10px 18px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .right-panel-heading {
+    min-height: auto;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric {
+    min-height: 82px;
+    padding: 12px;
+  }
+
+  .metric strong {
+    font-size: 22px;
+  }
+
+  .workspace-page {
+    padding: 0 0 18px;
+  }
+
+  .workspace-hero,
+  .workspace-create-panel,
+  .workspace-main-card,
+  .workspace-detail-panel,
+  .workspace-summary article {
+    border-radius: 13px;
+  }
+
+  .workspace-hero,
+  .workspace-create-panel {
+    gap: 11px;
+    padding: 12px;
+  }
+
+  .workspace-hero h1 {
+    font-size: clamp(22px, 7vw, 28px);
+  }
+
+  .workspace-primary,
+  .workspace-create-actions button,
+  .quick-update button {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .workspace-create-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .workspace-summary {
+    gap: 10px;
+  }
+
+  .workspace-summary article,
+  .workspace-main-card,
+  .workspace-detail-panel,
+  .workspace-create-panel {
+    padding: 14px;
+  }
+
+  .workspace-summary strong {
+    font-size: 24px;
+  }
+
+  .workspace-summary span {
+    font-size: 13px;
+  }
+
+  .workspace-grid,
+  .dashboard-grid,
+  .schedule-layout,
+  .reports-main-grid,
+  .reports-bottom-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .task-create-grid,
+  .schedule-edit-grid,
+  .permission-grid,
+  .quotation-permission-grid,
+  .editor-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .workspace-detail-panel {
+    position: relative;
+    top: auto;
+    max-height: none;
+  }
+
+  .workspace-section-title {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .workspace-section-title h2 {
+    font-size: 20px;
+  }
+
+  .workspace-table {
+    min-width: 720px;
+  }
+
+  .project-card h3,
+  .task-card strong {
+    font-size: 16px;
+  }
+
+  .task-board {
+    grid-template-columns: repeat(5, minmax(220px, 1fr));
+  }
+
+  .person-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-month-controls {
+    flex-wrap: wrap;
+  }
+
+  .schedule-month-weekdays,
+  .schedule-month-grid {
+    min-width: 720px;
+  }
+
+  .schedule-workspace .workspace-main-card {
+    overflow-x: auto;
+  }
+
+  .schedule-month-grid article {
+    min-height: 116px;
+  }
+
+  .dashboard-trend {
+    min-width: 640px;
+  }
+
+  .dashboard-command-card,
+  .dashboard-budget-card,
+  .dashboard-division-revenue-card {
+    overflow-x: auto;
+  }
+
+  .dashboard-project-table,
+  .dashboard-feed-grid,
+  .division-breakdown {
+    min-width: 0;
+  }
+
+  .fitout-mini-metrics,
+  .fitout-donut-grid,
+  .fitout-source-card,
+  .reports-kpi-grid,
+  .reports-team-grid,
+  .reports-module-grid,
+  .reports-insight-grid,
+  .reports-timeline,
+  .reports-quick-actions > div:last-child {
+    grid-template-columns: 1fr !important;
+  }
+
+  .fitout-select-wrap {
+    justify-content: flex-start;
+  }
+
+  .fitout-select-wrap select,
+  .fitout-select-wrap button {
+    width: 100%;
+  }
+
+  .fitout-donut-row {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .fitout-donut-legend {
+    width: 100%;
+  }
+
+  .admin-toolbar {
+    flex-direction: column;
+  }
+
+  .user-table {
+    overflow-x: auto;
+  }
+
+  .user-row {
+    min-width: 620px;
+  }
+
+  .quotation-module {
+    height: calc(100dvh - 148px);
+    min-height: 560px;
+    padding: 0 0 10px;
+  }
+
+  .quotation-module-bar,
+  .local-quotation-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .quotation-module-actions {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .quotation-module-actions button,
+  .quotation-module-actions a {
+    flex: 0 0 auto;
+    font-size: 12px;
+  }
+
+  .quotation-module-frame {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 560px) {
+  .hq-shell,
+  .admin-shell,
+  .module-shell {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) !important;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    max-height: none;
+    padding: 7px 6px;
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+  }
+
+  .sidebar-user-header {
+    justify-content: center;
+  }
+
+  .sidebar-user-header .sidebar-user-copy,
+  .sidebar-user-header form {
+    display: none !important;
+  }
+
+  .sidebar nav {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    gap: 4px;
+  }
+
+  .sidebar nav a,
+  .sidebar nav button {
+    min-width: 0;
+    width: 100%;
+    min-height: 39px;
+    padding: 0 !important;
+  }
+
+  .sidebar nav a span,
+  .sidebar nav button span {
+    display: none !important;
+  }
+
+  .center-deck,
+  .module-main,
+  .admin-main {
+    padding: 0 10px 10px;
+  }
+
+  .topbar {
+    min-height: 52px;
+    padding: 6px 0;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .project-title-logo {
+    max-width: 88px;
+  }
+
+  .office-frame {
+    padding-top: 7px;
+  }
+
+  .office-stage {
+    max-height: calc(100dvh - 68px);
+  }
+
+  .right-panel {
+    grid-column: 2;
+    padding: 10px;
+  }
+
+  .workspace-hero {
+    padding: 10px 12px;
+  }
+
+  .workspace-hero h1 {
+    font-size: 24px;
+  }
+
+  .workspace-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quotation-module {
+    height: calc(100dvh - 62px);
+    min-height: 360px;
+  }
+}
+
 @media (pointer: fine) {
   body.custom-cursor-enabled,
   body.custom-cursor-enabled * {
