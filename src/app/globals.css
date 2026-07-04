@@ -4300,8 +4300,8 @@ a { color: inherit; text-decoration: none; }
   padding-top: 8px;
 }
 .side-feed {
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
   align-items: start;
   overflow-wrap: normal;
 }
@@ -4315,6 +4315,7 @@ a { color: inherit; text-decoration: none; }
 }
 .side-feed span {
   grid-column: 1 / -1;
+  grid-row: 3;
   min-width: 0;
   color: #d9f7ff;
   font-size: 13px;
@@ -4324,10 +4325,13 @@ a { color: inherit; text-decoration: none; }
   white-space: normal;
 }
 .side-feed small {
-  justify-self: end;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
   color: #8ca5b8;
   font-size: 12px;
   line-height: 1.25;
+  text-align: left;
   white-space: nowrap;
 }
 .dashboard-side-section article:not(.side-feed) span { color: #d9f7ff; font-size: 13px; line-height: 1.35; }
