@@ -1,3 +1,5 @@
+import { LocalQuotationFrame } from "@/components/quotations/LocalQuotationFrame";
+
 export const metadata = {
   title: "CHOD Auto Quotation",
 };
@@ -12,11 +14,7 @@ export default function LocalQuotationPage() {
         </div>
         <small>No Google login required. Use only on the current trusted office Wi‑Fi.</small>
       </header>
-      <iframe
-        src="/api/local-quotation-app/index.html"
-        title="CHOD Auto Quotation Local Access"
-        sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
-      />
+      <LocalQuotationFrame />
     </main>
   );
 }

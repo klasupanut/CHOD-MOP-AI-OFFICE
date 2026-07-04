@@ -16,6 +16,19 @@ export function QuotationModuleFrame() {
     return () => showShellCursor();
   }, []);
 
+  useEffect(() => {
+    const handleBackToOffice = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.source !== frameRef.current?.contentWindow) return;
+      if (event.data?.type !== "chod:back-to-office") return;
+
+      window.location.href = "/";
+    };
+
+    window.addEventListener("message", handleBackToOffice);
+    return () => window.removeEventListener("message", handleBackToOffice);
+  }, []);
+
   return (
     <div className="quotation-module">
       <div className="quotation-module-bar">
@@ -55,7 +68,7 @@ export function QuotationModuleFrame() {
           title="CHOD Auto Quotation"
           onMouseEnter={hideShellCursor}
           onPointerEnter={hideShellCursor}
-          sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
+          sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts allow-top-navigation-by-user-activation"
         />
       </div>
     </div>
