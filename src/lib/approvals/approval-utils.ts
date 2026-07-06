@@ -1,5 +1,5 @@
 import type { ApprovalPermission } from "@/data/approval-permissions";
-import type { QuotationApprovalItem } from "@/data/quotation-approvals";
+import type { QuotationApprovalItem, QuotationApprovalScope } from "@/data/quotation-approvals";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { AgentId } from "@/lib/types";
 
@@ -21,7 +21,11 @@ export function canApproveQuotation(
     return { allowed: false, needsFinal: false, reason: "You do not have permission to approve this quotation." };
   }
 
-  const scopeAllowed = permission.approvalScopes.includes("all") || permission.approvalScopes.includes(approval.quotationType);
+  const equivalentScopes: QuotationApprovalScope[] = approval.quotationType === "restoration"
+    ? ["restoration", "renovation"]
+    : [approval.quotationType];
+  const scopeAllowed = permission.approvalScopes.includes("all")
+    || equivalentScopes.some((scope) => permission.approvalScopes.includes(scope));
   if (!scopeAllowed) {
     return { allowed: false, needsFinal: false, reason: "You do not have permission to approve this quotation type." };
   }

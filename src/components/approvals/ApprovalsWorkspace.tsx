@@ -32,6 +32,15 @@ function money(value: number) {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(value);
 }
 
+function quotationTypeLabel(value: string) {
+  if (value === "fit-out") return "Fit-out";
+  if (value === "restoration") return "Restoration";
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function userAgentId(user: ApprovedUser): AgentId {
   return (user.characterId || (user.email.toLowerCase() === "chod.mopteam@gmail.com" ? "kla" : "film")) as AgentId;
 }
@@ -175,7 +184,7 @@ export function ApprovalsWorkspace({
                   <tr key={item.approvalId} onClick={() => selectApproval(item)}>
                     <td>{item.quotationNo}</td>
                     <td>{item.projectName}<small>{item.site}</small></td>
-                    <td>{item.quotationType}</td>
+                    <td>{quotationTypeLabel(item.quotationType)}</td>
                     <td>{item.requestedBy}</td>
                     <td>{money(item.amount)}</td>
                     <td>{item.requestedAt}</td>
@@ -195,7 +204,7 @@ export function ApprovalsWorkspace({
           {selected ? (
             <>
               <div className="detail-heading">
-                <span>{selected.quotationType.toUpperCase()} QUOTATION</span>
+                <span>{quotationTypeLabel(selected.quotationType).toUpperCase()} QUOTATION</span>
                 <h2>{selected.quotationNo}</h2>
                 <p>{selected.remark}</p>
               </div>

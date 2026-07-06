@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { ApprovalPermission } from "@/data/approval-permissions";
 import type { QuotationApprovalScope } from "@/data/quotation-approvals";
 
-const scopes: QuotationApprovalScope[] = ["all", "fit-out", "electrical", "solar", "renovation", "maintenance", "general"];
+const scopes: QuotationApprovalScope[] = ["all", "fit-out", "restoration", "electrical", "solar", "renovation", "maintenance", "general"];
 
 export function ApprovalPermissionSettings({
   initialPermissions,

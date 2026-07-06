@@ -6,6 +6,8 @@ import { updateQuotationSheetInternalApproval } from "@/lib/quotations/google-sh
 type QuotationBackendRow = {
   quotationId?: string;
   quotationNo?: string;
+  projectType?: string;
+  quotationType?: string;
   date?: string;
   client?: string;
   to?: string;
@@ -102,9 +104,23 @@ function quotationStatusFromApproval(status: QuotationApprovalStatus) {
   return "Draft";
 }
 
-function quotationTypeFromSubject(subject?: string) {
-  const normalized = String(subject || "").toLowerCase();
+function quotationTypeFromRow(row: QuotationBackendRow) {
+  const explicitType = String(row.projectType || row.quotationType || "").trim().toLowerCase();
+  if (explicitType.includes("restoration") || explicitType.includes("restore")) return "restoration" as const;
+  if (explicitType.includes("fit")) return "fit-out" as const;
+  if (explicitType.includes("electrical")) return "electrical" as const;
+  if (explicitType.includes("solar")) return "solar" as const;
+  if (explicitType.includes("renovation")) return "renovation" as const;
+  if (explicitType.includes("maintenance") || explicitType === "pm" || explicitType.includes("pm loop")) return "maintenance" as const;
+
+  const quotationNo = String(row.quotationNo || "").trim().toLowerCase();
+  if (quotationNo.includes("-rn-")) return "restoration" as const;
+  if (quotationNo.includes("-fo-")) return "fit-out" as const;
+
+  const normalized = String(row.subject || "").toLowerCase();
+  if (normalized.includes("restoration") || normalized.includes("restore")) return "restoration" as const;
   if (normalized.includes("electrical")) return "electrical" as const;
+  if (normalized.includes("solar")) return "solar" as const;
   if (normalized.includes("renovation")) return "renovation" as const;
   if (normalized.includes("maintenance") || normalized.includes("pm")) return "maintenance" as const;
   return "fit-out" as const;
@@ -138,7 +154,7 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
     approvalId: `APR-${quotationId}`,
     quotationId,
     quotationNo,
-    quotationType: quotationTypeFromSubject(subject),
+    quotationType: quotationTypeFromRow(row),
     projectId: quotationId,
     projectName: subject,
     site: String(row.projectSite || "-"),

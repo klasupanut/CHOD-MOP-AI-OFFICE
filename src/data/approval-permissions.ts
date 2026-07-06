@@ -27,7 +27,7 @@ export const defaultApprovalPermissions: ApprovalPermission[] = [
     name: "Kla",
     role: "Civil Engineer / Moderator",
     canApproveQuotation: true,
-    approvalScopes: ["fit-out", "renovation"],
+    approvalScopes: ["fit-out", "restoration", "renovation"],
     maxApprovalAmount: 500000,
     requiresTammasitFinalApproval: true,
     enabled: true,

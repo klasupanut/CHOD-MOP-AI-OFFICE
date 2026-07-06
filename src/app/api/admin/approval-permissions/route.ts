@@ -9,7 +9,7 @@ function canManage(user: Awaited<ReturnType<typeof getApiUser>>) {
 }
 
 function sanitizePermission(input: ApprovalPermission): ApprovalPermission {
-  const allowedScopes = ["all", "fit-out", "electrical", "solar", "renovation", "maintenance", "general"] as const;
+  const allowedScopes = ["all", "fit-out", "restoration", "electrical", "solar", "renovation", "maintenance", "general"] as const;
   return {
     userId: String(input.userId || "").trim(),
     name: String(input.name || "").trim(),

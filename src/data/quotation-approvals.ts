@@ -7,7 +7,7 @@ export type QuotationApprovalStatus =
   | "Cancelled";
 
 export type QuotationApprovalPriority = "Low" | "Medium" | "High" | "Critical";
-export type QuotationApprovalScope = "all" | "fit-out" | "electrical" | "solar" | "renovation" | "maintenance" | "general";
+export type QuotationApprovalScope = "all" | "fit-out" | "restoration" | "electrical" | "solar" | "renovation" | "maintenance" | "general";
 
 export type QuotationApprovalItem = {
   approvalId: string;
