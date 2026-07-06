@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { TaskRecord } from "@/data/tasks";
-import { createTaskInSheet, deleteTaskInSheet, listTasks, updateTaskInSheet } from "@/lib/connectors/google-sheet-task-project";
+import { createTaskInSheet, deleteTaskInSheet, updateTaskInSheet } from "@/lib/connectors/google-sheet-task-project";
 import { getApiUser } from "@/lib/auth/api";
 
 const characterNameMap = {
@@ -51,19 +51,14 @@ export async function DELETE(request: Request) {
   try {
     const body = (await request.json()) as { taskId?: string };
     if (!body.taskId) throw new Error("Task ID is required.");
-    const tasks = await listTasks();
-    const task = tasks.find((item) => item.taskId === body.taskId);
-    if (!task) throw new Error("Task not found in Google Sheet.");
     const owner = getUserTaskOwner(user);
-    if (!canManageAllTasks(user) && task.assignedTo.toLowerCase() !== owner.toLowerCase()) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    const deletedTask = await deleteTaskInSheet(body.taskId);
+    const deletedTask = await deleteTaskInSheet(body.taskId, { canManageAll: canManageAllTasks(user), owner });
     return NextResponse.json({ task: deletedTask, mode: "google-sheet" });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to delete task.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to delete task." },
-      { status: 400 },
+      { error: message },
+      { status: message === "Forbidden" ? 403 : 400 },
     );
   }
 }
@@ -74,19 +69,14 @@ export async function PATCH(request: Request) {
   try {
     const body = (await request.json()) as { taskId?: string; patch?: Partial<TaskRecord> };
     if (!body.taskId) throw new Error("Task ID is required.");
-    const tasks = await listTasks();
-    const currentTask = tasks.find((item) => item.taskId === body.taskId);
-    if (!currentTask) throw new Error("Task not found in Google Sheet.");
     const owner = getUserTaskOwner(user);
-    if (!canManageAllTasks(user) && currentTask.assignedTo.toLowerCase() !== owner.toLowerCase()) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-    const task = await updateTaskInSheet(body.taskId, body.patch || {}, user.name);
+    const task = await updateTaskInSheet(body.taskId, body.patch || {}, user.name, { canManageAll: canManageAllTasks(user), owner });
     return NextResponse.json({ task, mode: "google-sheet" });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to update task.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to update task." },
-      { status: 400 },
+      { error: message },
+      { status: message === "Forbidden" ? 403 : 400 },
     );
   }
 }

@@ -9,6 +9,7 @@ let liveNotificationCache: { expiresAt: number; notifications: WorkspaceNotifica
   expiresAt: 0,
   notifications: [],
 };
+const LIVE_NOTIFICATION_CACHE_MS = 120_000;
 
 export function getReadNotificationIds() {
   if (typeof window === "undefined") return [];
@@ -56,7 +57,7 @@ export async function fetchLiveWorkspaceNotifications() {
       const payload = await response.json() as { notifications?: WorkspaceNotification[] };
       const notifications = payload.notifications || [];
       liveNotificationCache = {
-        expiresAt: Date.now() + 30_000,
+        expiresAt: Date.now() + LIVE_NOTIFICATION_CACHE_MS,
         notifications,
       };
       return notifications;

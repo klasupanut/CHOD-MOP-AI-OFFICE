@@ -3,7 +3,7 @@ import type { ProjectRecord } from "@/data/projects";
 import type { ScheduleEvent } from "@/data/schedule";
 import type { TaskRecord } from "@/data/tasks";
 import { getApiUser } from "@/lib/auth/api";
-import { listScheduleData, listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
+import { listTaskProjectScheduleData } from "@/lib/connectors/google-sheet-task-project";
 import type { WorkspaceNotification } from "@/lib/notifications/types";
 
 const characterNameMap = {
@@ -124,14 +124,11 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const [taskProjectData, scheduleData] = await Promise.all([
-      listTaskProjectData(),
-      listScheduleData(),
-    ]);
+    const taskProjectData = await listTaskProjectScheduleData();
     const notifications = [
       ...taskNotifications(taskProjectData.tasks, user),
       ...projectNotifications(taskProjectData.projects, user),
-      ...scheduleNotifications(scheduleData.manualEvents, user),
+      ...scheduleNotifications(taskProjectData.manualEvents, user),
     ].sort((a, b) => {
       const weight = { critical: 0, warning: 1, info: 2 } as const;
       return weight[a.tone] - weight[b.tone] || a.title.localeCompare(b.title);

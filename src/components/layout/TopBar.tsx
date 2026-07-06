@@ -45,7 +45,7 @@ export function TopBar() {
       }
     }
     loadNotifications();
-    const interval = window.setInterval(loadNotifications, 60_000);
+    const interval = window.setInterval(loadNotifications, 120_000);
     window.addEventListener("focus", loadNotifications);
     return () => {
       mounted = false;

@@ -83,6 +83,23 @@ export const taskProjectSheetConfig = {
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 let ensureSheetsPromise: Promise<void> | null = null;
+const READ_CACHE_MS = 30_000;
+
+type TaskProjectData = {
+  mode: "google-sheet" | "not-configured";
+  projects: ProjectRecord[];
+  tasks: TaskRecord[];
+  message: string;
+};
+
+type TaskProjectScheduleData = TaskProjectData & {
+  manualEvents: ScheduleEvent[];
+};
+
+let taskProjectCache: { expiresAt: number; data: TaskProjectData } | null = null;
+let taskProjectPromise: Promise<TaskProjectData> | null = null;
+let taskProjectScheduleCache: { expiresAt: number; data: TaskProjectScheduleData } | null = null;
+let taskProjectSchedulePromise: Promise<TaskProjectScheduleData> | null = null;
 
 function getSheetId() {
   return process.env.GOOGLE_SHEET_ID_TASK_PROJECT || process.env.GOOGLE_SHEET_ID_USERS || "";
@@ -357,10 +374,24 @@ async function ensureTaskProjectSheets() {
 
 async function readTabRows(tab: string, rangeColumns: string) {
   await ensureTaskProjectSheets();
-  const range = encodeURIComponent(`${tab}!A2:${rangeColumns}`);
-  const response = await sheetsFetch(`/values/${range}`);
-  const payload = (await response.json()) as { values?: unknown[][] };
-  return payload.values || [];
+  const [rows] = await readTabRowsBatch([{ tab, rangeColumns }]);
+  return rows;
+}
+
+async function readTabRowsBatch(ranges: Array<{ tab: string; rangeColumns: string }>) {
+  await ensureTaskProjectSheets();
+  const query = new URLSearchParams();
+  ranges.forEach(({ tab, rangeColumns }) => query.append("ranges", `${tab}!A2:${rangeColumns}`));
+  const response = await sheetsFetch(`/values:batchGet?${query.toString()}`);
+  const payload = (await response.json()) as { valueRanges?: Array<{ values?: unknown[][] }> };
+  return ranges.map((_, index) => payload.valueRanges?.[index]?.values || []);
+}
+
+function clearTaskProjectReadCache() {
+  taskProjectCache = null;
+  taskProjectPromise = null;
+  taskProjectScheduleCache = null;
+  taskProjectSchedulePromise = null;
 }
 
 async function appendRows(tab: string, rows: unknown[][]) {
@@ -381,7 +412,7 @@ async function clearRow(tab: string, rowNumber: number, lastColumn: string, colu
   });
 }
 
-export async function listTaskProjectData() {
+async function fetchTaskProjectData(): Promise<TaskProjectData> {
   if (!getSheetId()) {
     return {
       mode: "not-configured" as const,
@@ -390,9 +421,9 @@ export async function listTaskProjectData() {
       message: "GOOGLE_SHEET_ID_TASK_PROJECT is not configured. Add it to .env.local to use live Tasks / Projects.",
     };
   }
-  const [projectRows, taskRows] = await Promise.all([
-    readTabRows(PROJECTS_TAB, "R"),
-    readTabRows(TASKS_TAB, "P"),
+  const [projectRows, taskRows] = await readTabRowsBatch([
+    { tab: PROJECTS_TAB, rangeColumns: "R" },
+    { tab: TASKS_TAB, rangeColumns: "P" },
   ]);
   return {
     mode: "google-sheet" as const,
@@ -402,27 +433,103 @@ export async function listTaskProjectData() {
   };
 }
 
-export async function listScheduleData(): Promise<ScheduleData> {
-  const taskProjectData = await listTaskProjectData();
-  const derivedEvents = deriveScheduleEventsFromTasksProjects(taskProjectData.tasks, taskProjectData.projects);
+export async function listTaskProjectData(options: { forceRefresh?: boolean } = {}): Promise<TaskProjectData> {
+  if (!options.forceRefresh && taskProjectCache && taskProjectCache.expiresAt > Date.now()) {
+    return taskProjectCache.data;
+  }
+  if (!options.forceRefresh && taskProjectPromise) return taskProjectPromise;
+
+  taskProjectPromise = fetchTaskProjectData()
+    .then((data) => {
+      taskProjectCache = { expiresAt: Date.now() + READ_CACHE_MS, data };
+      return data;
+    })
+    .catch((error) => {
+      if (taskProjectCache) {
+        return {
+          ...taskProjectCache.data,
+          message: "Using recently cached Tasks / Projects because Google Sheets is temporarily rate-limited.",
+        };
+      }
+      throw error;
+    })
+    .finally(() => {
+      taskProjectPromise = null;
+    });
+  return taskProjectPromise;
+}
+
+async function fetchTaskProjectScheduleData(): Promise<TaskProjectScheduleData> {
   if (!getSheetId()) {
+    const taskProjectData = await listTaskProjectData();
     return {
       mode: "not-configured" as const,
-      events: derivedEvents,
+      projects: taskProjectData.projects,
+      tasks: taskProjectData.tasks,
       manualEvents: [] as ScheduleEvent[],
-      derivedEvents,
       message: "GOOGLE_SHEET_ID_TASK_PROJECT is not configured. Showing schedule from visible Task / Project dates only.",
     };
   }
-  const rows = await readTabRows(SCHEDULE_TAB, "P");
-  const manualEvents = rows.map(rowToScheduleEvent).filter((item): item is ScheduleEvent => Boolean(item));
+  const [projectRows, taskRows, scheduleRows] = await readTabRowsBatch([
+    { tab: PROJECTS_TAB, rangeColumns: "R" },
+    { tab: TASKS_TAB, rangeColumns: "P" },
+    { tab: SCHEDULE_TAB, rangeColumns: "P" },
+  ]);
   return {
     mode: "google-sheet" as const,
-    events: [...manualEvents, ...derivedEvents].sort((a, b) => a.startAt.localeCompare(b.startAt)),
-    manualEvents,
-    derivedEvents,
+    projects: projectRows.map(rowToProject).filter((item): item is ProjectRecord => Boolean(item)),
+    tasks: taskRows.map(rowToTask).filter((item): item is TaskRecord => Boolean(item)),
+    manualEvents: scheduleRows.map(rowToScheduleEvent).filter((item): item is ScheduleEvent => Boolean(item)),
     message: "",
   };
+}
+
+export async function listTaskProjectScheduleData(options: { forceRefresh?: boolean } = {}): Promise<TaskProjectScheduleData> {
+  if (!options.forceRefresh && taskProjectScheduleCache && taskProjectScheduleCache.expiresAt > Date.now()) {
+    return taskProjectScheduleCache.data;
+  }
+  if (!options.forceRefresh && taskProjectSchedulePromise) return taskProjectSchedulePromise;
+
+  taskProjectSchedulePromise = fetchTaskProjectScheduleData()
+    .then((data) => {
+      taskProjectScheduleCache = { expiresAt: Date.now() + READ_CACHE_MS, data };
+      taskProjectCache = {
+        expiresAt: Date.now() + READ_CACHE_MS,
+        data: { mode: data.mode, projects: data.projects, tasks: data.tasks, message: data.message },
+      };
+      return data;
+    })
+    .catch((error) => {
+      if (taskProjectScheduleCache) {
+        return {
+          ...taskProjectScheduleCache.data,
+          message: "Using recently cached schedule data because Google Sheets is temporarily rate-limited.",
+        };
+      }
+      throw error;
+    })
+    .finally(() => {
+      taskProjectSchedulePromise = null;
+    });
+  return taskProjectSchedulePromise;
+}
+
+export async function listScheduleData(): Promise<ScheduleData> {
+  const data = await listTaskProjectScheduleData();
+  const derivedEvents = deriveScheduleEventsFromTasksProjects(data.tasks, data.projects);
+  return {
+    mode: data.mode,
+    events: [...data.manualEvents, ...derivedEvents].sort((a, b) => a.startAt.localeCompare(b.startAt)),
+    manualEvents: data.manualEvents,
+    derivedEvents,
+    message: data.message,
+  };
+}
+
+function assertTaskWriteAllowed(current: TaskRecord, access?: { canManageAll?: boolean; owner?: string }) {
+  if (!access || access.canManageAll) return;
+  if (access.owner && current.assignedTo.toLowerCase() === access.owner.toLowerCase()) return;
+  throw new Error("Forbidden");
 }
 
 export async function listTasks() {
@@ -433,12 +540,13 @@ export async function listProjects() {
   return (await listTaskProjectData()).projects;
 }
 
-export async function updateTaskInSheet(taskId: string, patch: Partial<TaskRecord>, actor: string) {
+export async function updateTaskInSheet(taskId: string, patch: Partial<TaskRecord>, actor: string, access?: { canManageAll?: boolean; owner?: string }) {
   const rows = await readTabRows(TASKS_TAB, "P");
   const index = rows.findIndex((row) => safeString(row[0]) === taskId);
   if (index < 0) throw new Error("Task not found in Google Sheet.");
   const current = rowToTask(rows[index]);
   if (!current) throw new Error("Task row is invalid.");
+  assertTaskWriteAllowed(current, access);
   const next: TaskRecord = {
     ...current,
     ...patch,
@@ -454,6 +562,7 @@ export async function updateTaskInSheet(taskId: string, patch: Partial<TaskRecor
     method: "PUT",
     body: JSON.stringify({ values: [taskToRow(next)] }),
   });
+  clearTaskProjectReadCache();
   return next;
 }
 
@@ -477,16 +586,19 @@ export async function createTaskInSheet(input: TaskRecord) {
     createdAt: input.createdAt || now,
   };
   await appendRows(TASKS_TAB, [taskToRow(task)]);
+  clearTaskProjectReadCache();
   return task;
 }
 
-export async function deleteTaskInSheet(taskId: string) {
+export async function deleteTaskInSheet(taskId: string, access?: { canManageAll?: boolean; owner?: string }) {
   const rows = await readTabRows(TASKS_TAB, "P");
   const index = rows.findIndex((row) => safeString(row[0]) === taskId);
   if (index < 0) throw new Error("Task not found in Google Sheet.");
   const current = rowToTask(rows[index]);
   if (!current) throw new Error("Task row is invalid.");
+  assertTaskWriteAllowed(current, access);
   await clearRow(TASKS_TAB, index + 2, "P", TASK_HEADERS.length);
+  clearTaskProjectReadCache();
   return current;
 }
 
@@ -508,6 +620,7 @@ export async function updateProjectInSheet(projectId: string, patch: Partial<Pro
     method: "PUT",
     body: JSON.stringify({ values: [projectToRow(next)] }),
   });
+  clearTaskProjectReadCache();
   return next;
 }
 
@@ -518,6 +631,7 @@ export async function createProjectInSheet(input: ProjectRecord) {
     lastUpdate: input.lastUpdate || nowStamp(),
   };
   await appendRows(PROJECTS_TAB, [projectToRow(project)]);
+  clearTaskProjectReadCache();
   return project;
 }
 
@@ -542,6 +656,7 @@ export async function createScheduleEventInSheet(input: ScheduleEvent) {
     source: "manual",
   };
   await appendRows(SCHEDULE_TAB, [scheduleEventToRow(event)]);
+  clearTaskProjectReadCache();
   return event;
 }
 
@@ -562,6 +677,7 @@ export async function updateScheduleEventStatusInSheet(eventId: string, status: 
     method: "PUT",
     body: JSON.stringify({ values: [scheduleEventToRow(next)] }),
   });
+  clearTaskProjectReadCache();
   return next;
 }
 
@@ -596,6 +712,7 @@ export async function updateScheduleEventInSheet(eventId: string, patch: Partial
     method: "PUT",
     body: JSON.stringify({ values: [scheduleEventToRow(next)] }),
   });
+  clearTaskProjectReadCache();
   return next;
 }
 
@@ -606,6 +723,7 @@ export async function deleteScheduleEventInSheet(eventId: string) {
   const current = rowToScheduleEvent(rows[index]);
   if (!current) throw new Error("Schedule event row is invalid.");
   await clearRow(SCHEDULE_TAB, index + 2, "P", SCHEDULE_HEADERS.length);
+  clearTaskProjectReadCache();
   return current;
 }
 
@@ -616,5 +734,6 @@ export async function deleteProjectInSheet(projectId: string) {
   const current = rowToProject(rows[index]);
   if (!current) throw new Error("Project row is invalid.");
   await clearRow(PROJECTS_TAB, index + 2, "R", PROJECT_HEADERS.length);
+  clearTaskProjectReadCache();
   return current;
 }

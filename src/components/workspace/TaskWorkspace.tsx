@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ClipboardList, RotateCcw, Trash2, UserRound } from "lucide-react";
 import { chodProjectSites, type ProjectRecord } from "@/data/projects";
 import { teamMembers, type TaskCategory, type TaskPriority, type TaskRecord, type TaskStatus } from "@/data/tasks";
@@ -75,6 +75,7 @@ export function TaskWorkspace({
   const canAssignTasks = showAllTasks;
   const [showCreate, setShowCreate] = useState(false);
   const [newTask, setNewTask] = useState<TaskRecord>(() => createEmptyTask(taskOwner, currentUser.name));
+  const progressSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const visibleTasks = useMemo(() => {
     return showAllTasks ? tasks : getTasksByPerson(taskOwner, tasks);
@@ -111,6 +112,12 @@ export function TaskWorkspace({
     }
   }, [selectedId, visibleTasks]);
 
+  useEffect(() => {
+    return () => {
+      if (progressSaveTimer.current) clearTimeout(progressSaveTimer.current);
+    };
+  }, []);
+
   const summary = {
     total: visibleTasks.length,
     overdue: visibleTasks.filter((task) => task.status === "Overdue").length,
@@ -135,16 +142,32 @@ export function TaskWorkspace({
     }
   }
 
+  function clearProgressSaveTimer() {
+    if (!progressSaveTimer.current) return;
+    clearTimeout(progressSaveTimer.current);
+    progressSaveTimer.current = null;
+  }
+
+  function scheduleProgressPersist(taskId: string, progress: number) {
+    clearProgressSaveTimer();
+    progressSaveTimer.current = setTimeout(() => {
+      void persistTask(taskId, { progress });
+      progressSaveTimer.current = null;
+    }, 650);
+  }
+
   const updateSelectedStatus = (status: TaskStatus) => {
     if (!selectedTask) return;
+    clearProgressSaveTimer();
     setTasks((current) => updateTaskStatus(selectedTask.taskId, status, taskOwner, current));
     void persistTask(selectedTask.taskId, status === "Done" ? { status, progress: 100 } : { status });
   };
 
   const updateSelectedProgress = (progress: number) => {
     if (!selectedTask) return;
-    setTasks((current) => updateTaskProgress(selectedTask.taskId, progress, taskOwner, current));
-    void persistTask(selectedTask.taskId, { progress });
+    const nextProgress = Math.max(0, Math.min(100, progress));
+    setTasks((current) => updateTaskProgress(selectedTask.taskId, nextProgress, taskOwner, current));
+    scheduleProgressPersist(selectedTask.taskId, nextProgress);
   };
 
   const saveNote = () => {
