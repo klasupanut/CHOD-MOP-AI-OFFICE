@@ -25,7 +25,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     if (selected === "all") {
       return [
         { id: "all-1", title: "All Team Weekly Report", metric: `${data.taskOverview.totalTasks} tasks`, description: "Combined live operation review for all team members." },
-        { id: "all-2", title: "Projects & Budgets Portfolio", metric: `${data.projectStatus.reduce((sum, item) => sum + item.value, 0)} projects`, description: "Live project status and budget responsibility grouped by operation state." },
+        { id: "all-2", title: "Projects & Budgets Portfolio", metric: `${data.reports.teamMembers.reduce((sum, member) => sum + member.projectSummary.totalProjects, 0)} total`, description: "Owner responsibility calculated from the Projects & Budgets live sheet." },
         { id: "all-3", title: "Cross-Team Risk Log", metric: `${data.taskOverview.overdue} overdue`, description: "Live overdue and approval risk summary." },
         { id: "all-4", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
       ];
@@ -37,8 +37,14 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
       { id: `${selected}-2`, title: "Completed This Week", metric: `${selectedMember.completedThisWeek} done`, description: "Live task completions from the Tasks sheet." },
       {
         id: `${selected}-project-budget`,
-        title: "Projects & Budget Summary",
-        metric: `${selectedMember.projectSummary.activeProjects} active / ${moneyCompact(selectedMember.projectSummary.totalBudget)}`,
+        title: "Projects & Budgets Responsibility",
+        metric: `${selectedMember.projectSummary.activeProjects} in progress / ${selectedMember.projectSummary.totalProjects} total`,
+        description: `Responsible budget: ${moneyCompact(selectedMember.projectSummary.totalBudget)} from Projects & Budgets.`,
+      },
+      {
+        id: `${selected}-project-budget-value`,
+        title: "Responsible Budget",
+        metric: moneyCompact(selectedMember.projectSummary.totalBudget),
         description: selectedMember.projectSummary.topProjects.length
           ? `Top projects: ${selectedMember.projectSummary.topProjects.join(", ")}.`
           : "No live project assignment found for this member.",

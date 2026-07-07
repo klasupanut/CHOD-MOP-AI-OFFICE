@@ -10,7 +10,7 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
     <section className="workspace-main-card reports-team-section">
       <div className="workspace-section-title">
         <div><span>TEAM MEMBER OVERVIEW</span><h2>Who is doing what</h2></div>
-        <small>Team workload, key KPI, main responsibility and recommended report.</small>
+        <small>Team workload plus project responsibility from Projects &amp; Budgets live data.</small>
       </div>
       <div className="reports-team-grid">
         {members.map((member) => (
@@ -27,8 +27,14 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
             <div className="reports-member-metrics">
               <p><span>Active Tasks</span><strong>{member.activeTasks}</strong></p>
               <p><span>Completed This Week</span><strong>{member.completedThisWeek}</strong></p>
-              <p><span>Active Projects</span><strong>{member.projectSummary.activeProjects}</strong></p>
-              <p><span>Project Value</span><strong>{moneyCompact(member.projectSummary.totalBudget)}</strong></p>
+            </div>
+            <div className="reports-member-projects">
+              <span>PROJECTS &amp; BUDGETS RESPONSIBILITY</span>
+              <div>
+                <p><small>In Progress</small><strong>{member.projectSummary.activeProjects}</strong></p>
+                <p><small>Total Projects</small><strong>{member.projectSummary.totalProjects}</strong></p>
+                <p><small>Responsible Budget</small><strong>{moneyCompact(member.projectSummary.totalBudget)}</strong></p>
+              </div>
             </div>
             <div className="reports-member-kpis">
               {member.kpis.map((kpi) => (

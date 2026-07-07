@@ -376,13 +376,14 @@ function buildSummary(tasks: BudgetUtilizeTask[], remainingBudget: number) {
 
   const ownerRows = ["Film", "Kla", "Moss", "Tammasit", "Foreman"].map((person) => {
     const ownerTasks = tasks.filter((task) => task.owner === person);
-    const active = ownerTasks.filter(isWatchable);
+    const active = ownerTasks.filter((task) => task.statusKey === "active");
+    const watch = ownerTasks.filter(isWatchable);
     return {
       person,
       active: active.length,
       total: ownerTasks.length,
-      budget: sum(ownerTasks.filter(isRealizedBudgetTask), (task) => task.budget),
-      watch: active.filter((task) => task.budget > 0).length,
+      budget: sum(ownerTasks, (task) => task.budget),
+      watch: watch.filter((task) => task.budget > 0).length,
       topProjects: ownerTasks
         .slice()
         .sort((a, b) => b.budget - a.budget)
