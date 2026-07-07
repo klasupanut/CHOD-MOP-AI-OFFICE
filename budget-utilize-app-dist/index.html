@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Budget Utilize</title>
+    <link rel="stylesheet" href="./styles.css?v=20260707-force-close-modal" />
+  </head>
+  <body>
+    <div id="app" class="app-shell" aria-live="polite">
+      <aside class="sidebar" aria-label="Sheet navigation">
+        <div class="brand-block">
+          <div class="brand-mark">BU</div>
+          <div>
+            <h1>Budget Utilize</h1>
+            <p>ปี 2569</p>
+          </div>
+        </div>
+
+        <nav class="nav-stack" id="sheetNav"></nav>
+
+        <a
+          class="source-link"
+          href="https://docs.google.com/spreadsheets/d/1NmVPZkEGxeUvIQYsuoyF7L9Xhjn03zH5RZvDf8UJ2Po/edit"
+          target="_blank"
+          rel="noreferrer"
+        >
+          เปิด Google Sheet
+        </a>
+      </aside>
+
+      <main class="workspace">
+        <section class="sticky-control-deck">
+          <header class="topbar">
+            <div>
+              <p class="page-kicker" id="viewKicker">ภาพรวม</p>
+              <h2 id="viewTitle">Budget Utilize</h2>
+            </div>
+            <div class="topbar-actions">
+              <span class="source-stamp" id="sourceStamp">กำลังโหลดข้อมูล...</span>
+              <span class="write-mode-badge pending" id="writeModeBadge">Write: checking</span>
+              <button class="text-button primary-action" id="newProjectButton" type="button">เพิ่ม Project</button>
+              <button class="text-button" id="exportCsvButton" type="button">CSV</button>
+              <button class="text-button" id="printPdfButton" type="button">PDF</button>
+              <button class="icon-button" id="refreshButton" type="button" title="Refresh data" aria-label="Refresh data">
+                ↻
+              </button>
+            </div>
+          </header>
+
+          <section class="filter-bar" aria-label="Filters">
+            <label class="search-box">
+              <span>ค้นหา</span>
+              <input id="searchInput" type="search" placeholder="รายการ, ผู้รับเหมา, หมายเหตุ" />
+            </label>
+
+            <label>
+              <span>สถานะ</span>
+              <select id="statusFilter"></select>
+            </label>
+
+            <label>
+              <span>ผู้รับผิดชอบ</span>
+              <select id="ownerFilter"></select>
+            </label>
+
+            <label class="person-summary-filter hidden" id="personSheetLabel">
+              <span>สรุปงานรายคน</span>
+              <select id="personSheetFilter"></select>
+            </label>
+
+            <label>
+              <span>รหัสงบ</span>
+              <select id="codeFilter"></select>
+            </label>
+
+            <div class="segmented" role="group" aria-label="Data perspective">
+              <button type="button" data-perspective="location" class="active">สถานที่</button>
+              <button type="button" data-perspective="person">ผู้รับผิดชอบ</button>
+              <button type="button" data-perspective="support">SKW</button>
+            </div>
+          </section>
+
+          <section class="active-filter-toolbar hidden" id="activeFilterToolbar" aria-label="Active filters">
+            <div class="active-filters" id="activeFilters"></div>
+            <button class="clear-filter-button" id="clearFiltersButton" type="button">ล้างตัวกรอง</button>
+          </section>
+        </section>
+
+        <section class="loading-panel" id="loadingPanel">
+          <div class="loader"></div>
+          <p>กำลังอ่านข้อมูลจาก Google Sheet แบบ read-only</p>
+        </section>
+
+        <section class="error-panel hidden" id="errorPanel">
+          <h3>โหลดข้อมูลไม่ได้</h3>
+          <p id="errorText"></p>
+          <button id="retryButton" type="button">ลองอีกครั้ง</button>
+        </section>
+
+        <section class="dashboard hidden" id="dashboard">
+          <section class="kpi-grid" id="kpiGrid" aria-label="Summary metrics"></section>
+
+          <section class="control-intelligence-grid" id="controlIntelligenceGrid" aria-label="Budget control intelligence">
+            <article class="panel budget-state-panel" id="budgetStatePanel">
+              <div class="panel-heading">
+                <div>
+                  <h3>งบผูกพัน / งบเหลือ / งบยังไม่ระบุ</h3>
+                  <p>แยกสถานะเงินจากรายการงานและชีทงบประมาณคงเหลือ</p>
+                </div>
+              </div>
+              <div class="budget-state-grid" id="budgetStateGrid"></div>
+            </article>
+
+            <article class="panel executive-summary-panel" id="executiveSummaryPanel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Executive Summary</h3>
+                  <p>สรุปงานเสี่ยง งานควรตาม และ site ที่งบเหลือต่ำ</p>
+                </div>
+              </div>
+              <div class="executive-summary-list" id="executiveSummaryList"></div>
+            </article>
+          </section>
+
+          <section class="compare-action-grid" id="compareActionGrid" aria-label="Compare and action queue">
+            <article class="panel action-queue-panel" id="actionQueuePanel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Action Queue</h3>
+                  <p>วันนี้ควรไล่อะไรก่อนจากข้อมูลล่าสุด</p>
+                </div>
+              </div>
+              <div class="action-queue-list" id="actionQueueList"></div>
+              <div class="action-queue-pager" id="actionQueuePager"></div>
+            </article>
+
+            <article class="panel" id="budgetAlertPanel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Alert งบเสี่ยง</h3>
+                  <p>กดรายการเพื่อกรองตาราง</p>
+                </div>
+              </div>
+              <div class="risk-list" id="budgetAlertList"></div>
+            </article>
+          </section>
+
+          <section class="overview-analysis hidden" id="overviewAnalysis" aria-label="Data analysis overview"></section>
+
+          <section class="analysis-grid">
+            <article class="panel chart-panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>รวมงบประมาณที่ใช้จริง</h3>
+                  <p id="sheetChartHint">อ้างอิงจาก main title ของแต่ละชีท</p>
+                </div>
+              </div>
+              <div class="bar-list sheet-budget-bars" id="sheetBudgetChart"></div>
+            </article>
+
+            <article class="panel chart-panel">
+              <div class="panel-heading">
+                <div>
+                  <h3>งบตามรหัส</h3>
+                  <p>1B02, 1B03, 1C01, 1C02 และรายการไม่ระบุ</p>
+                </div>
+              </div>
+              <div class="bar-list compact" id="codeBudgetChart"></div>
+            </article>
+          </section>
+          <section class="content-grid">
+            <article class="panel table-panel">
+              <div class="panel-heading table-heading">
+                <div>
+                  <h3>รายการงาน</h3>
+                  <p id="tableCount">0 รายการ</p>
+                </div>
+                <select id="sortControl" aria-label="Sort rows">
+                  <option value="budget-desc">งบมากไปน้อย</option>
+                  <option value="progress-asc">ความคืบหน้าน้อยก่อน</option>
+                  <option value="title-asc">เรียงตามรายการ</option>
+                </select>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>รายการ</th>
+                      <th>ชีท / หมวด</th>
+                      <th>สถานะ</th>
+                      <th>จัดจ้าง</th>
+                      <th>งบประมาณ</th>
+                      <th>รหัส</th>
+                      <th>เจ้าของ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="taskTable"></tbody>
+                </table>
+              </div>
+              <div class="table-pager" id="tablePager"></div>
+            </article>
+
+            <article class="panel compare-panel" id="comparePanel">
+              <div class="panel-heading">
+                <div>
+                  <h3>Compare by Site / Owner</h3>
+                  <p>เทียบ site ที่ใช้งบสูง owner ที่งานค้างเยอะ และงบไม่มี code</p>
+                </div>
+              </div>
+              <div class="compare-grid" id="compareGrid"></div>
+            </article>
+
+            <aside class="insight-rail">
+              <article class="panel selected-panel" id="selectedPanel"></article>
+              <article class="panel" id="budgetRemainingPanel">
+                <div class="panel-heading">
+                  <div>
+                    <h3>งบประมาณคงเหลือ</h3>
+                    <p id="budgetDate">จากชีทหลัก</p>
+                  </div>
+                </div>
+                <div class="budget-list" id="remainingBudgetList"></div>
+              </article>
+              <article class="panel" id="dataQualityPanel">
+                <div class="panel-heading">
+                  <div>
+                    <h3>Data Quality</h3>
+                    <p>ตรวจข้อมูลหายหรือไม่ครบ</p>
+                  </div>
+                </div>
+                <div class="quality-list" id="dataQualityList"></div>
+              </article>
+            </aside>
+
+            <section class="wide-action-grid">
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <h3>รายการที่ควรดู</h3>
+                    <p>งบสูงหรือยังไม่แล้วเสร็จ</p>
+                  </div>
+                </div>
+                <div class="attention-list" id="attentionList"></div>
+              </article>
+            </section>
+          </section>
+        </section>
+      </main>
+    </div>
+    <section class="print-report" id="printReport" aria-hidden="true"></section>
+    <div class="write-toast hidden" id="writeToast" role="status" aria-live="polite"></div>
+
+    <section class="modal-backdrop hidden" id="projectModal" aria-hidden="true">
+      <form class="modal-panel project-form" id="newProjectForm">
+        <div class="modal-heading">
+          <div>
+            <p class="page-kicker">Append row only</p>
+            <h3>เพิ่ม Project ใหม่</h3>
+          </div>
+          <button class="icon-button" id="closeProjectModalButton" type="button" aria-label="Close project form">×</button>
+        </div>
+
+        <label>
+          <span>Site</span>
+          <select id="newProjectSite" name="site" required></select>
+        </label>
+
+        <label class="full-field">
+          <span>Project</span>
+          <input id="newProjectItem" name="item" type="text" maxlength="250" required placeholder="ชื่อ project / รายการงาน" />
+        </label>
+
+        <label>
+          <span>Status</span>
+          <select id="newProjectStatus" name="statusKey"></select>
+        </label>
+
+        <label>
+          <span>Stage</span>
+          <select id="newProjectStage" name="stage"></select>
+        </label>
+
+        <label>
+          <span>Owner</span>
+          <select id="newProjectOwner" name="owner"></select>
+        </label>
+
+        <label>
+          <span>Budget code</span>
+          <input id="newProjectCode" name="budgetCode" type="text" maxlength="20" list="budgetCodeSuggestions" placeholder="เช่น 1C02" />
+        </label>
+
+        <label>
+          <span>PO Number</span>
+          <input id="newProjectPoNumber" name="poNumber" type="text" maxlength="80" placeholder="เลข PO" />
+        </label>
+
+        <label>
+          <span>Contractor</span>
+          <input id="newProjectContractor" name="contractor" type="text" maxlength="120" placeholder="ผู้รับเหมา" />
+        </label>
+
+        <label>
+          <span>Budget</span>
+          <input id="newProjectBudget" name="budget" type="number" min="0" step="1" placeholder="0" />
+        </label>
+
+        <label class="full-field">
+          <span>Note / Issue</span>
+          <textarea id="newProjectNote" name="note" maxlength="1000" rows="4" placeholder="หมายเหตุหรือ issue ที่ต้องตาม"></textarea>
+        </label>
+
+        <p class="write-helper" id="newProjectHelper">เพิ่มเป็นแถวใหม่ท้ายชีทของ site ที่เลือกเท่านั้น ไม่แทรกหรือแก้ template เดิม</p>
+
+        <div class="modal-actions">
+          <button class="text-button" id="cancelProjectButton" type="button">ยกเลิก</button>
+          <button class="text-button primary-action" id="submitProjectButton" type="submit">เพิ่มลง Sheet</button>
+        </div>
+      </form>
+    </section>
+    <datalist id="budgetCodeSuggestions"></datalist>
+
+    <script src="./app.js?v=20260707-add-modal-timer"></script>
+  </body>
+</html>
