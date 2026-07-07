@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Bell, Cloud, ExternalLink, ShieldCheck } from "lucide-react";
 import { useThailandTime } from "@/components/office/ThailandTimeController";
+import { ThemeModeToggle } from "@/components/layout/ThemeModeToggle";
 import { CHOD_LOGO_DATA_URI } from "@/lib/brand/chod-logo";
 import { getApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
 import {
@@ -83,6 +84,7 @@ export function TopBar() {
       <div className="topbar-tools">
         <div className="secure-state"><ShieldCheck size={18} /> Secure workspace</div>
         <div className="weather-state"><Cloud size={18} /> Bangkok</div>
+        <ThemeModeToggle />
         <div className="time-state"><strong>{timeLabel}</strong><span>{now ? dateLabel.format(now) : "THAILAND TIME"} · ICT</span></div>
         <div className="notification-menu">
           <button

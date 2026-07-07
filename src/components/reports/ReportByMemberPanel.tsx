@@ -14,6 +14,10 @@ const tabs: Array<{ id: TeamReportMemberId; label: string }> = [
   { id: "all", label: "All Team" },
 ];
 
+function moneyCompact(value: number) {
+  return `฿${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+}
+
 export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
   const [selected, setSelected] = useState<TeamReportMemberId>("film");
   const selectedMember = data.reports.teamMembers.find((member) => member.id === selected);
@@ -21,7 +25,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     if (selected === "all") {
       return [
         { id: "all-1", title: "All Team Weekly Report", metric: `${data.taskOverview.totalTasks} tasks`, description: "Combined live operation review for all team members." },
-        { id: "all-2", title: "Project Portfolio", metric: `${data.projectStatus.reduce((sum, item) => sum + item.value, 0)} projects`, description: "Live project status grouped by operation state." },
+        { id: "all-2", title: "Projects & Budgets Portfolio", metric: `${data.projectStatus.reduce((sum, item) => sum + item.value, 0)} projects`, description: "Live project status and budget responsibility grouped by operation state." },
         { id: "all-3", title: "Cross-Team Risk Log", metric: `${data.taskOverview.overdue} overdue`, description: "Live overdue and approval risk summary." },
         { id: "all-4", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
       ];
@@ -31,6 +35,20 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     return [
       { id: `${selected}-1`, title: `${selectedMember.name} Task Summary`, metric: `${selectedMember.activeTasks} active`, description: "Live active tasks assigned to this team member." },
       { id: `${selected}-2`, title: "Completed This Week", metric: `${selectedMember.completedThisWeek} done`, description: "Live task completions from the Tasks sheet." },
+      {
+        id: `${selected}-project-budget`,
+        title: "Projects & Budget Summary",
+        metric: `${selectedMember.projectSummary.activeProjects} active / ${moneyCompact(selectedMember.projectSummary.totalBudget)}`,
+        description: selectedMember.projectSummary.topProjects.length
+          ? `Top projects: ${selectedMember.projectSummary.topProjects.join(", ")}.`
+          : "No live project assignment found for this member.",
+      },
+      {
+        id: `${selected}-project-risk`,
+        title: "Project Risk Watch",
+        metric: `${selectedMember.projectSummary.overdueProjects} overdue`,
+        description: "Calculated from project due dates and assigned team / project lead mapping.",
+      },
       ...selectedMember.kpis.map((kpi, index) => ({
         id: `${selected}-kpi-${index}`,
         title: kpi.label,

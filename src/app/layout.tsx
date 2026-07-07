@@ -13,9 +13,27 @@ export const metadata: Metadata = {
   },
 };
 
+const themeBootScript = `
+(() => {
+  try {
+    const key = "chod-theme-mode:v1";
+    const stored = window.localStorage.getItem(key);
+    const mode = stored === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = mode;
+    document.documentElement.style.colorScheme = mode;
+  } catch {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.style.colorScheme = "dark";
+  }
+})();
+`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html data-theme="dark" lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body>
         <BrowserOriginGuard />
         {children}

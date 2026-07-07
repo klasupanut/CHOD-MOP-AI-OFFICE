@@ -1,6 +1,10 @@
 import Image from "next/image";
 import type { LiveDashboardData } from "@/lib/dashboard/live-dashboard-data";
 
+function moneyCompact(value: number) {
+  return `฿${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+}
+
 export function TeamMemberReportCards({ members }: { members: LiveDashboardData["reports"]["teamMembers"] }) {
   return (
     <section className="workspace-main-card reports-team-section">
@@ -23,6 +27,8 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
             <div className="reports-member-metrics">
               <p><span>Active Tasks</span><strong>{member.activeTasks}</strong></p>
               <p><span>Completed This Week</span><strong>{member.completedThisWeek}</strong></p>
+              <p><span>Active Projects</span><strong>{member.projectSummary.activeProjects}</strong></p>
+              <p><span>Project Value</span><strong>{moneyCompact(member.projectSummary.totalBudget)}</strong></p>
             </div>
             <div className="reports-member-kpis">
               {member.kpis.map((kpi) => (

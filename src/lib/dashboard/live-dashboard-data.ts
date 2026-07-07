@@ -81,6 +81,13 @@ export type LiveDashboardData = {
       activeTasks: number;
       completedThisWeek: number;
       kpis: Array<{ label: string; value: string; tone: "cyan" | "success" | "warning" | "danger" | "blue" }>;
+      projectSummary: {
+        activeProjects: number;
+        totalProjects: number;
+        totalBudget: number;
+        overdueProjects: number;
+        topProjects: string[];
+      };
       mainArea: string;
       suggestedReport: string;
     }>;
@@ -250,6 +257,34 @@ function countCompletedThisWeek(tasks: TaskRecord[], owner: string) {
   return tasks.filter((task) => task.assignedTo.toLowerCase() === owner.toLowerCase() && task.status === "Done" && isWithinDays(task.lastUpdate || task.dueDate, 7)).length;
 }
 
+function projectTouchesOwner(project: ProjectRecord, owner: string) {
+  const target = owner.toLowerCase();
+  return project.projectManager.toLowerCase() === target || project.assignedTeam.some((member) => member.toLowerCase() === target);
+}
+
+function isProjectOverdue(project: ProjectRecord) {
+  const dueDate = parseDate(project.dueDate);
+  if (!dueDate || ["Completed", "Cancelled"].includes(project.status)) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dueDate < today;
+}
+
+function summarizeProjectsForOwner(projects: ProjectRecord[], owner: string) {
+  const ownerProjects = projects.filter((project) => projectTouchesOwner(project, owner));
+  const activeProjects = ownerProjects.filter((project) => !["Completed", "Cancelled"].includes(project.status));
+  return {
+    activeProjects: activeProjects.length,
+    totalProjects: ownerProjects.length,
+    totalBudget: sumProjectBudget(ownerProjects),
+    overdueProjects: ownerProjects.filter(isProjectOverdue).length,
+    topProjects: ownerProjects
+      .sort((a, b) => (Number(b.budget) || 0) - (Number(a.budget) || 0))
+      .slice(0, 3)
+      .map((project) => project.projectName),
+  };
+}
+
 export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   const [taskProjectData, approvalRows, fitoutData] = await Promise.all([
     listTaskProjectData().catch(() => ({ projects: [] as ProjectRecord[], tasks: [] as TaskRecord[] })),
@@ -296,6 +331,13 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   const solarTasks = tasks.filter((task) => task.category === "Solar" || task.sourceModule.toLowerCase().includes("solar") || task.taskTitle.toLowerCase().includes("solar"));
   const annualTotalRevenue = fitoutAnnual.fitoutRevenue + fitoutAnnual.restorationRevenue;
   const annualTotalProfit = fitoutAnnual.fitoutProfit + fitoutAnnual.restorationProfit;
+  const projectSummaryByOwner = {
+    Film: summarizeProjectsForOwner(projects, "Film"),
+    Moss: summarizeProjectsForOwner(projects, "Moss"),
+    Kla: summarizeProjectsForOwner(projects, "Kla"),
+    Foreman: summarizeProjectsForOwner(projects, "Foreman"),
+    Tammasit: summarizeProjectsForOwner(projects, "Tammasit"),
+  };
 
   const reportTeamMembers: LiveDashboardData["reports"]["teamMembers"] = [
     {
@@ -309,6 +351,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { label: "Approval Queue", value: String(pendingApprovals.length), tone: pendingApprovals.length ? "warning" : "success" },
         { label: "Quotation Tasks", value: String(tasks.filter((task) => task.assignedTo === "Film" && task.category === "Quotation").length), tone: "cyan" },
       ],
+      projectSummary: projectSummaryByOwner.Film,
       mainArea: "Quotation / Document / Fit-out",
       suggestedReport: "Quotation Weekly Summary",
     },
@@ -323,6 +366,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { label: "Solar Alerts", value: String(solarTasks.filter((task) => task.status !== "Done").length), tone: solarTasks.length ? "warning" : "success" },
         { label: "Electrical Tasks", value: String(tasks.filter((task) => task.assignedTo === "Moss" && task.category === "Electrical").length), tone: "blue" },
       ],
+      projectSummary: projectSummaryByOwner.Moss,
       mainArea: "Solar / Electrical / System Performance",
       suggestedReport: "Solar Performance Summary",
     },
@@ -337,6 +381,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { label: "Fit-out Tasks", value: String(tasks.filter((task) => task.assignedTo === "Kla" && task.category === "Fit-out").length), tone: "cyan" },
         { label: "High Priority", value: String(tasks.filter((task) => task.assignedTo === "Kla" && ["High", "Critical"].includes(task.priority)).length), tone: "danger" },
       ],
+      projectSummary: projectSummaryByOwner.Kla,
       mainArea: "Engineering / Renovation / Fit-out",
       suggestedReport: "Engineering Review Summary",
     },
@@ -351,6 +396,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { label: "PM Overdue", value: String(pmOverdue), tone: pmOverdue ? "danger" : "success" },
         { label: "Site Tasks", value: String(tasks.filter((task) => task.assignedTo === "Foreman" && task.category === "Site").length), tone: "cyan" },
       ],
+      projectSummary: projectSummaryByOwner.Foreman,
       mainArea: "PM / Site / Maintenance",
       suggestedReport: "PM / Site Progress Summary",
     },
@@ -365,6 +411,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { label: "Pending Approvals", value: String(pendingApprovals.length), tone: pendingApprovals.length ? "warning" : "success" },
         { label: "Team Risks", value: String(overdueTasks.length), tone: overdueTasks.length ? "danger" : "success" },
       ],
+      projectSummary: projectSummaryByOwner.Tammasit,
       mainArea: "Overall Operation / Decision / Approval",
       suggestedReport: "Executive Decision Summary",
     },

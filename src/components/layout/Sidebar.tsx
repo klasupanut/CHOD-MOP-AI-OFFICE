@@ -21,11 +21,11 @@ import {
 } from "@/lib/notifications/workspace-notifications";
 import type { WorkspaceNotification } from "@/lib/notifications/types";
 
-const nav: Array<{ label: "Office" | ModulePermission; icon: LucideIcon; href?: string; pendingConnector?: boolean }> = [
+const nav: Array<{ label: "Office" | ModulePermission; icon: LucideIcon; href?: string; pendingConnector?: boolean; displayLabel?: string }> = [
   { label: "Office", icon: Building2, href: "/" },
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { label: "Tasks", icon: ClipboardList, href: "/tasks" },
-  { label: "Projects", icon: FolderKanban, href: "/projects" },
+  { label: "Projects", icon: FolderKanban, href: "/projects", displayLabel: "Projects & Budgets" },
   { label: "Calendar / Schedule", icon: CalendarDays, href: "/calendar-schedule" },
   { label: "PM Loop", icon: Gauge, pendingConnector: true },
   { label: "Renovation", icon: Wrench, pendingConnector: true },
@@ -109,10 +109,10 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
         <form action={logout}><button type="submit" className="logout-button" aria-label="Sign out"><LogOut size={18} /></button></form>
       </div>
       <nav>
-        {visibleNav.map(({ label, icon: Icon, href, pendingConnector }) => {
+        {visibleNav.map(({ label, icon: Icon, href, pendingConnector, displayLabel }) => {
           const active = href ? pathname === href : false;
           const badgeCount = href ? sidebarBadges[href] || 0 : 0;
-          const content = <><Icon size={21} strokeWidth={1.8} /><span>{label}</span>{isHydrated && badgeCount > 0 ? <em>{badgeCount}</em> : null}</>;
+          const content = <><Icon size={21} strokeWidth={1.8} /><span>{displayLabel || label}</span>{isHydrated && badgeCount > 0 ? <em>{badgeCount}</em> : null}</>;
           return href ? (
             <Link key={label} href={href} className={active ? "active" : ""} onClick={() => markMenuNotificationsRead(href)}>{content}</Link>
           ) : (

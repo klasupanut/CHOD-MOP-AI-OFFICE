@@ -1,8 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
-import { CalendarDays, ClipboardList, Plus, Trash2, Users, WalletCards } from "lucide-react";
+import type { CSSProperties, ReactNode } from "react";
+import {
+  Activity,
+  BarChart3,
+  CalendarDays,
+  ClipboardList,
+  PieChart,
+  Plus,
+  Trash2,
+  Users,
+  WalletCards,
+} from "lucide-react";
 import { chodProjectSites, projectPriorities, projectTypes, type ProjectRecord } from "@/data/projects";
 import { teamMembers, type TaskRecord } from "@/data/tasks";
 import type { ApprovedUser } from "@/lib/auth/types";
@@ -19,13 +29,119 @@ const statusTone: Record<string, string> = {
 
 const projectStatuses: ProjectRecord["status"][] = ["Planning", "In Progress", "Waiting Approval", "On Hold", "Completed", "Cancelled"];
 const projectTeamMembers = teamMembers.filter((person) => person !== "Foreman");
+const activeBudgetStatuses = new Set<ProjectRecord["status"]>(["Planning", "In Progress", "Waiting Approval", "On Hold", "Completed"]);
+const budgetStatusColors: Record<ProjectRecord["status"], string> = {
+  Planning: "#61b6a9",
+  "In Progress": "#2fae78",
+  "Waiting Approval": "#e2a63a",
+  "On Hold": "#4e78d8",
+  Completed: "#16a36f",
+  Cancelled: "#d64e5b",
+};
 
 function money(value: number) {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
 function moneyFull(value: number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
+  return `฿${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value)}`;
+}
+
+function percent(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function parseProjectDate(value?: string) {
+  if (!value) return null;
+  const parsed = new Date(value.slice(0, 10));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isProjectOverdue(project: ProjectRecord) {
+  const dueDate = parseProjectDate(project.dueDate);
+  if (!dueDate || ["Completed", "Cancelled"].includes(project.status)) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dueDate < today;
+}
+
+function buildStatusGradient(rows: Array<{ label: ProjectRecord["status"]; value: number; color: string }>) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  if (!total) return "conic-gradient(rgba(117,155,181,.18) 0 100%)";
+  let cursor = 0;
+  const segments = rows.map((row) => {
+    const start = cursor;
+    cursor += (row.value / total) * 100;
+    return `${row.color} ${start}% ${cursor}%`;
+  });
+  return `conic-gradient(${segments.join(", ")})`;
+}
+
+function projectTouchesPerson(project: ProjectRecord, person: string) {
+  const target = person.toLowerCase();
+  return project.projectManager.toLowerCase() === target || project.assignedTeam.some((member) => member.toLowerCase() === target);
+}
+
+function buildBudgetSummary(projects: ProjectRecord[], tasks: TaskRecord[]) {
+  const totalBudget = projects.reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
+  const activeBudget = projects
+    .filter((project) => activeBudgetStatuses.has(project.status))
+    .reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
+  const ongoingBudget = projects
+    .filter((project) => !["Completed", "Cancelled"].includes(project.status))
+    .reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
+  const completedProjects = projects.filter((project) => project.status === "Completed");
+  const liveProjects = projects.filter((project) => project.status !== "Cancelled");
+  const waitingProjects = projects.filter((project) => project.status === "Waiting Approval");
+  const riskProjects = projects.filter((project) => project.priority === "High" || project.priority === "Critical" || isProjectOverdue(project));
+  const averageProgress = projects.length
+    ? percent(projects.reduce((sum, project) => sum + getProjectProgress(project, tasks), 0) / projects.length)
+    : 0;
+  const doneRate = liveProjects.length ? percent((completedProjects.length / liveProjects.length) * 100) : 0;
+  const utilization = totalBudget ? percent((activeBudget / totalBudget) * 100) : 0;
+  const statusRows = projectStatuses.map((status) => ({
+    label: status,
+    value: projects.filter((project) => project.status === status).length,
+    color: budgetStatusColors[status],
+  })).filter((row) => row.value > 0);
+  const pipelineRows = ["Planning", "In Progress", "Waiting Approval", "Completed"].map((status) => {
+    const statusProjects = projects.filter((project) => project.status === status);
+    return {
+      label: status,
+      value: statusProjects.length,
+      percent: projects.length ? percent((statusProjects.length / projects.length) * 100) : 0,
+    };
+  });
+  const typeRows = projectTypes.map((type) => {
+    const typeProjects = projects.filter((project) => project.projectType === type);
+    const value = typeProjects.reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
+    return { label: type, value, count: typeProjects.length };
+  }).filter((row) => row.value > 0 || row.count > 0).sort((a, b) => b.value - a.value).slice(0, 5);
+  const maxTypeValue = Math.max(...typeRows.map((row) => row.value), 1);
+  const ownerRows = projectTeamMembers.map((person) => {
+    const ownedProjects = projects.filter((project) => projectTouchesPerson(project, person));
+    const active = ownedProjects.filter((project) => !["Completed", "Cancelled"].includes(project.status)).length;
+    const budget = ownedProjects.reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
+    const overdue = ownedProjects.filter(isProjectOverdue).length;
+    return { person, active, budget, overdue, total: ownedProjects.length };
+  });
+
+  return {
+    totalBudget,
+    activeBudget,
+    ongoingBudget,
+    utilization,
+    doneRate,
+    waitingCount: waitingProjects.length,
+    riskCount: riskProjects.length,
+    averageProgress,
+    statusRows,
+    pipelineRows,
+    typeRows,
+    maxTypeValue,
+    ownerRows,
+  };
 }
 
 function canManageProjects(user: ApprovedUser) {
@@ -76,12 +192,13 @@ export function ProjectWorkspace({
 
   const selectedProject = projects.find((project) => project.projectId === selectedId) ?? projects[0];
   const linkedTasks = tasks.filter((task) => task.projectId === selectedProject?.projectId);
+  const budgetSummary = useMemo(() => buildBudgetSummary(projects, tasks), [projects, tasks]);
   const summary = useMemo(() => {
     const active = projects.filter((project) => !["Completed", "Cancelled"].includes(project.status)).length;
     const waiting = projects.filter((project) => project.status === "Waiting Approval").length;
     const critical = projects.filter((project) => project.priority === "Critical" || project.priority === "High").length;
-    const fitout = projects.filter((project) => project.projectType === "Fit-out").length;
-    return { active, waiting, critical, fitout };
+    const budgeted = projects.filter((project) => Number(project.budget) > 0).length;
+    return { active, waiting, critical, budgeted };
   }, [projects]);
 
   async function persistProject(projectId: string, patch: Partial<ProjectRecord>) {
@@ -181,22 +298,24 @@ export function ProjectWorkspace({
   };
 
   return (
-    <div className="workspace-page">
-      <div className="workspace-hero">
+    <div className="workspace-page projects-budget-workspace">
+      <div className="workspace-hero projects-budget-hero">
         <div>
-          <span>PROJECT COMMAND</span>
-          <h1>Projects Workspace</h1>
+          <span>PROJECTS & BUDGET UTILIZE</span>
+          <h1>Projects & Budgets</h1>
         </div>
         <button className="workspace-primary" onClick={() => setShowCreate(true)} type="button"><Plus size={20} /> Create New Project</button>
       </div>
 
       {saveMessage ? <div className="admin-notice">{saveMessage}</div> : null}
 
-      <section className="workspace-summary">
-        <article><strong>{summary.active}</strong><span>Active Projects</span></article>
-        <article><strong>{summary.waiting}</strong><span>Waiting Approval</span></article>
-        <article><strong>{summary.critical}</strong><span>High / Critical</span></article>
-        <article><strong>{summary.fitout}</strong><span>Fit-out Jobs</span></article>
+      <section className="budget-utilize-kpi-row">
+        <article><span>Total Project Value</span><strong>{moneyFull(budgetSummary.totalBudget)}</strong><small>{projects.length} project rows</small></article>
+        <article><span>Budget Utilization</span><strong>{budgetSummary.utilization}%</strong><small>{moneyFull(budgetSummary.activeBudget)} active / approved value</small></article>
+        <article><span>Ongoing Budget</span><strong>{moneyFull(budgetSummary.ongoingBudget)}</strong><small>{summary.active} active projects</small></article>
+        <article><span>Waiting Approval</span><strong>{summary.waiting}</strong><small>{moneyFull(projects.filter((project) => project.status === "Waiting Approval").reduce((sum, project) => sum + (Number(project.budget) || 0), 0))}</small></article>
+        <article><span>Risk Projects</span><strong>{summary.critical}</strong><small>High / Critical priority</small></article>
+        <article><span>Budgeted Projects</span><strong>{summary.budgeted}</strong><small>Rows with project value</small></article>
       </section>
 
       {showCreate ? (
@@ -232,11 +351,95 @@ export function ProjectWorkspace({
         </section>
       ) : null}
 
+      <section className="budget-utilize-overview">
+        <div className="budget-utilize-band">
+          <div>
+            <span>LIVE PROJECT VALUE OVERVIEW</span>
+            <h2>Budget Utilize Summary</h2>
+            <div className="budget-utilize-band-metrics">
+              <p><small>Total</small><strong>{money(budgetSummary.totalBudget)}</strong></p>
+              <p><small>Projects</small><strong>{projects.length}</strong></p>
+              <p><small>Ongoing</small><strong>{money(budgetSummary.ongoingBudget)}</strong></p>
+            </div>
+          </div>
+          <div className="budget-utilize-rate">
+            <span>Done rate</span>
+            <strong>{budgetSummary.doneRate}%</strong>
+            <small>{budgetSummary.averageProgress}% avg work progress</small>
+          </div>
+          <div className="budget-utilize-progress">
+            <span>Utilization</span>
+            <strong>{budgetSummary.utilization}%</strong>
+            <i><b style={{ width: `${budgetSummary.utilization}%` }} /></i>
+          </div>
+        </div>
+
+        <div className="budget-utilize-analysis-grid">
+          <article className="budget-utilize-card status-share">
+            <header><PieChart size={20} /><div><span>Status share</span><strong>Project status mix</strong></div></header>
+            <div className="budget-status-body">
+              <div
+                className="budget-status-donut"
+                style={{ "--budget-status-gradient": buildStatusGradient(budgetSummary.statusRows) } as CSSProperties}
+              >
+                <div><strong>{projects.length}</strong><span>projects</span></div>
+              </div>
+              <ul>
+                {budgetSummary.statusRows.map((row) => (
+                  <li key={row.label}><i style={{ background: row.color }} /><span>{row.label}</span><strong>{row.value}</strong></li>
+                ))}
+                {!budgetSummary.statusRows.length ? <li><span>No live projects</span><strong>0</strong></li> : null}
+              </ul>
+            </div>
+          </article>
+
+          <article className="budget-utilize-card progress-pipeline">
+            <header><Activity size={20} /><div><span>Progress pipeline</span><strong>Planning to completed</strong></div></header>
+            <div className="budget-pipeline-bars">
+              {budgetSummary.pipelineRows.map((row) => (
+                <p key={row.label}>
+                  <span>{row.label}</span>
+                  <i><b style={{ height: `${Math.max(row.percent, row.value ? 10 : 3)}%` }} /></i>
+                  <strong>{row.percent}%</strong>
+                </p>
+              ))}
+            </div>
+          </article>
+
+          <article className="budget-utilize-card budget-code-chart">
+            <header><BarChart3 size={20} /><div><span>Budget type chart</span><strong>Project value by type</strong></div></header>
+            <div className="budget-type-bars">
+              {budgetSummary.typeRows.map((row) => (
+                <p key={row.label}>
+                  <span>{row.label}</span>
+                  <i><b style={{ width: `${percent((row.value / budgetSummary.maxTypeValue) * 100)}%` }} /></i>
+                  <strong>{money(row.value)}</strong>
+                </p>
+              ))}
+              {!budgetSummary.typeRows.length ? <p><span>No budget data</span><i><b style={{ width: "0%" }} /></i><strong>0</strong></p> : null}
+            </div>
+          </article>
+
+          <article className="budget-utilize-card owner-budget-summary">
+            <header><Users size={20} /><div><span>Character project summary</span><strong>Assigned value by person</strong></div></header>
+            <div className="owner-budget-grid">
+              {budgetSummary.ownerRows.map((row) => (
+                <p key={row.person}>
+                  <span>{row.person}</span>
+                  <strong>{money(row.budget)}</strong>
+                  <small>{row.active} active / {row.total} total{row.overdue ? ` / ${row.overdue} overdue` : ""}</small>
+                </p>
+              ))}
+            </div>
+          </article>
+        </div>
+      </section>
+
       <div className="workspace-grid">
         <section className="workspace-main-card">
           <div className="workspace-section-title">
-            <div><span>PROJECT CARDS</span><h2>Main work list</h2></div>
-            <small>Main bar shows time elapsed from start to finish date. Work progress is shown separately.</small>
+            <div><span>PROJECT REGISTER</span><h2>Live projects & budget list</h2></div>
+            <small>Main bar shows time elapsed from start to finish date. Work progress and budget value are shown separately.</small>
           </div>
           <div className="project-card-grid">
             {projects.map((project) => {
@@ -265,7 +468,7 @@ export function ProjectWorkspace({
                     <td>{project.projectManager}</td>
                     <td>{project.startDate}</td>
                     <td>{project.dueDate}</td>
-                    <td>฿{money(project.budget)}</td>
+                    <td>{moneyFull(project.budget)}</td>
                     <td>{tasks.filter((task) => task.projectId === project.projectId).length}</td>
                   </tr>
                 ))}
@@ -297,7 +500,7 @@ export function ProjectWorkspace({
                     <div className="detail-kpi"><span>Priority</span><strong>{selectedProject.priority}</strong></div>
                     <div className="detail-kpi"><span>Start date</span><strong>{selectedProject.startDate}</strong></div>
                     <div className="detail-kpi"><span>Due date</span><strong>{selectedProject.dueDate}</strong></div>
-                    <div className="detail-kpi"><span>Project value</span><strong>฿{moneyFull(selectedProject.budget)}</strong></div>
+                    <div className="detail-kpi"><span>Project value</span><strong>{moneyFull(selectedProject.budget)}</strong></div>
                   </div>
                   {allowProjectAdmin ? (
                     <ProjectAdminEditor project={selectedProject} onPatch={patchSelectedProject} onTogglePerson={toggleAssignedPerson} />
@@ -376,7 +579,7 @@ function ProjectTimeline({ project, tasks }: { project: ProjectRecord; tasks: Ta
         <span className="timeline-dot active" />
         <small>NOW</small>
         <strong>{timeProgress}% time elapsed</strong>
-        <p>{workProgress}% work progress / {doneCount}/{tasks.length || 0} linked tasks done / value ฿{moneyFull(project.budget)}</p>
+        <p>{workProgress}% work progress / {doneCount}/{tasks.length || 0} linked tasks done / value {moneyFull(project.budget)}</p>
       </article>
       <article>
         <span className="timeline-dot" />
