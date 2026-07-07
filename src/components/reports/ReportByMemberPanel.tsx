@@ -26,23 +26,32 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
       const portfolio = data.reports.projectPortfolio;
       return [
         { id: "all-1", title: "All Team Weekly Report", metric: `${data.taskOverview.totalTasks} tasks`, description: "Combined live operation review for all team members." },
-        { id: "all-2", title: "Projects Database Portfolio", metric: `${portfolio.totalProjects} projects`, description: `${portfolio.activeProjects} active / ${portfolio.completedProjects} completed / ${portfolio.overdueProjects} overdue.` },
-        { id: "all-3", title: "Portfolio Budget", metric: moneyCompact(portfolio.totalBudget), description: "Unique project budget from the Projects database, not duplicated by owner." },
-        { id: "all-4", title: "Team Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest owner: ${portfolio.busiestMember} / score ${portfolio.busiestScore}.` },
-        { id: "all-5", title: "Cross-Team Risk Log", metric: `${data.taskOverview.overdue} overdue`, description: "Live overdue task and approval risk summary." },
-        { id: "all-6", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
+        { id: "all-total-projects", title: "Total Projects", metric: `${portfolio.totalProjects} projects`, description: `Portfolio source: ${portfolio.sourceName}.` },
+        { id: "all-active-projects", title: "Active Projects", metric: `${portfolio.activeProjects} active`, description: `${moneyCompact(portfolio.activeBudget)} active work value needs weekly tracking.` },
+        { id: "all-work-value", title: "Project Work Value", metric: moneyCompact(portfolio.totalBudget), description: `${moneyCompact(portfolio.completedBudget)} completed value is already tracked.` },
+        { id: "all-watch", title: "Watch Items", metric: `${portfolio.overdueProjects} watch`, description: `${moneyCompact(portfolio.watchBudget)} value requires follow-up before the next review.` },
+        { id: "all-done-rate", title: "Done Rate", metric: `${portfolio.doneRate}%`, description: `${portfolio.completedProjects}/${portfolio.totalProjects} projects completed.` },
+        { id: "all-load", title: "Team Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest owner: ${portfolio.busiestMember} / score ${portfolio.busiestScore}.` },
+        { id: "all-approval", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
       ];
     }
 
     if (!selectedMember) return [];
+    const topProject = selectedMember.projectSummary.topProjects[0] || "No top project found";
     return [
       { id: `${selected}-1`, title: `${selectedMember.name} Task Summary`, metric: `${selectedMember.activeTasks} active`, description: "Live active tasks assigned to this team member." },
       { id: `${selected}-2`, title: "Completed This Week", metric: `${selectedMember.completedThisWeek} done`, description: "Live task completions from the Tasks sheet." },
       {
         id: `${selected}-project-budget`,
         title: "Projects & Budgets Responsibility",
-        metric: `${selectedMember.projectSummary.activeProjects} in progress / ${selectedMember.projectSummary.totalProjects} total`,
-        description: `Responsible budget: ${moneyCompact(selectedMember.projectSummary.totalBudget)} from the Projects database.`,
+        metric: `${selectedMember.projectSummary.activeProjects} active / ${selectedMember.projectSummary.totalProjects} total`,
+        description: `Responsible work value: ${moneyCompact(selectedMember.projectSummary.totalBudget)} from Projects & Budgets live data.`,
+      },
+      {
+        id: `${selected}-project-watch`,
+        title: "Watch Items",
+        metric: `${selectedMember.projectSummary.overdueProjects} watch`,
+        description: "Owner-level rows that still need follow-up or status confirmation.",
       },
       {
         id: `${selected}-workload`,
@@ -59,10 +68,10 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
           : "No live project assignment found for this member.",
       },
       {
-        id: `${selected}-project-risk`,
-        title: "Project Risk Watch",
-        metric: `${selectedMember.projectSummary.overdueProjects} overdue`,
-        description: "Calculated from project due dates and assigned team / project lead mapping.",
+        id: `${selected}-top-project`,
+        title: "Top Project Focus",
+        metric: topProject,
+        description: "Highest-value project currently tied to this owner in Projects & Budgets.",
       },
       ...selectedMember.kpis.map((kpi, index) => ({
         id: `${selected}-kpi-${index}`,
@@ -78,7 +87,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     <section className="workspace-main-card reports-by-member">
       <div className="workspace-section-title">
         <div><span>REPORT BY TEAM MEMBER</span><h2>Generate by responsibility</h2></div>
-        <small>Select a team member to see report modules calculated from live data.</small>
+        <small>Select a team member to see report modules calculated from the same score card data.</small>
       </div>
       <div className="reports-member-tabs">
         {tabs.map((tab) => (

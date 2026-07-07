@@ -3,7 +3,7 @@ import "server-only";
 import type { ProjectRecord } from "@/data/projects";
 import type { TaskRecord } from "@/data/tasks";
 import { listApprovalRows } from "@/lib/approvals/approval-store";
-import { getBudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
+import { getBudgetUtilizeData, type BudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
 import { listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
 import { getFitoutWorkspaceData } from "@/lib/fitout/fitout-google-sheet";
 
@@ -79,9 +79,14 @@ export type LiveDashboardData = {
       completedProjects: number;
       overdueProjects: number;
       totalBudget: number;
+      activeBudget: number;
+      completedBudget: number;
+      watchBudget: number;
+      doneRate: number;
       workloadBalance: number;
       busiestMember: string;
       busiestScore: number;
+      sourceName: string;
     };
     overviewKpis: Array<{ label: string; value: string; detail: string; tone: "cyan" | "success" | "warning" | "danger" | "blue" }>;
     teamMembers: Array<{
@@ -303,6 +308,29 @@ function summarizeProjectsForOwner(projects: ProjectRecord[], owner: string) {
   };
 }
 
+function budgetStatusCount(budgetUtilizeData: BudgetUtilizeData, key: "done" | "active" | "stopped" | "blank") {
+  return budgetUtilizeData.summary.statusRows.find((row) => row.key === key)?.value || 0;
+}
+
+function budgetStatusBudget(budgetUtilizeData: BudgetUtilizeData, key: "done" | "active" | "stopped" | "blank") {
+  return budgetUtilizeData.summary.statusRows.find((row) => row.key === key)?.budget || 0;
+}
+
+function summarizeBudgetUtilizeForOwner(budgetUtilizeData: BudgetUtilizeData, projects: ProjectRecord[], owner: string) {
+  if (budgetUtilizeData.source.status !== "live") return summarizeProjectsForOwner(projects, owner);
+
+  const row = budgetUtilizeData.summary.ownerRows.find((item) => item.person.toLowerCase() === owner.toLowerCase());
+  if (!row) return summarizeProjectsForOwner(projects, owner);
+
+  return {
+    activeProjects: row.active,
+    totalProjects: row.total,
+    totalBudget: row.budget,
+    overdueProjects: row.watch,
+    topProjects: row.topProjects,
+  };
+}
+
 function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof summarizeProjectsForOwner>, owner: string) {
   const ownerTasks = tasks.filter((task) => task.assignedTo.toLowerCase() === owner.toLowerCase());
   const openTasks = ownerTasks.filter((task) => task.status !== "Done");
@@ -381,11 +409,11 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   const annualTotalRevenue = fitoutAnnual.fitoutRevenue + fitoutAnnual.restorationRevenue;
   const annualTotalProfit = fitoutAnnual.fitoutProfit + fitoutAnnual.restorationProfit;
   const projectSummaryByOwner = {
-    Film: summarizeProjectsForOwner(projects, "Film"),
-    Moss: summarizeProjectsForOwner(projects, "Moss"),
-    Kla: summarizeProjectsForOwner(projects, "Kla"),
-    Foreman: summarizeProjectsForOwner(projects, "Foreman"),
-    Tammasit: summarizeProjectsForOwner(projects, "Tammasit"),
+    Film: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Film"),
+    Moss: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Moss"),
+    Kla: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Kla"),
+    Foreman: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Foreman"),
+    Tammasit: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Tammasit"),
   };
 
   const baseReportTeamMembers: Array<Omit<LiveDashboardData["reports"]["teamMembers"][number], "workload">> = [
@@ -486,12 +514,33 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   const busiestMember = reportTeamMembers.slice().sort((a, b) => b.workload.score - a.workload.score)[0];
   const overdueProjectCount = projects.filter(isProjectOverdue).length;
   const completedProjectCount = projects.filter((project) => project.status === "Completed").length;
+  const budgetProjectPortfolio = budgetUtilizeIsLive
+    ? {
+        totalProjects: budgetUtilizeData.summary.totalTasks,
+        activeProjects: budgetStatusCount(budgetUtilizeData, "active"),
+        completedProjects: budgetStatusCount(budgetUtilizeData, "done"),
+        overdueProjects: budgetUtilizeData.summary.watchItems,
+        totalBudget: budgetUtilizeData.summary.totalBudget,
+        activeBudget: budgetUtilizeData.summary.activeBudget || budgetStatusBudget(budgetUtilizeData, "active"),
+        completedBudget: budgetStatusBudget(budgetUtilizeData, "done"),
+        watchBudget: budgetUtilizeData.summary.watchBudget,
+        doneRate: budgetUtilizeData.summary.doneRate,
+        sourceName: "Projects & Budgets live sheet",
+      }
+    : {
+        totalProjects: projects.length,
+        activeProjects: activeProjects.length,
+        completedProjects: completedProjectCount,
+        overdueProjects: overdueProjectCount,
+        totalBudget: sumProjectBudget(projects),
+        activeBudget: sumProjectBudget(activeProjects),
+        completedBudget: sumProjectBudget(projects.filter((project) => project.status === "Completed")),
+        watchBudget: sumProjectBudget(projects.filter(isProjectOverdue)),
+        doneRate: projects.length ? Math.round((completedProjectCount / projects.length) * 100) : 0,
+        sourceName: "Task / Project Projects tab",
+      };
   const projectPortfolio = {
-    totalProjects: projects.length,
-    activeProjects: activeProjects.length,
-    completedProjects: completedProjectCount,
-    overdueProjects: overdueProjectCount,
-    totalBudget: sumProjectBudget(projects),
+    ...budgetProjectPortfolio,
     workloadBalance: balanceScore,
     busiestMember: busiestMember?.name || "-",
     busiestScore: busiestMember?.workload.score || 0,
@@ -595,26 +644,28 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     reports: {
       projectPortfolio,
       overviewKpis: [
-        { label: "Project Database", value: String(projectPortfolio.totalProjects), detail: "Live Projects sheet rows", tone: "cyan" },
-        { label: "Active Projects", value: String(projectPortfolio.activeProjects), detail: "Not completed / cancelled", tone: projectPortfolio.activeProjects ? "blue" : "success" },
-        { label: "Project Portfolio Value", value: formatBaht(projectPortfolio.totalBudget), detail: "Budget from Projects database", tone: "success" },
-        { label: "Overdue Projects", value: String(projectPortfolio.overdueProjects), detail: "Due date passed and still active", tone: projectPortfolio.overdueProjects ? "danger" : "success" },
-        { label: "Project Completion", value: `${projectPortfolio.totalProjects ? Math.round((projectPortfolio.completedProjects / projectPortfolio.totalProjects) * 100) : 0}%`, detail: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} projects completed`, tone: "blue" },
-        { label: "Team Workload Balance", value: `${projectPortfolio.workloadBalance}%`, detail: `Project + task load. Busiest: ${projectPortfolio.busiestMember}`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "cyan" },
+        { label: "Total Projects", value: String(projectPortfolio.totalProjects), detail: projectPortfolio.sourceName, tone: "cyan" },
+        { label: "Active Projects", value: String(projectPortfolio.activeProjects), detail: `${formatBaht(projectPortfolio.activeBudget)} active work value`, tone: projectPortfolio.activeProjects ? "blue" : "success" },
+        { label: "Project Work Value", value: formatBaht(projectPortfolio.totalBudget), detail: `${formatBaht(projectPortfolio.completedBudget)} completed value tracked`, tone: "success" },
+        { label: budgetUtilizeIsLive ? "Watch Items" : "Overdue Projects", value: String(projectPortfolio.overdueProjects), detail: `${formatBaht(projectPortfolio.watchBudget)} value needs follow-up`, tone: projectPortfolio.overdueProjects ? "warning" : "success" },
+        { label: budgetUtilizeIsLive ? "Done Rate" : "Project Completion", value: `${projectPortfolio.doneRate}%`, detail: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} projects completed`, tone: "blue" },
+        { label: "Team Workload Balance", value: `${projectPortfolio.workloadBalance}%`, detail: `Busiest: ${projectPortfolio.busiestMember} / score ${projectPortfolio.busiestScore}`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "cyan" },
       ],
       teamMembers: reportTeamMembers,
       recommended: [
-        { id: "film-quotation", owner: "Film", title: "Quotation Approval Summary", reason: `${pendingApprovals.length} live quotations are waiting for approval.`, tone: pendingApprovals.length ? "warning" : "success" },
-        { id: "moss-solar", owner: "Moss", title: "Solar / Electrical Task Summary", reason: `${solarTasks.length} live solar/electrical tasks found.`, tone: solarTasks.length ? "blue" : "success" },
-        { id: "kla-fitout", owner: "Kla", title: "Fit-out Engineering Summary", reason: `${tasks.filter((task) => task.category === "Fit-out").length} live Fit-out tasks found.`, tone: "cyan" },
-        { id: "foreman-pm", owner: "Foreman", title: "PM Overdue Report", reason: `${pmOverdue} live PM tasks are overdue.`, tone: pmOverdue ? "danger" : "success" },
-        { id: "tammasit-weekly", owner: "Tammasit", title: "Executive Weekly Summary", reason: `${activeProjects.length} active projects and ${overdueTasks.length} overdue tasks from live data.`, tone: "cyan" },
+        { id: "portfolio-scope", owner: "Tammasit", title: "Project Portfolio Review", reason: `${projectPortfolio.totalProjects} projects / ${formatBaht(projectPortfolio.totalBudget)} total work value from ${projectPortfolio.sourceName}.`, tone: "cyan" },
+        { id: "active-value", owner: projectPortfolio.busiestMember, title: "Active Project Action List", reason: `${projectPortfolio.activeProjects} active projects worth ${formatBaht(projectPortfolio.activeBudget)} need weekly status tracking.`, tone: projectPortfolio.activeProjects ? "blue" : "success" },
+        { id: "watch-items", owner: "Kla + Film", title: "Watch Items Follow-up", reason: `${projectPortfolio.overdueProjects} watch items worth ${formatBaht(projectPortfolio.watchBudget)} should be checked before the next report.`, tone: projectPortfolio.overdueProjects ? "warning" : "success" },
+        { id: "done-rate", owner: "Tammasit", title: "Done Rate & Completion Review", reason: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed (${projectPortfolio.doneRate}%) with ${formatBaht(projectPortfolio.completedBudget)} completed value.`, tone: "cyan" },
+        { id: "workload-balance", owner: "Tammasit", title: "Team Workload Balance", reason: `${projectPortfolio.workloadBalance}% balance score. Busiest owner is ${projectPortfolio.busiestMember} with score ${projectPortfolio.busiestScore}.`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "approval-queue", owner: "Tammasit", title: "Quotation Approval Summary", reason: `${pendingApprovals.length} live quotation approvals are waiting for internal decision.`, tone: pendingApprovals.length ? "warning" : "success" },
       ],
       insights: [
-        { id: "overdue", title: "Overdue Focus", summary: `${overdueTasks.length} live tasks are overdue.`, action: "View overdue focus", tone: overdueTasks.length ? "danger" : "success" },
-        { id: "approval", title: "Approval Bottleneck", summary: `${pendingApprovals.length} quotations are waiting for approval.`, action: "View approval queue", tone: pendingApprovals.length ? "warning" : "success" },
-        { id: "on-track", title: "On Track", summary: `${activeProjects.length} active projects are currently tracked.`, action: "View project status", tone: "cyan" },
-        { id: "load", title: "Team Load Balance", summary: `${projectPortfolio.workloadBalance}% balance from live project responsibility and open tasks.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "scope", title: "Project Scope", summary: `${projectPortfolio.totalProjects} projects are visible in Reports from ${projectPortfolio.sourceName}.`, action: "Review portfolio scope", tone: "cyan" },
+        { id: "value", title: "Work Value Exposure", summary: `${formatBaht(projectPortfolio.totalBudget)} total value, with ${formatBaht(projectPortfolio.activeBudget)} still active.`, action: "Review work value", tone: "success" },
+        { id: "watch", title: "Watch Item Pressure", summary: `${projectPortfolio.overdueProjects} watch items represent ${formatBaht(projectPortfolio.watchBudget)} that needs follow-up.`, action: "View watch items", tone: projectPortfolio.overdueProjects ? "warning" : "success" },
+        { id: "completion", title: "Completion Signal", summary: `${projectPortfolio.doneRate}% done rate from ${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed project rows.`, action: "Review completion", tone: "blue" },
+        { id: "load", title: "Workload Hotspot", summary: `${projectPortfolio.busiestMember} is the busiest owner; team workload balance is ${projectPortfolio.workloadBalance}%.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
       ],
     },
   };
