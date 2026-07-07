@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { ProjectWorkspace } from "@/components/workspace/ProjectWorkspace";
+import { getBudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
 import { listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
 import { requireModule } from "@/lib/auth/session";
 
@@ -17,6 +18,7 @@ export default async function ProjectsPage() {
       message: error instanceof Error ? error.message : "Task / Project Google Sheet is unavailable.",
     };
   }
+  const budgetUtilizeData = await getBudgetUtilizeData();
   return (
     <main className="hq-shell module-shell">
       <Sidebar user={user} />
@@ -26,6 +28,7 @@ export default async function ProjectsPage() {
           currentUser={user}
           initialProjects={taskProjectData.projects}
           initialTasks={taskProjectData.tasks}
+          budgetUtilizeData={budgetUtilizeData}
           dataMessage={taskProjectData.message}
         />
       </section>

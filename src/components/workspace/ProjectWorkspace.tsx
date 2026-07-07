@@ -16,6 +16,7 @@ import {
 import { chodProjectSites, projectPriorities, projectTypes, type ProjectRecord } from "@/data/projects";
 import { teamMembers, type TaskRecord } from "@/data/tasks";
 import type { ApprovedUser } from "@/lib/auth/types";
+import type { BudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
 import { calculateProjectProgressFromTasks, calculateProjectTimeProgress, getProjectProgress } from "@/lib/projects/project-utils";
 
 const statusTone: Record<string, string> = {
@@ -29,15 +30,6 @@ const statusTone: Record<string, string> = {
 
 const projectStatuses: ProjectRecord["status"][] = ["Planning", "In Progress", "Waiting Approval", "On Hold", "Completed", "Cancelled"];
 const projectTeamMembers = teamMembers.filter((person) => person !== "Foreman");
-const activeBudgetStatuses = new Set<ProjectRecord["status"]>(["Planning", "In Progress", "Waiting Approval", "On Hold", "Completed"]);
-const budgetStatusColors: Record<ProjectRecord["status"], string> = {
-  Planning: "#61b6a9",
-  "In Progress": "#2fae78",
-  "Waiting Approval": "#e2a63a",
-  "On Hold": "#4e78d8",
-  Completed: "#16a36f",
-  Cancelled: "#d64e5b",
-};
 
 function money(value: number) {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
@@ -52,21 +44,7 @@ function percent(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function parseProjectDate(value?: string) {
-  if (!value) return null;
-  const parsed = new Date(value.slice(0, 10));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isProjectOverdue(project: ProjectRecord) {
-  const dueDate = parseProjectDate(project.dueDate);
-  if (!dueDate || ["Completed", "Cancelled"].includes(project.status)) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return dueDate < today;
-}
-
-function buildStatusGradient(rows: Array<{ label: ProjectRecord["status"]; value: number; color: string }>) {
+function buildStatusGradient(rows: Array<{ label: string; value: number; color: string }>) {
   const total = rows.reduce((sum, row) => sum + row.value, 0);
   if (!total) return "conic-gradient(rgba(117,155,181,.18) 0 100%)";
   let cursor = 0;
@@ -76,72 +54,6 @@ function buildStatusGradient(rows: Array<{ label: ProjectRecord["status"]; value
     return `${row.color} ${start}% ${cursor}%`;
   });
   return `conic-gradient(${segments.join(", ")})`;
-}
-
-function projectTouchesPerson(project: ProjectRecord, person: string) {
-  const target = person.toLowerCase();
-  return project.projectManager.toLowerCase() === target || project.assignedTeam.some((member) => member.toLowerCase() === target);
-}
-
-function buildBudgetSummary(projects: ProjectRecord[], tasks: TaskRecord[]) {
-  const totalBudget = projects.reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
-  const activeBudget = projects
-    .filter((project) => activeBudgetStatuses.has(project.status))
-    .reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
-  const ongoingBudget = projects
-    .filter((project) => !["Completed", "Cancelled"].includes(project.status))
-    .reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
-  const completedProjects = projects.filter((project) => project.status === "Completed");
-  const liveProjects = projects.filter((project) => project.status !== "Cancelled");
-  const waitingProjects = projects.filter((project) => project.status === "Waiting Approval");
-  const riskProjects = projects.filter((project) => project.priority === "High" || project.priority === "Critical" || isProjectOverdue(project));
-  const averageProgress = projects.length
-    ? percent(projects.reduce((sum, project) => sum + getProjectProgress(project, tasks), 0) / projects.length)
-    : 0;
-  const doneRate = liveProjects.length ? percent((completedProjects.length / liveProjects.length) * 100) : 0;
-  const utilization = totalBudget ? percent((activeBudget / totalBudget) * 100) : 0;
-  const statusRows = projectStatuses.map((status) => ({
-    label: status,
-    value: projects.filter((project) => project.status === status).length,
-    color: budgetStatusColors[status],
-  })).filter((row) => row.value > 0);
-  const pipelineRows = ["Planning", "In Progress", "Waiting Approval", "Completed"].map((status) => {
-    const statusProjects = projects.filter((project) => project.status === status);
-    return {
-      label: status,
-      value: statusProjects.length,
-      percent: projects.length ? percent((statusProjects.length / projects.length) * 100) : 0,
-    };
-  });
-  const typeRows = projectTypes.map((type) => {
-    const typeProjects = projects.filter((project) => project.projectType === type);
-    const value = typeProjects.reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
-    return { label: type, value, count: typeProjects.length };
-  }).filter((row) => row.value > 0 || row.count > 0).sort((a, b) => b.value - a.value).slice(0, 5);
-  const maxTypeValue = Math.max(...typeRows.map((row) => row.value), 1);
-  const ownerRows = projectTeamMembers.map((person) => {
-    const ownedProjects = projects.filter((project) => projectTouchesPerson(project, person));
-    const active = ownedProjects.filter((project) => !["Completed", "Cancelled"].includes(project.status)).length;
-    const budget = ownedProjects.reduce((sum, project) => sum + (Number(project.budget) || 0), 0);
-    const overdue = ownedProjects.filter(isProjectOverdue).length;
-    return { person, active, budget, overdue, total: ownedProjects.length };
-  });
-
-  return {
-    totalBudget,
-    activeBudget,
-    ongoingBudget,
-    utilization,
-    doneRate,
-    waitingCount: waitingProjects.length,
-    riskCount: riskProjects.length,
-    averageProgress,
-    statusRows,
-    pipelineRows,
-    typeRows,
-    maxTypeValue,
-    ownerRows,
-  };
 }
 
 function canManageProjects(user: ApprovedUser) {
@@ -174,11 +86,13 @@ export function ProjectWorkspace({
   currentUser,
   initialProjects,
   initialTasks,
+  budgetUtilizeData,
   dataMessage,
 }: {
   currentUser: ApprovedUser;
   initialProjects: ProjectRecord[];
   initialTasks: TaskRecord[];
+  budgetUtilizeData: BudgetUtilizeData;
   dataMessage?: string;
 }) {
   const [projects, setProjects] = useState<ProjectRecord[]>(initialProjects);
@@ -192,8 +106,12 @@ export function ProjectWorkspace({
 
   const selectedProject = projects.find((project) => project.projectId === selectedId) ?? projects[0];
   const linkedTasks = tasks.filter((task) => task.projectId === selectedProject?.projectId);
-  const budgetSummary = useMemo(() => buildBudgetSummary(projects, tasks), [projects, tasks]);
-  const summary = useMemo(() => {
+  const budgetSummary = budgetUtilizeData.summary;
+  const liveStatusRows = budgetSummary.statusRows.filter((row) => row.value > 0);
+  const budgetUtilizationRate = budgetSummary.totalBudget ? percent((budgetSummary.realizedBudget / budgetSummary.totalBudget) * 100) : 0;
+  const maxCodeValue = Math.max(...budgetSummary.codeRows.map((row) => row.value), 1);
+  const maxSiteValue = Math.max(...budgetSummary.siteRows.map((row) => row.value), 1);
+  const projectSheetSummary = useMemo(() => {
     const active = projects.filter((project) => !["Completed", "Cancelled"].includes(project.status)).length;
     const waiting = projects.filter((project) => project.status === "Waiting Approval").length;
     const critical = projects.filter((project) => project.priority === "Critical" || project.priority === "High").length;
@@ -308,14 +226,17 @@ export function ProjectWorkspace({
       </div>
 
       {saveMessage ? <div className="admin-notice">{saveMessage}</div> : null}
+      {budgetUtilizeData.source.status !== "live" ? (
+        <div className="admin-notice danger">Budget Utilize live Google Sheet failed: {budgetUtilizeData.source.message}</div>
+      ) : null}
 
       <section className="budget-utilize-kpi-row">
-        <article><span>Total Project Value</span><strong>{moneyFull(budgetSummary.totalBudget)}</strong><small>{projects.length} project rows</small></article>
-        <article><span>Budget Utilization</span><strong>{budgetSummary.utilization}%</strong><small>{moneyFull(budgetSummary.activeBudget)} active / approved value</small></article>
-        <article><span>Ongoing Budget</span><strong>{moneyFull(budgetSummary.ongoingBudget)}</strong><small>{summary.active} active projects</small></article>
-        <article><span>Waiting Approval</span><strong>{summary.waiting}</strong><small>{moneyFull(projects.filter((project) => project.status === "Waiting Approval").reduce((sum, project) => sum + (Number(project.budget) || 0), 0))}</small></article>
-        <article><span>Risk Projects</span><strong>{summary.critical}</strong><small>High / Critical priority</small></article>
-        <article><span>Budgeted Projects</span><strong>{summary.budgeted}</strong><small>Rows with project value</small></article>
+        <article><span>Total Warehouse Budget</span><strong>{moneyFull(budgetSummary.totalBudget)}</strong><small>Budget Utilize live sheet</small></article>
+        <article><span>Actual Budget Used</span><strong>{moneyFull(budgetSummary.realizedBudget)}</strong><small>{budgetSummary.realizedTasks} realized rows</small></article>
+        <article><span>Budget Remaining</span><strong>{moneyFull(budgetSummary.remainingBudget)}</strong><small>Warehouse remaining sheet</small></article>
+        <article><span>Done Rate</span><strong>{budgetSummary.doneRate}%</strong><small>{budgetSummary.totalTasks} live work rows</small></article>
+        <article><span>Watch Items</span><strong>{budgetSummary.watchItems}</strong><small>{moneyFull(budgetSummary.watchBudget)} active value</small></article>
+        <article><span>Avg Progress</span><strong>{budgetSummary.averageProgress}%</strong><small>BID / PR / PO / CON</small></article>
       </section>
 
       {showCreate ? (
@@ -355,11 +276,11 @@ export function ProjectWorkspace({
         <div className="budget-utilize-band">
           <div>
             <span>LIVE PROJECT VALUE OVERVIEW</span>
-            <h2>Budget Utilize Summary</h2>
+            <h2>Budget Utilize Live Summary</h2>
             <div className="budget-utilize-band-metrics">
               <p><small>Total</small><strong>{money(budgetSummary.totalBudget)}</strong></p>
-              <p><small>Projects</small><strong>{projects.length}</strong></p>
-              <p><small>Ongoing</small><strong>{money(budgetSummary.ongoingBudget)}</strong></p>
+              <p><small>Rows</small><strong>{budgetSummary.totalTasks}</strong></p>
+              <p><small>Used</small><strong>{money(budgetSummary.realizedBudget)}</strong></p>
             </div>
           </div>
           <div className="budget-utilize-rate">
@@ -369,8 +290,8 @@ export function ProjectWorkspace({
           </div>
           <div className="budget-utilize-progress">
             <span>Utilization</span>
-            <strong>{budgetSummary.utilization}%</strong>
-            <i><b style={{ width: `${budgetSummary.utilization}%` }} /></i>
+            <strong>{budgetUtilizationRate}%</strong>
+            <i><b style={{ width: `${budgetUtilizationRate}%` }} /></i>
           </div>
         </div>
 
@@ -380,43 +301,43 @@ export function ProjectWorkspace({
             <div className="budget-status-body">
               <div
                 className="budget-status-donut"
-                style={{ "--budget-status-gradient": buildStatusGradient(budgetSummary.statusRows) } as CSSProperties}
+                style={{ "--budget-status-gradient": buildStatusGradient(liveStatusRows) } as CSSProperties}
               >
-                <div><strong>{projects.length}</strong><span>projects</span></div>
+                <div><strong>{budgetSummary.totalTasks}</strong><span>items</span></div>
               </div>
               <ul>
-                {budgetSummary.statusRows.map((row) => (
+                {liveStatusRows.map((row) => (
                   <li key={row.label}><i style={{ background: row.color }} /><span>{row.label}</span><strong>{row.value}</strong></li>
                 ))}
-                {!budgetSummary.statusRows.length ? <li><span>No live projects</span><strong>0</strong></li> : null}
+                {!liveStatusRows.length ? <li><span>No live Budget Utilize rows</span><strong>0</strong></li> : null}
               </ul>
             </div>
           </article>
 
           <article className="budget-utilize-card progress-pipeline">
-            <header><Activity size={20} /><div><span>Progress pipeline</span><strong>Planning to completed</strong></div></header>
+            <header><Activity size={20} /><div><span>Progress pipeline</span><strong>BID / PR / PO / CON</strong></div></header>
             <div className="budget-pipeline-bars">
               {budgetSummary.pipelineRows.map((row) => (
                 <p key={row.label}>
                   <span>{row.label}</span>
-                  <i><b style={{ height: `${Math.max(row.percent, row.value ? 10 : 3)}%` }} /></i>
-                  <strong>{row.percent}%</strong>
+                  <i><b style={{ height: `${Math.max(row.value, row.value ? 10 : 3)}%` }} /></i>
+                  <strong>{row.value}%</strong>
                 </p>
               ))}
             </div>
           </article>
 
           <article className="budget-utilize-card budget-code-chart">
-            <header><BarChart3 size={20} /><div><span>Budget type chart</span><strong>Project value by type</strong></div></header>
+            <header><BarChart3 size={20} /><div><span>Budget code chart</span><strong>Actual value by budget code</strong></div></header>
             <div className="budget-type-bars">
-              {budgetSummary.typeRows.map((row) => (
-                <p key={row.label}>
-                  <span>{row.label}</span>
-                  <i><b style={{ width: `${percent((row.value / budgetSummary.maxTypeValue) * 100)}%` }} /></i>
+              {budgetSummary.codeRows.map((row) => (
+                <p key={row.name}>
+                  <span>{row.name}</span>
+                  <i><b style={{ width: `${percent((row.value / maxCodeValue) * 100)}%` }} /></i>
                   <strong>{money(row.value)}</strong>
                 </p>
               ))}
-              {!budgetSummary.typeRows.length ? <p><span>No budget data</span><i><b style={{ width: "0%" }} /></i><strong>0</strong></p> : null}
+              {!budgetSummary.codeRows.length ? <p><span>No budget data</span><i><b style={{ width: "0%" }} /></i><strong>0</strong></p> : null}
             </div>
           </article>
 
@@ -427,19 +348,60 @@ export function ProjectWorkspace({
                 <p key={row.person}>
                   <span>{row.person}</span>
                   <strong>{money(row.budget)}</strong>
-                  <small>{row.active} active / {row.total} total{row.overdue ? ` / ${row.overdue} overdue` : ""}</small>
+                  <small>{row.active} watch / {row.total} total rows</small>
                 </p>
               ))}
             </div>
           </article>
+        </div>
+
+        <article className="budget-utilize-card budget-site-live-card">
+          <header><BarChart3 size={20} /><div><span>Site actual budget</span><strong>Live realized value by site</strong></div></header>
+          <div className="budget-type-bars">
+            {budgetSummary.siteRows.map((row) => (
+              <p key={row.name}>
+                <span>{row.name}</span>
+                <i><b style={{ width: `${percent((row.value / maxSiteValue) * 100)}%`, background: row.color }} /></i>
+                <strong>{moneyFull(row.value)}</strong>
+              </p>
+            ))}
+            {!budgetSummary.siteRows.length ? <p><span>No site data</span><i><b style={{ width: "0%" }} /></i><strong>0</strong></p> : null}
+          </div>
+        </article>
+      </section>
+
+      <section className="workspace-main-card budget-utilize-live-table-card">
+        <div className="workspace-section-title">
+          <div><span>LIVE GOOGLE SHEET</span><h2>Budget Utilize work items</h2></div>
+          <small>{budgetUtilizeData.source.message} · cache 5 min · read-only</small>
+        </div>
+        <div className="workspace-table-wrap">
+          <table className="workspace-table budget-utilize-live-table">
+            <thead><tr><th>Site</th><th>Work item</th><th>Status</th><th>Progress</th><th>Owner</th><th>Contractor</th><th>Budget</th><th>Code</th></tr></thead>
+            <tbody>
+              {budgetSummary.recentRows.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.site}</td>
+                  <td>{item.item}</td>
+                  <td>{item.status}</td>
+                  <td>{Math.round(item.averageProgress * 100)}%</td>
+                  <td>{item.owner}</td>
+                  <td>{item.contractor || "-"}</td>
+                  <td>{moneyFull(item.budget)}</td>
+                  <td>{item.budgetCode || "ไม่ระบุ"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!budgetSummary.recentRows.length ? <p className="empty-workspace">No live Budget Utilize rows found from Google Sheet.</p> : null}
         </div>
       </section>
 
       <div className="workspace-grid">
         <section className="workspace-main-card">
           <div className="workspace-section-title">
-            <div><span>PROJECT REGISTER</span><h2>Live projects & budget list</h2></div>
-            <small>Main bar shows time elapsed from start to finish date. Work progress and budget value are shown separately.</small>
+            <div><span>CHOD PROJECT REGISTER</span><h2>Live projects & internal team list</h2></div>
+            <small>{projectSheetSummary.active} active · {projectSheetSummary.waiting} waiting approval · {projectSheetSummary.critical} high/critical · {projectSheetSummary.budgeted} budgeted rows</small>
           </div>
           <div className="project-card-grid">
             {projects.map((project) => {

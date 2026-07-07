@@ -3,6 +3,7 @@ import "server-only";
 import type { ProjectRecord } from "@/data/projects";
 import type { TaskRecord } from "@/data/tasks";
 import { listApprovalRows } from "@/lib/approvals/approval-store";
+import { getBudgetUtilizeData, type BudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
 import { listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
 import { getFitoutWorkspaceData } from "@/lib/fitout/fitout-google-sheet";
 
@@ -285,11 +286,25 @@ function summarizeProjectsForOwner(projects: ProjectRecord[], owner: string) {
   };
 }
 
+function summarizeBudgetUtilizeForOwner(budgetUtilizeData: BudgetUtilizeData, projects: ProjectRecord[], owner: string) {
+  if (budgetUtilizeData.source.status !== "live") return summarizeProjectsForOwner(projects, owner);
+  const row = budgetUtilizeData.summary.ownerRows.find((item) => item.person.toLowerCase() === owner.toLowerCase());
+  if (!row) return summarizeProjectsForOwner(projects, owner);
+  return {
+    activeProjects: row.active,
+    totalProjects: row.total,
+    totalBudget: row.budget,
+    overdueProjects: 0,
+    topProjects: row.topProjects,
+  };
+}
+
 export async function getLiveDashboardData(): Promise<LiveDashboardData> {
-  const [taskProjectData, approvalRows, fitoutData] = await Promise.all([
+  const [taskProjectData, approvalRows, fitoutData, budgetUtilizeData] = await Promise.all([
     listTaskProjectData().catch(() => ({ projects: [] as ProjectRecord[], tasks: [] as TaskRecord[] })),
     listApprovalRows().catch(() => []),
     getFitoutWorkspaceData({ allowFallback: false }),
+    getBudgetUtilizeData(),
   ]);
 
   const tasks = taskProjectData.tasks || [];
@@ -319,9 +334,12 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     ? annualProjects.filter((project) => !isFitoutWorkspaceProject(project))
     : annualProjects;
   const fitoutRestorationAnnualCost = fitoutSheetIsLive ? fitoutAnnual.actualCapex : 0;
-  const totalBudget = sumProjectBudget(projectBudgetRows) + fitoutRestorationAnnualCost;
-  const committedBudget = approvedProjectBudget(projectBudgetRows);
-  const actualCost = committedBudget + fitoutRestorationAnnualCost;
+  const budgetUtilizeIsLive = budgetUtilizeData.source.status === "live";
+  const budgetUtilizeTotalBudget = budgetUtilizeIsLive ? budgetUtilizeData.summary.totalBudget : sumProjectBudget(projectBudgetRows);
+  const budgetUtilizeActualCost = budgetUtilizeIsLive ? budgetUtilizeData.summary.realizedBudget : approvedProjectBudget(projectBudgetRows);
+  const totalBudget = budgetUtilizeTotalBudget + fitoutRestorationAnnualCost;
+  const actualCost = budgetUtilizeActualCost + fitoutRestorationAnnualCost;
+  const committedBudget = actualCost;
   const remainingBudget = Math.max(0, totalBudget - actualCost);
   const utilization = totalBudget ? Math.round((actualCost / totalBudget) * 100) : 0;
   const pmTasks = tasks.filter((task) => task.category === "PM" || task.sourceModule.toLowerCase().includes("pm") || task.taskTitle.toLowerCase().includes("pm"));
@@ -332,11 +350,11 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   const annualTotalRevenue = fitoutAnnual.fitoutRevenue + fitoutAnnual.restorationRevenue;
   const annualTotalProfit = fitoutAnnual.fitoutProfit + fitoutAnnual.restorationProfit;
   const projectSummaryByOwner = {
-    Film: summarizeProjectsForOwner(projects, "Film"),
-    Moss: summarizeProjectsForOwner(projects, "Moss"),
-    Kla: summarizeProjectsForOwner(projects, "Kla"),
-    Foreman: summarizeProjectsForOwner(projects, "Foreman"),
-    Tammasit: summarizeProjectsForOwner(projects, "Tammasit"),
+    Film: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Film"),
+    Moss: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Moss"),
+    Kla: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Kla"),
+    Foreman: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Foreman"),
+    Tammasit: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Tammasit"),
   };
 
   const reportTeamMembers: LiveDashboardData["reports"]["teamMembers"] = [
@@ -421,7 +439,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     executiveKPIs: [
       { id: "active-projects", label: "Active Projects", value: activeProjects.length, detail: "From live Projects sheet", tone: "cyan" },
       { id: "open-tasks", label: "Open Tasks", value: tasks.filter((task) => task.status !== "Done").length, detail: "From live Tasks sheet", tone: "blue" },
-      { id: "budget-utilization", label: "Budget Utilization", value: `${utilization}%`, detail: "Approved annual cost / total budget", tone: "success" },
+      { id: "budget-utilization", label: "Budget Utilization", value: `${utilization}%`, detail: budgetUtilizeIsLive ? "Budget Utilize actual + Fit-out / Restoration cost" : "Approved annual cost / total budget", tone: "success" },
       { id: "pending-approvals", label: "Pending Approvals", value: pendingApprovals.length, detail: "From live quotation approvals", tone: "warning" },
       { id: "fitout-revenue", label: "Fit-out Revenue", value: formatBaht(fitoutAnnual.fitoutRevenue), detail: "Current year live Fit-out sheet", tone: "solar" },
       { id: "restoration-revenue", label: "Restoration Revenue", value: formatBaht(fitoutAnnual.restorationRevenue), detail: "Current year live Fit-out sheet", tone: "success" },
