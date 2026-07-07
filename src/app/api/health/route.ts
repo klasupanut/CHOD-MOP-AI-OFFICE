@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 
 const bootedAt = new Date().toISOString();
 const DEFAULT_FITOUT_SHEET_ID = "1UdyLxEI-v07rzwpKanJAGuJlyPV8bC9BN9gxBxXnB1U";
+const DEFAULT_BUDGET_UTILIZE_SHEET_ID = "1NmVPZkEGxeUvIQYsuoyF7L9Xhjn03zH5RZvDf8UJ2Po";
+const BUDGET_UTILIZE_PROBE_GID = "1670988984";
 
 type HealthCheck = {
   ok: boolean;
@@ -18,6 +20,7 @@ export async function GET(request: Request) {
   const deep = url.searchParams.get("deep") === "1";
   const appUrl = process.env.AUTH_URL || process.env.NEXTAUTH_URL || "http://localhost:3010";
   const fitoutSheetId = process.env.GOOGLE_SHEET_ID_FITOUT_PROJECT || DEFAULT_FITOUT_SHEET_ID;
+  const budgetUtilizeSheetId = process.env.GOOGLE_SHEET_ID_BUDGET_UTILIZE || DEFAULT_BUDGET_UTILIZE_SHEET_ID;
 
   const checks: HealthCheck[] = [
     {
@@ -65,6 +68,7 @@ export async function GET(request: Request) {
 
   if (deep) {
     checks.push(await probeUsersSheet(10_000));
+    checks.push(await probeBudgetUtilizeSheet(budgetUtilizeSheetId, BUDGET_UTILIZE_PROBE_GID, 10_000));
     checks.push(await probePublicSheet(fitoutSheetId, "RESTORATION", 10_000));
     checks.push(await probePublicSheet(fitoutSheetId, "FIT-OUT", 10_000));
     const quotationProbe = await probeQuotationAppsScript(10_000);
@@ -137,6 +141,34 @@ async function probePublicSheet(sheetId: string, sheetName: string, timeoutMs: n
       message: timedOut
         ? `${sheetName} public CSV timed out after ${timeoutMs}ms.`
         : error instanceof Error ? error.message : `${sheetName} public CSV check failed.`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function probeBudgetUtilizeSheet(sheetId: string, gid: string, timeoutMs: number): Promise<HealthCheck> {
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    return {
+      ok: response.ok,
+      label: "budget-utilize-sheet",
+      message: response.ok
+        ? `Budget Utilize public CSV responds HTTP ${response.status}.`
+        : `Budget Utilize public CSV returned HTTP ${response.status}.`,
+    };
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    return {
+      ok: false,
+      label: "budget-utilize-sheet",
+      message: timedOut
+        ? `Budget Utilize public CSV timed out after ${timeoutMs}ms.`
+        : error instanceof Error ? error.message : "Budget Utilize public CSV check failed.",
     };
   } finally {
     clearTimeout(timer);
