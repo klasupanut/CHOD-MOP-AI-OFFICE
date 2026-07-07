@@ -10,7 +10,7 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
     <section className="workspace-main-card reports-team-section">
       <div className="workspace-section-title">
         <div><span>TEAM MEMBER OVERVIEW</span><h2>Who is doing what</h2></div>
-        <small>Team workload plus project responsibility from Projects &amp; Budgets live data.</small>
+        <small>Workload is calculated from live project responsibility, open tasks, risk items, and responsible budget.</small>
       </div>
       <div className="reports-team-grid">
         {members.map((member) => (
@@ -35,6 +35,14 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
                 <p><small>Total Projects</small><strong>{member.projectSummary.totalProjects}</strong></p>
                 <p><small>Responsible Budget</small><strong>{moneyCompact(member.projectSummary.totalBudget)}</strong></p>
               </div>
+            </div>
+            <div className={`reports-member-workload tone-${member.workload.tone}`}>
+              <div>
+                <span>TEAM WORKLOAD</span>
+                <strong>{member.workload.percent}%</strong>
+              </div>
+              <i><b style={{ width: `${member.workload.percent}%` }} /></i>
+              <small>{member.workload.label} · {member.workload.detail} · score {member.workload.score}</small>
             </div>
             <div className="reports-member-kpis">
               {member.kpis.map((kpi) => (

@@ -23,11 +23,14 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
   const selectedMember = data.reports.teamMembers.find((member) => member.id === selected);
   const modules = useMemo(() => {
     if (selected === "all") {
+      const portfolio = data.reports.projectPortfolio;
       return [
         { id: "all-1", title: "All Team Weekly Report", metric: `${data.taskOverview.totalTasks} tasks`, description: "Combined live operation review for all team members." },
-        { id: "all-2", title: "Projects & Budgets Portfolio", metric: `${data.reports.teamMembers.reduce((sum, member) => sum + member.projectSummary.totalProjects, 0)} total`, description: "Owner responsibility calculated from the Projects & Budgets live sheet." },
-        { id: "all-3", title: "Cross-Team Risk Log", metric: `${data.taskOverview.overdue} overdue`, description: "Live overdue and approval risk summary." },
-        { id: "all-4", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
+        { id: "all-2", title: "Projects Database Portfolio", metric: `${portfolio.totalProjects} projects`, description: `${portfolio.activeProjects} active / ${portfolio.completedProjects} completed / ${portfolio.overdueProjects} overdue.` },
+        { id: "all-3", title: "Portfolio Budget", metric: moneyCompact(portfolio.totalBudget), description: "Unique project budget from the Projects database, not duplicated by owner." },
+        { id: "all-4", title: "Team Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest owner: ${portfolio.busiestMember} / score ${portfolio.busiestScore}.` },
+        { id: "all-5", title: "Cross-Team Risk Log", metric: `${data.taskOverview.overdue} overdue`, description: "Live overdue task and approval risk summary." },
+        { id: "all-6", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
       ];
     }
 
@@ -39,7 +42,13 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
         id: `${selected}-project-budget`,
         title: "Projects & Budgets Responsibility",
         metric: `${selectedMember.projectSummary.activeProjects} in progress / ${selectedMember.projectSummary.totalProjects} total`,
-        description: `Responsible budget: ${moneyCompact(selectedMember.projectSummary.totalBudget)} from Projects & Budgets.`,
+        description: `Responsible budget: ${moneyCompact(selectedMember.projectSummary.totalBudget)} from the Projects database.`,
+      },
+      {
+        id: `${selected}-workload`,
+        title: "Workload Score",
+        metric: `${selectedMember.workload.percent}% ${selectedMember.workload.label}`,
+        description: `${selectedMember.workload.detail}. Score ${selectedMember.workload.score} includes projects, open tasks, risk and budget weight.`,
       },
       {
         id: `${selected}-project-budget-value`,

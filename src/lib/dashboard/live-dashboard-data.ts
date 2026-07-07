@@ -3,7 +3,7 @@ import "server-only";
 import type { ProjectRecord } from "@/data/projects";
 import type { TaskRecord } from "@/data/tasks";
 import { listApprovalRows } from "@/lib/approvals/approval-store";
-import { getBudgetUtilizeData, type BudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
+import { getBudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
 import { listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
 import { getFitoutWorkspaceData } from "@/lib/fitout/fitout-google-sheet";
 
@@ -73,6 +73,16 @@ export type LiveDashboardData = {
   activity: Array<{ id: string; agent: string; message: string; time: string; tone: "info" | "success" | "warning" | "danger" }>;
   deadlines: Array<{ id: string; label: string; owner: string; due: string; tone: "info" | "warning" | "danger" }>;
   reports: {
+    projectPortfolio: {
+      totalProjects: number;
+      activeProjects: number;
+      completedProjects: number;
+      overdueProjects: number;
+      totalBudget: number;
+      workloadBalance: number;
+      busiestMember: string;
+      busiestScore: number;
+    };
     overviewKpis: Array<{ label: string; value: string; detail: string; tone: "cyan" | "success" | "warning" | "danger" | "blue" }>;
     teamMembers: Array<{
       id: "film" | "moss" | "kla" | "foreman" | "tammasit";
@@ -88,6 +98,13 @@ export type LiveDashboardData = {
         totalBudget: number;
         overdueProjects: number;
         topProjects: string[];
+      };
+      workload: {
+        score: number;
+        percent: number;
+        label: string;
+        detail: string;
+        tone: "cyan" | "success" | "warning" | "danger" | "blue";
       };
       mainArea: string;
       suggestedReport: string;
@@ -286,16 +303,30 @@ function summarizeProjectsForOwner(projects: ProjectRecord[], owner: string) {
   };
 }
 
-function summarizeBudgetUtilizeForOwner(budgetUtilizeData: BudgetUtilizeData, projects: ProjectRecord[], owner: string) {
-  if (budgetUtilizeData.source.status !== "live") return summarizeProjectsForOwner(projects, owner);
-  const row = budgetUtilizeData.summary.ownerRows.find((item) => item.person.toLowerCase() === owner.toLowerCase());
-  if (!row) return summarizeProjectsForOwner(projects, owner);
+function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof summarizeProjectsForOwner>, owner: string) {
+  const ownerTasks = tasks.filter((task) => task.assignedTo.toLowerCase() === owner.toLowerCase());
+  const openTasks = ownerTasks.filter((task) => task.status !== "Done");
+  const riskTasks = openTasks.filter((task) => ["High", "Critical"].includes(task.priority) || task.status === "Overdue");
+  const budgetWeight = Math.min(6, Math.round((projectSummary.totalBudget || 0) / 500_000));
+  return openTasks.length + projectSummary.activeProjects * 2 + projectSummary.overdueProjects * 3 + riskTasks.length + budgetWeight;
+}
+
+function workloadBalance(scores: number[]) {
+  if (!scores.length || scores.every((score) => score === 0)) return 100;
+  const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  if (!average) return 100;
+  const variance = scores.reduce((sum, score) => sum + (score - average) ** 2, 0) / scores.length;
+  const coefficient = Math.sqrt(variance) / average;
+  return Math.max(0, Math.min(100, Math.round(100 - coefficient * 100)));
+}
+
+function workloadLabel(percent: number) {
+  if (percent >= 85) return { label: "Overloaded", tone: "danger" as const };
+  if (percent >= 65) return { label: "Heavy", tone: "warning" as const };
+  if (percent >= 35) return { label: "Healthy", tone: "success" as const };
   return {
-    activeProjects: row.active,
-    totalProjects: row.total,
-    totalBudget: row.budget,
-    overdueProjects: 0,
-    topProjects: row.topProjects,
+    label: "Light",
+    tone: "blue" as const,
   };
 }
 
@@ -350,14 +381,14 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
   const annualTotalRevenue = fitoutAnnual.fitoutRevenue + fitoutAnnual.restorationRevenue;
   const annualTotalProfit = fitoutAnnual.fitoutProfit + fitoutAnnual.restorationProfit;
   const projectSummaryByOwner = {
-    Film: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Film"),
-    Moss: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Moss"),
-    Kla: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Kla"),
-    Foreman: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Foreman"),
-    Tammasit: summarizeBudgetUtilizeForOwner(budgetUtilizeData, projects, "Tammasit"),
+    Film: summarizeProjectsForOwner(projects, "Film"),
+    Moss: summarizeProjectsForOwner(projects, "Moss"),
+    Kla: summarizeProjectsForOwner(projects, "Kla"),
+    Foreman: summarizeProjectsForOwner(projects, "Foreman"),
+    Tammasit: summarizeProjectsForOwner(projects, "Tammasit"),
   };
 
-  const reportTeamMembers: LiveDashboardData["reports"]["teamMembers"] = [
+  const baseReportTeamMembers: Array<Omit<LiveDashboardData["reports"]["teamMembers"][number], "workload">> = [
     {
       id: "film",
       name: "Film",
@@ -434,6 +465,37 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
       suggestedReport: "Executive Decision Summary",
     },
   ];
+  const workloadScores = baseReportTeamMembers.map((member) => workloadScore(tasks, member.projectSummary, member.name));
+  const maxWorkloadScore = Math.max(...workloadScores, 1);
+  const reportTeamMembers: LiveDashboardData["reports"]["teamMembers"] = baseReportTeamMembers.map((member, index) => {
+    const score = workloadScores[index] || 0;
+    const percent = Math.round((score / maxWorkloadScore) * 100);
+    const level = workloadLabel(percent);
+    return {
+      ...member,
+      workload: {
+        score,
+        percent,
+        label: level.label,
+        tone: level.tone,
+        detail: `${member.projectSummary.activeProjects} active projects / ${member.activeTasks} open tasks`,
+      },
+    };
+  });
+  const balanceScore = workloadBalance(workloadScores);
+  const busiestMember = reportTeamMembers.slice().sort((a, b) => b.workload.score - a.workload.score)[0];
+  const overdueProjectCount = projects.filter(isProjectOverdue).length;
+  const completedProjectCount = projects.filter((project) => project.status === "Completed").length;
+  const projectPortfolio = {
+    totalProjects: projects.length,
+    activeProjects: activeProjects.length,
+    completedProjects: completedProjectCount,
+    overdueProjects: overdueProjectCount,
+    totalBudget: sumProjectBudget(projects),
+    workloadBalance: balanceScore,
+    busiestMember: busiestMember?.name || "-",
+    busiestScore: busiestMember?.workload.score || 0,
+  };
 
   return {
     executiveKPIs: [
@@ -531,13 +593,14 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
       })),
     ].slice(0, 8),
     reports: {
+      projectPortfolio,
       overviewKpis: [
-        { label: "Team Active Tasks", value: String(tasks.filter((task) => task.status !== "Done").length), detail: "From live Tasks sheet", tone: "cyan" },
-        { label: "Tasks Completed This Week", value: String(tasks.filter((task) => task.status === "Done" && isWithinDays(task.lastUpdate || task.dueDate, 7)).length), detail: "From live Tasks sheet", tone: "success" },
-        { label: "Overdue by Team", value: String(overdueTasks.length), detail: "Live overdue tasks only", tone: overdueTasks.length ? "danger" : "success" },
-        { label: "Pending Quotation Approval", value: String(pendingApprovals.length), detail: "Live quotation approval queue", tone: pendingApprovals.length ? "warning" : "success" },
-        { label: "Reports Ready to Generate", value: String(reportTeamMembers.length), detail: "One live summary per team station", tone: "blue" },
-        { label: "Team Workload Balance", value: `${tasks.length ? Math.round((1 - Math.min(...reportTeamMembers.map((member) => member.activeTasks)) / Math.max(...reportTeamMembers.map((member) => member.activeTasks), 1)) * 100) : 0}%`, detail: "Calculated from active task spread", tone: "cyan" },
+        { label: "Project Database", value: String(projectPortfolio.totalProjects), detail: "Live Projects sheet rows", tone: "cyan" },
+        { label: "Active Projects", value: String(projectPortfolio.activeProjects), detail: "Not completed / cancelled", tone: projectPortfolio.activeProjects ? "blue" : "success" },
+        { label: "Project Portfolio Value", value: formatBaht(projectPortfolio.totalBudget), detail: "Budget from Projects database", tone: "success" },
+        { label: "Overdue Projects", value: String(projectPortfolio.overdueProjects), detail: "Due date passed and still active", tone: projectPortfolio.overdueProjects ? "danger" : "success" },
+        { label: "Project Completion", value: `${projectPortfolio.totalProjects ? Math.round((projectPortfolio.completedProjects / projectPortfolio.totalProjects) * 100) : 0}%`, detail: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} projects completed`, tone: "blue" },
+        { label: "Team Workload Balance", value: `${projectPortfolio.workloadBalance}%`, detail: `Project + task load. Busiest: ${projectPortfolio.busiestMember}`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "cyan" },
       ],
       teamMembers: reportTeamMembers,
       recommended: [
@@ -551,7 +614,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { id: "overdue", title: "Overdue Focus", summary: `${overdueTasks.length} live tasks are overdue.`, action: "View overdue focus", tone: overdueTasks.length ? "danger" : "success" },
         { id: "approval", title: "Approval Bottleneck", summary: `${pendingApprovals.length} quotations are waiting for approval.`, action: "View approval queue", tone: pendingApprovals.length ? "warning" : "success" },
         { id: "on-track", title: "On Track", summary: `${activeProjects.length} active projects are currently tracked.`, action: "View project status", tone: "cyan" },
-        { id: "load", title: "Team Load Balance", summary: "Calculated from live task assignment by team member.", action: "View workload detail", tone: "blue" },
+        { id: "load", title: "Team Load Balance", summary: `${projectPortfolio.workloadBalance}% balance from live project responsibility and open tasks.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
       ],
     },
   };
