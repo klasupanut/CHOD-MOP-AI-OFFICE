@@ -5,16 +5,29 @@ function moneyCompact(value: number) {
   return `฿${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
 }
 
+function score(value: number) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
+}
+
 export function TeamMemberReportCards({ members }: { members: LiveDashboardData["reports"]["teamMembers"] }) {
   return (
     <section className="workspace-main-card reports-team-section">
       <div className="workspace-section-title">
         <div><span>TEAM MEMBER OVERVIEW</span><h2>Who owns the work value</h2></div>
-        <small>Each card expands the score cards into owner-level project count, active workload, watch items, and responsible value.</small>
+        <small>Workload now blends live work volume, budget responsibility, bottlenecks, and skill fit for each person.</small>
       </div>
       <div className="reports-team-grid">
         {members.map((member) => {
           const topProject = member.projectSummary.topProjects[0];
+          const breakdown = [
+            ["Exec", member.workload.breakdown.executionLoad],
+            ["Project", member.workload.breakdown.projectLoad],
+            ["Watch", member.workload.breakdown.watchLoad],
+            ["Risk", member.workload.breakdown.riskLoad],
+            ["Budget", member.workload.breakdown.budgetLoad],
+            ["Block", member.workload.breakdown.bottleneckLoad],
+          ];
+
           return (
             <article className="reports-member-card" key={member.id}>
               <header>
@@ -48,7 +61,15 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
                   <strong>{member.workload.percent}%</strong>
                 </div>
                 <i><b style={{ width: `${member.workload.percent}%` }} /></i>
-                <small>{member.workload.label} · {member.workload.detail} · score {member.workload.score}</small>
+                <small>{member.workload.label} · {member.workload.skillMatch} · score {score(member.workload.score)}</small>
+                <div className="reports-workload-breakdown">
+                  {breakdown.map(([label, value]) => (
+                    <em key={label}>
+                      <span>{label}</span>
+                      <b>{score(Number(value))}</b>
+                    </em>
+                  ))}
+                </div>
               </div>
               <div className="reports-member-kpis">
                 {member.kpis.map((kpi) => (

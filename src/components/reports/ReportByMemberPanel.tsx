@@ -18,6 +18,10 @@ function moneyCompact(value: number) {
   return `฿${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
 }
 
+function score(value: number) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
+}
+
 export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
   const [selected, setSelected] = useState<TeamReportMemberId>("film");
   const selectedMember = data.reports.teamMembers.find((member) => member.id === selected);
@@ -31,13 +35,14 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
         { id: "all-work-value", title: "Project Work Value", metric: moneyCompact(portfolio.totalBudget), description: `${moneyCompact(portfolio.completedBudget)} completed value is already tracked.` },
         { id: "all-watch", title: "Watch Items", metric: `${portfolio.overdueProjects} watch`, description: `${moneyCompact(portfolio.watchBudget)} value requires follow-up before the next review.` },
         { id: "all-done-rate", title: "Done Rate", metric: `${portfolio.doneRate}%`, description: `${portfolio.completedProjects}/${portfolio.totalProjects} projects completed.` },
-        { id: "all-load", title: "Team Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest owner: ${portfolio.busiestMember} / score ${portfolio.busiestScore}.` },
+        { id: "all-load", title: "Skill-Adjusted Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest owner: ${portfolio.busiestMember} / score ${score(portfolio.busiestScore)}.` },
         { id: "all-approval", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
       ];
     }
 
     if (!selectedMember) return [];
     const topProject = selectedMember.projectSummary.topProjects[0] || "No top project found";
+    const b = selectedMember.workload.breakdown;
     return [
       { id: `${selected}-1`, title: `${selectedMember.name} Task Summary`, metric: `${selectedMember.activeTasks} active`, description: "Live active tasks assigned to this team member." },
       { id: `${selected}-2`, title: "Completed This Week", metric: `${selectedMember.completedThisWeek} done`, description: "Live task completions from the Tasks sheet." },
@@ -48,16 +53,28 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
         description: `Responsible work value: ${moneyCompact(selectedMember.projectSummary.totalBudget)} from Projects & Budgets live data.`,
       },
       {
-        id: `${selected}-project-watch`,
-        title: "Watch Items",
-        metric: `${selectedMember.projectSummary.overdueProjects} watch`,
-        description: "Owner-level rows that still need follow-up or status confirmation.",
+        id: `${selected}-workload`,
+        title: "Skill-Adjusted Workload",
+        metric: `${selectedMember.workload.percent}% ${selectedMember.workload.label}`,
+        description: `${selectedMember.workload.skillMatch}. Raw score ${score(selectedMember.workload.score)} after skill, risk, budget and bottleneck weighting.`,
       },
       {
-        id: `${selected}-workload`,
-        title: "Workload Score",
-        metric: `${selectedMember.workload.percent}% ${selectedMember.workload.label}`,
-        description: `${selectedMember.workload.detail}. Score ${selectedMember.workload.score} includes projects, open tasks, risk and budget weight.`,
+        id: `${selected}-breakdown-1`,
+        title: "Execution / Risk",
+        metric: `${score(b.executionLoad)} / ${score(b.riskLoad)}`,
+        description: "Open task load and high-priority / overdue risk load after skill factor.",
+      },
+      {
+        id: `${selected}-breakdown-2`,
+        title: "Project / Watch",
+        metric: `${score(b.projectLoad)} / ${score(b.watchLoad)}`,
+        description: "Active project rows and watch items weighted by owner skill fit.",
+      },
+      {
+        id: `${selected}-breakdown-3`,
+        title: "Budget / Bottleneck",
+        metric: `${score(b.budgetLoad)} / ${score(b.bottleneckLoad)}`,
+        description: "Soft-capped budget responsibility and approval / decision bottleneck load.",
       },
       {
         id: `${selected}-project-budget-value`,
@@ -87,7 +104,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     <section className="workspace-main-card reports-by-member">
       <div className="workspace-section-title">
         <div><span>REPORT BY TEAM MEMBER</span><h2>Generate by responsibility</h2></div>
-        <small>Select a team member to see report modules calculated from the same score card data.</small>
+        <small>Select a team member to see report modules calculated from the same skill-adjusted workload model.</small>
       </div>
       <div className="reports-member-tabs">
         {tabs.map((tab) => (

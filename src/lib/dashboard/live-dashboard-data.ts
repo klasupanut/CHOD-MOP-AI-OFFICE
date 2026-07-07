@@ -109,6 +109,15 @@ export type LiveDashboardData = {
         percent: number;
         label: string;
         detail: string;
+        skillMatch: string;
+        breakdown: {
+          executionLoad: number;
+          projectLoad: number;
+          watchLoad: number;
+          riskLoad: number;
+          budgetLoad: number;
+          bottleneckLoad: number;
+        };
         tone: "cyan" | "success" | "warning" | "danger" | "blue";
       };
       mainArea: string;
@@ -331,19 +340,153 @@ function summarizeBudgetUtilizeForOwner(budgetUtilizeData: BudgetUtilizeData, pr
   };
 }
 
-function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof summarizeProjectsForOwner>, owner: string) {
+type WorkDomain = "Quotation" | "Document" | "Approval" | "Fit-out" | "Renovation" | "Solar" | "Electrical" | "PM" | "Site" | "Maintenance" | "Engineering" | "Executive" | "General";
+type BudgetTask = BudgetUtilizeData["tasks"][number];
+type WorkloadBreakdown = LiveDashboardData["reports"]["teamMembers"][number]["workload"]["breakdown"];
+
+function taskDomain(task: TaskRecord): WorkDomain {
+  const text = `${task.category} ${task.sourceModule} ${task.taskTitle} ${task.taskDescription}`.toLowerCase();
+  if (task.category === "Quotation" || text.includes("quotation")) return "Quotation";
+  if (task.category === "Document" || text.includes("document")) return "Document";
+  if (task.category === "Approval" || text.includes("approval")) return "Approval";
+  if (task.category === "Solar" || text.includes("solar")) return "Solar";
+  if (task.category === "Electrical" || text.includes("electrical") || text.includes("power")) return "Electrical";
+  if (task.category === "PM" || text.includes("pm loop")) return "PM";
+  if (task.category === "Site" || text.includes("site")) return "Site";
+  if (task.category === "Fit-out" || text.includes("fit-out") || text.includes("fitout")) return "Fit-out";
+  if (task.category === "Renovation" || text.includes("renovation")) return "Renovation";
+  return "General";
+}
+
+function budgetTaskDomain(task: BudgetTask): WorkDomain {
+  const text = `${task.item} ${task.sourceTitle} ${task.budgetCode} ${task.site}`.toLowerCase();
+  if (text.includes("solar") || text.includes("โซล")) return "Solar";
+  if (text.includes("electrical") || text.includes("power") || text.includes("led") || text.includes("ไฟ") || text.includes("โคม")) return "Electrical";
+  if (text.includes("pm") || text.includes("maintenance")) return "PM";
+  if (text.includes("fit") || text.includes("siding")) return "Fit-out";
+  if (text.includes("drawing") || text.includes("calculation") || text.includes("engineering")) return "Engineering";
+  if (text.includes("site") || text.includes("หน้างาน")) return "Site";
+  if (text.includes("renovation") || text.includes("ปรับ") || text.includes("ซ่อม")) return "Renovation";
+  return "General";
+}
+
+const coreSkillDomains: Record<string, WorkDomain[]> = {
+  Film: ["Quotation", "Document", "Approval", "Fit-out"],
+  Kla: ["Engineering", "Fit-out", "Renovation", "Site", "General"],
+  Moss: ["Solar", "Electrical"],
+  Foreman: ["PM", "Site", "Maintenance", "Renovation"],
+  Tammasit: ["Approval", "Executive", "General"],
+};
+
+const supportSkillDomains: Record<string, WorkDomain[]> = {
+  Film: ["Renovation", "General", "Site"],
+  Kla: ["Quotation", "Document", "PM", "Approval"],
+  Moss: ["Fit-out", "Site", "General"],
+  Foreman: ["Fit-out", "General"],
+  Tammasit: ["Quotation", "Fit-out", "Renovation", "Solar", "Electrical", "PM", "Site"],
+};
+
+function skillFactor(owner: string, domain: WorkDomain) {
+  const normalizedOwner = owner.trim();
+  if (coreSkillDomains[normalizedOwner]?.includes(domain)) return 0.85;
+  if (supportSkillDomains[normalizedOwner]?.includes(domain)) return 1;
+  if (domain === "General") return 1;
+  return 1.25;
+}
+
+function priorityMultiplier(priority: TaskRecord["priority"]) {
+  if (priority === "Critical") return 1.8;
+  if (priority === "High") return 1.4;
+  if (priority === "Low") return 0.8;
+  return 1;
+}
+
+function statusMultiplier(status: TaskRecord["status"]) {
+  if (status === "Overdue") return 1.6;
+  if (status === "Waiting Approval") return 1.2;
+  if (status === "To Do") return 0.9;
+  if (status === "Done") return 0;
+  return 1;
+}
+
+function roundScore(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function workloadSkillMatchLabel(skillFactors: number[]) {
+  if (!skillFactors.length) return "No skill-mapped live work";
+  const average = skillFactors.reduce((sum, factor) => sum + factor, 0) / skillFactors.length;
+  if (average <= 0.92) return "Strong skill match";
+  if (average <= 1.08) return "Mixed skill match";
+  return "Skill stretch";
+}
+
+function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof summarizeProjectsForOwner>, owner: string, budgetTasks: BudgetTask[], pendingApprovalCount: number) {
   const ownerTasks = tasks.filter((task) => task.assignedTo.toLowerCase() === owner.toLowerCase());
   const openTasks = ownerTasks.filter((task) => task.status !== "Done");
   const riskTasks = openTasks.filter((task) => ["High", "Critical"].includes(task.priority) || task.status === "Overdue");
-  const budgetWeight = Math.min(6, Math.round((projectSummary.totalBudget || 0) / 500_000));
-  return openTasks.length + projectSummary.activeProjects * 2 + projectSummary.overdueProjects * 3 + riskTasks.length + budgetWeight;
+  const ownerBudgetTasks = budgetTasks.filter((task) => task.owner.toLowerCase() === owner.toLowerCase());
+  const activeBudgetTasks = ownerBudgetTasks.filter((task) => task.statusKey !== "done" && task.statusKey !== "stopped");
+  const taskSkillFactors: number[] = [];
+  const budgetSkillFactors: number[] = [];
+
+  const executionLoad = openTasks.reduce((sum, task) => {
+    const factor = skillFactor(owner, taskDomain(task));
+    taskSkillFactors.push(factor);
+    return sum + 1 * priorityMultiplier(task.priority) * statusMultiplier(task.status) * factor;
+  }, 0);
+
+  const riskLoad = riskTasks.reduce((sum, task) => {
+    const factor = skillFactor(owner, taskDomain(task));
+    return sum + 0.8 * priorityMultiplier(task.priority) * statusMultiplier(task.status) * factor;
+  }, 0);
+
+  const projectLoad = activeBudgetTasks.length
+    ? activeBudgetTasks.reduce((sum, task) => {
+        const factor = skillFactor(owner, budgetTaskDomain(task));
+        budgetSkillFactors.push(factor);
+        return sum + 1.0 * factor;
+      }, 0)
+    : projectSummary.activeProjects * 1.2;
+
+  const watchLoad = activeBudgetTasks.length
+    ? activeBudgetTasks.reduce((sum, task) => {
+        const factor = skillFactor(owner, budgetTaskDomain(task));
+        return sum + 1.15 * factor;
+      }, 0)
+    : projectSummary.overdueProjects * 1.6;
+
+  const budgetLoad = Math.min(10, Math.sqrt(Math.max(0, projectSummary.totalBudget) / 500_000) * 2);
+  const bottleneckLoad =
+    owner === "Tammasit" ? pendingApprovalCount * 1.5 :
+    owner === "Film" ? pendingApprovalCount * 0.8 :
+    owner === "Kla" ? pendingApprovalCount * 0.4 :
+    0;
+
+  const breakdown: WorkloadBreakdown = {
+    executionLoad: roundScore(executionLoad),
+    projectLoad: roundScore(projectLoad),
+    watchLoad: roundScore(watchLoad),
+    riskLoad: roundScore(riskLoad),
+    budgetLoad: roundScore(budgetLoad),
+    bottleneckLoad: roundScore(bottleneckLoad),
+  };
+  const score = roundScore(Object.values(breakdown).reduce((sum, value) => sum + value, 0));
+  const skillMatch = workloadSkillMatchLabel([...taskSkillFactors, ...budgetSkillFactors]);
+
+  return {
+    score,
+    breakdown,
+    skillMatch,
+  };
 }
 
 function workloadBalance(scores: number[]) {
-  if (!scores.length || scores.every((score) => score === 0)) return 100;
-  const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  const activeScores = scores.filter((score) => score > 0);
+  if (activeScores.length < 2) return 100;
+  const average = activeScores.reduce((sum, score) => sum + score, 0) / activeScores.length;
   if (!average) return 100;
-  const variance = scores.reduce((sum, score) => sum + (score - average) ** 2, 0) / scores.length;
+  const variance = activeScores.reduce((sum, score) => sum + (score - average) ** 2, 0) / activeScores.length;
   const coefficient = Math.sqrt(variance) / average;
   return Math.max(0, Math.min(100, Math.round(100 - coefficient * 100)));
 }
@@ -493,10 +636,16 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
       suggestedReport: "Executive Decision Summary",
     },
   ];
-  const workloadScores = baseReportTeamMembers.map((member) => workloadScore(tasks, member.projectSummary, member.name));
+  const workloadResults = baseReportTeamMembers.map((member) => workloadScore(tasks, member.projectSummary, member.name, budgetUtilizeData.tasks, pendingApprovals.length));
+  const workloadScores = workloadResults.map((result) => result.score);
   const maxWorkloadScore = Math.max(...workloadScores, 1);
   const reportTeamMembers: LiveDashboardData["reports"]["teamMembers"] = baseReportTeamMembers.map((member, index) => {
-    const score = workloadScores[index] || 0;
+    const result = workloadResults[index] || {
+      score: 0,
+      skillMatch: "No skill-mapped live work",
+      breakdown: { executionLoad: 0, projectLoad: 0, watchLoad: 0, riskLoad: 0, budgetLoad: 0, bottleneckLoad: 0 },
+    };
+    const score = result.score;
     const percent = Math.round((score / maxWorkloadScore) * 100);
     const level = workloadLabel(percent);
     return {
@@ -506,7 +655,9 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         percent,
         label: level.label,
         tone: level.tone,
-        detail: `${member.projectSummary.activeProjects} active projects / ${member.activeTasks} open tasks`,
+        skillMatch: result.skillMatch,
+        breakdown: result.breakdown,
+        detail: `${member.projectSummary.activeProjects} active projects / ${member.activeTasks} open tasks / ${result.skillMatch}`,
       },
     };
   });
@@ -649,7 +800,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { label: "Project Work Value", value: formatBaht(projectPortfolio.totalBudget), detail: `${formatBaht(projectPortfolio.completedBudget)} completed value tracked`, tone: "success" },
         { label: budgetUtilizeIsLive ? "Watch Items" : "Overdue Projects", value: String(projectPortfolio.overdueProjects), detail: `${formatBaht(projectPortfolio.watchBudget)} value needs follow-up`, tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { label: budgetUtilizeIsLive ? "Done Rate" : "Project Completion", value: `${projectPortfolio.doneRate}%`, detail: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} projects completed`, tone: "blue" },
-        { label: "Team Workload Balance", value: `${projectPortfolio.workloadBalance}%`, detail: `Busiest: ${projectPortfolio.busiestMember} / score ${projectPortfolio.busiestScore}`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "cyan" },
+        { label: "Skill Workload Balance", value: `${projectPortfolio.workloadBalance}%`, detail: `Busiest: ${projectPortfolio.busiestMember} / score ${projectPortfolio.busiestScore}`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "cyan" },
       ],
       teamMembers: reportTeamMembers,
       recommended: [
@@ -657,7 +808,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { id: "active-value", owner: projectPortfolio.busiestMember, title: "Active Project Action List", reason: `${projectPortfolio.activeProjects} active projects worth ${formatBaht(projectPortfolio.activeBudget)} need weekly status tracking.`, tone: projectPortfolio.activeProjects ? "blue" : "success" },
         { id: "watch-items", owner: "Kla + Film", title: "Watch Items Follow-up", reason: `${projectPortfolio.overdueProjects} watch items worth ${formatBaht(projectPortfolio.watchBudget)} should be checked before the next report.`, tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { id: "done-rate", owner: "Tammasit", title: "Done Rate & Completion Review", reason: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed (${projectPortfolio.doneRate}%) with ${formatBaht(projectPortfolio.completedBudget)} completed value.`, tone: "cyan" },
-        { id: "workload-balance", owner: "Tammasit", title: "Team Workload Balance", reason: `${projectPortfolio.workloadBalance}% balance score. Busiest owner is ${projectPortfolio.busiestMember} with score ${projectPortfolio.busiestScore}.`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "workload-balance", owner: "Tammasit", title: "Skill Workload Balance", reason: `${projectPortfolio.workloadBalance}% balance score after skill, budget, risk and bottleneck weighting. Busiest owner is ${projectPortfolio.busiestMember} with score ${projectPortfolio.busiestScore}.`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
         { id: "approval-queue", owner: "Tammasit", title: "Quotation Approval Summary", reason: `${pendingApprovals.length} live quotation approvals are waiting for internal decision.`, tone: pendingApprovals.length ? "warning" : "success" },
       ],
       insights: [
@@ -665,7 +816,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { id: "value", title: "Work Value Exposure", summary: `${formatBaht(projectPortfolio.totalBudget)} total value, with ${formatBaht(projectPortfolio.activeBudget)} still active.`, action: "Review work value", tone: "success" },
         { id: "watch", title: "Watch Item Pressure", summary: `${projectPortfolio.overdueProjects} watch items represent ${formatBaht(projectPortfolio.watchBudget)} that needs follow-up.`, action: "View watch items", tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { id: "completion", title: "Completion Signal", summary: `${projectPortfolio.doneRate}% done rate from ${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed project rows.`, action: "Review completion", tone: "blue" },
-        { id: "load", title: "Workload Hotspot", summary: `${projectPortfolio.busiestMember} is the busiest owner; team workload balance is ${projectPortfolio.workloadBalance}%.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "load", title: "Skill Workload Hotspot", summary: `${projectPortfolio.busiestMember} is the busiest owner after skill-adjusted scoring; balance is ${projectPortfolio.workloadBalance}%.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
       ],
     },
   };
