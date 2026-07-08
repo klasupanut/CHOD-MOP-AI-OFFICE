@@ -180,20 +180,27 @@ export function ApprovalsWorkspace({
                 <tr><th>Quotation No.</th><th>Project / Site</th><th>Quotation Type</th><th>Requested By</th><th>Amount</th><th>Requested Date</th><th>Due Date</th><th>Priority</th><th>Status</th><th>Action</th></tr>
               </thead>
               <tbody>
-                {filtered.map((item) => (
-                  <tr key={item.approvalId} onClick={() => selectApproval(item)}>
-                    <td>{item.quotationNo}</td>
-                    <td>{item.projectName}<small>{item.site}</small></td>
-                    <td>{quotationTypeLabel(item.quotationType)}</td>
-                    <td>{item.requestedBy}</td>
-                    <td>{money(item.amount)}</td>
-                    <td>{item.requestedAt}</td>
-                    <td>{item.dueDate}</td>
-                    <td>{item.priority}</td>
-                    <td>{item.status}</td>
-                    <td><button className="inline-action" type="button">Review</button></td>
-                  </tr>
-                ))}
+                {filtered.map((item) => {
+                  const isWaitingApproval = item.status === "Waiting Approval" || item.status === "Waiting Final Approval";
+                  return (
+                    <tr
+                      className={isWaitingApproval ? "approval-row-pending" : undefined}
+                      key={item.approvalId}
+                      onClick={() => selectApproval(item)}
+                    >
+                      <td>{item.quotationNo}</td>
+                      <td>{item.projectName}<small>{item.site}</small></td>
+                      <td>{quotationTypeLabel(item.quotationType)}</td>
+                      <td>{item.requestedBy}</td>
+                      <td>{money(item.amount)}</td>
+                      <td>{item.requestedAt}</td>
+                      <td>{item.dueDate}</td>
+                      <td>{item.priority}</td>
+                      <td>{item.status}</td>
+                      <td><button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} type="button">Review</button></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {!filtered.length ? <p className="empty-workspace">No quotation approval rows found.</p> : null}
