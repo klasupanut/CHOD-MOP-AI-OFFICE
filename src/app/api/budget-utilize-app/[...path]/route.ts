@@ -121,7 +121,7 @@ function canWriteBudgetUtilize(user: NonNullable<Awaited<ReturnType<typeof getAp
 }
 
 function canDeleteBudgetUtilize(user: NonNullable<Awaited<ReturnType<typeof getApiUser>>>) {
-  return canWriteBudgetUtilize(user) || Boolean(String(user.characterId || "").trim());
+  return canWriteBudgetUtilize(user) || Boolean(String(user.email || "").trim());
 }
 
 function writeConfigFor(user: NonNullable<Awaited<ReturnType<typeof getApiUser>>>) {

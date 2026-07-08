@@ -102,7 +102,7 @@ export function ProjectWorkspace({
   const [showCreate, setShowCreate] = useState(false);
   const [saveMessage, setSaveMessage] = useState(dataMessage || "");
   const allowProjectAdmin = canManageProjects(currentUser);
-  const allowProjectDelete = allowProjectAdmin || Boolean(String(currentUser.characterId || "").trim());
+  const allowProjectDelete = allowProjectAdmin || Boolean(String(currentUser.email || "").trim());
   const [newProject, setNewProject] = useState<ProjectRecord>(() => createEmptyProject(currentUser.name));
 
   const selectedProject = projects.find((project) => project.projectId === selectedId) ?? projects[0];

@@ -8,8 +8,8 @@ function canManageProjects(user: { role: string; characterId?: string }) {
   return user.role === "Super Admin" || user.characterId === "tammasit";
 }
 
-function canDeleteProjects(user: { role: string; characterId?: string }) {
-  return canManageProjects(user) || Boolean(String(user.characterId || "").trim());
+function canDeleteProjects(user: { role: string; characterId?: string; email?: string }) {
+  return canManageProjects(user) || Boolean(String(user.email || "").trim());
 }
 
 export async function DELETE(request: Request) {

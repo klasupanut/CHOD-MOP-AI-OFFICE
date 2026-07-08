@@ -566,6 +566,14 @@ function enrichPersonSummaryTasks(sheets) {
 }
 
 function hydratePersonSummaryTask(task, source) {
+  task.writeSource = {
+    id: source.id,
+    gid: source.gid,
+    rowNumber: source.rowNumber,
+    item: source.item,
+    sourceTab: source.sourceTab,
+    sourceGroup: source.sourceGroup
+  };
   task.status = source.status;
   task.statusKey = source.statusKey;
   task.contractor = source.contractor;
@@ -582,6 +590,15 @@ function hydratePersonSummaryTask(task, source) {
 
 function hasPersonSummarySyncMetadata(task) {
   return /(^|\s)(site|source sheet|source gid|source row)\s*:/i.test(clean(task.note));
+}
+
+function budgetDeleteTarget(task) {
+  if (!task) return null;
+  if (task.sourceGroup === "location") return task;
+  const source = task.writeSource;
+  if (!source || source.sourceGroup !== "location") return null;
+  if (!source.gid || !source.rowNumber || !source.id) return null;
+  return source;
 }
 
 function personSummarySourceKey(owner, site, item) {
@@ -2118,10 +2135,11 @@ function renderSelectedDrilldown(tasks) {
 
 function renderLiveEditForm(task) {
   const canEdit = state.writeConfig.enabled && task.sourceGroup === "location";
-  const canDelete = (state.writeConfig.canDelete || state.writeConfig.enabled) && task.sourceGroup === "location";
+  const deleteTarget = budgetDeleteTarget(task);
+  const canDelete = (state.writeConfig.canDelete || state.writeConfig.enabled) && Boolean(deleteTarget);
   const editDisabled = canEdit ? "" : "disabled";
   const deleteDisabled = canDelete ? "" : "disabled";
-  const helper = task.sourceGroup !== "location"
+  const helper = task.sourceGroup !== "location" && !deleteTarget
     ? "แก้ได้เฉพาะ sheet ของ site เท่านั้น"
     : state.writeConfig.enabled
       ? "บันทึกเฉพาะ field ที่อนุญาต ไม่แตะ template หรือข้อมูล column อื่น"
@@ -2225,18 +2243,19 @@ function bindLiveEditForm(task) {
       showWriteToast(state.writeConfig.deleteReason || state.writeConfig.reason || "ยังไม่ได้เปิด write mode", "error");
       return;
     }
-    if (task.sourceGroup !== "location") {
+    const deleteTarget = budgetDeleteTarget(task);
+    if (!deleteTarget) {
       showWriteToast("ลบได้เฉพาะ project ใน sheet ของ site เท่านั้น", "error");
       return;
     }
-    const confirmed = window.confirm(`ลบ project นี้ออกจาก Google Sheet?\n\n${task.item}\n\nระบบจะลบข้อมูลในแถวนี้จาก sheet ${task.sourceTab}`);
+    const confirmed = window.confirm(`ลบ project นี้ออกจาก Google Sheet?\n\n${task.item}\n\nระบบจะลบข้อมูลในแถวนี้จาก sheet ${deleteTarget.sourceTab || task.sourceTab}`);
     if (!confirmed) return;
     await runWriteAction(async () => {
       const result = await postWrite("/api/delete-project", {
-        taskId: task.id,
-        gid: task.gid,
-        rowNumber: task.rowNumber,
-        expectedItem: task.item
+        taskId: deleteTarget.id,
+        gid: deleteTarget.gid,
+        rowNumber: deleteTarget.rowNumber,
+        expectedItem: deleteTarget.item || task.item
       });
       if (result.summarySync?.ok === false) {
         showWriteToast(`ลบ project แล้ว แต่ sync สรุปงานรายคนไม่สำเร็จ: ${result.summarySync.error}`, "error");
