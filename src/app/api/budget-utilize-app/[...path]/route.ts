@@ -221,7 +221,7 @@ function assertSafeRowNumber(rowNumber: unknown) {
 
 function assertTaskIdentity(input: Record<string, unknown>, gid: string, rowNumber: number) {
   const taskId = clean(input.taskId, 120);
-  if (taskId && !taskId.startsWith(`${gid}-${rowNumber}-`)) {
+  if (taskId && !taskId.startsWith(`${gid}-${rowNumber}-`) && !taskId.startsWith(`${gid}-${rowNumber - 1}-`)) {
     throw new Error("Task identity does not match the requested sheet row.");
   }
 }
