@@ -74,7 +74,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
         id: `${selected}-breakdown-3`,
         title: "Budget / Bottleneck",
         metric: `${score(b.budgetLoad)} / ${score(b.bottleneckLoad)}`,
-        description: "Soft-capped budget responsibility and approval / decision bottleneck load.",
+        description: "Weighted active, watch and completed budget responsibility plus approval / decision bottleneck load.",
       },
       {
         id: `${selected}-project-budget-value`,

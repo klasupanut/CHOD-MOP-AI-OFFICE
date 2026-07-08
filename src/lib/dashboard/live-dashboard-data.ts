@@ -421,6 +421,33 @@ function workloadSkillMatchLabel(skillFactors: number[]) {
   return "Skill stretch";
 }
 
+function budgetValueLoad(value: number, multiplier: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.sqrt(value / 500_000) * multiplier;
+}
+
+function weightedBudgetLoad(ownerBudgetTasks: BudgetTask[], projectSummary: ReturnType<typeof summarizeProjectsForOwner>) {
+  if (!ownerBudgetTasks.length) {
+    return budgetValueLoad(projectSummary.totalBudget, 2);
+  }
+
+  const activeBudget = ownerBudgetTasks
+    .filter((task) => task.statusKey === "active")
+    .reduce((sum, task) => sum + task.budget, 0);
+  const watchBudget = ownerBudgetTasks
+    .filter((task) => task.statusKey === "blank")
+    .reduce((sum, task) => sum + task.budget, 0);
+  const completedBudget = ownerBudgetTasks
+    .filter((task) => task.statusKey === "done")
+    .reduce((sum, task) => sum + task.budget, 0);
+
+  return (
+    budgetValueLoad(activeBudget, 2) +
+    budgetValueLoad(watchBudget, 1.5) +
+    budgetValueLoad(completedBudget, 0.4)
+  );
+}
+
 function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof summarizeProjectsForOwner>, owner: string, budgetTasks: BudgetTask[], pendingApprovalCount: number) {
   const ownerTasks = tasks.filter((task) => task.assignedTo.toLowerCase() === owner.toLowerCase());
   const openTasks = ownerTasks.filter((task) => task.status !== "Done");
@@ -456,7 +483,7 @@ function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof su
       }, 0)
     : projectSummary.overdueProjects * 1.6;
 
-  const budgetLoad = Math.min(10, Math.sqrt(Math.max(0, projectSummary.totalBudget) / 500_000) * 2);
+  const budgetLoad = weightedBudgetLoad(ownerBudgetTasks, projectSummary);
   const bottleneckLoad =
     owner === "Tammasit" ? pendingApprovalCount * 1.5 :
     owner === "Film" ? pendingApprovalCount * 0.8 :
