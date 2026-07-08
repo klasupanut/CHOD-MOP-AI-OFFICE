@@ -15,7 +15,7 @@ const tabs: Array<{ id: TeamReportMemberId; label: string }> = [
 ];
 
 function moneyCompact(value: number) {
-  return `฿${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+  return `THB ${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
 }
 
 function score(value: number) {
@@ -35,7 +35,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
         { id: "all-work-value", title: "Project Work Value", metric: moneyCompact(portfolio.totalBudget), description: `${moneyCompact(portfolio.completedBudget)} completed value is already tracked.` },
         { id: "all-watch", title: "Watch Items", metric: `${portfolio.overdueProjects} watch`, description: `${moneyCompact(portfolio.watchBudget)} value requires follow-up before the next review.` },
         { id: "all-done-rate", title: "Done Rate", metric: `${portfolio.doneRate}%`, description: `${portfolio.completedProjects}/${portfolio.totalProjects} projects completed.` },
-        { id: "all-load", title: "Skill-Adjusted Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest owner: ${portfolio.busiestMember} / score ${score(portfolio.busiestScore)}.` },
+        { id: "all-load", title: "Execution Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest execution owner: ${portfolio.busiestMember} / score ${score(portfolio.busiestScore)}. Tammasit is measured separately as Management Load.` },
         { id: "all-approval", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
       ];
     }
@@ -43,6 +43,22 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     if (!selectedMember) return [];
     const topProject = selectedMember.projectSummary.topProjects[0] || "No top project found";
     const b = selectedMember.workload.breakdown;
+    const isManagementLoad = selectedMember.id === "tammasit";
+
+    if (isManagementLoad) {
+      return [
+        { id: `${selected}-control`, title: "Management Load", metric: `${selectedMember.workload.percent}% ${selectedMember.workload.label}`, description: `${selectedMember.workload.detail}. Raw control score ${score(selectedMember.workload.score)}.` },
+        { id: `${selected}-active-control`, title: "Active Control", metric: score(b.executionLoad), description: "Active Projects & Budgets rows under control tower monitoring." },
+        { id: `${selected}-approvals`, title: "Approvals", metric: score(b.projectLoad), description: "Internal approval queue weighting that can block downstream work." },
+        { id: `${selected}-watchlist`, title: "Watchlist Pressure", metric: score(b.watchLoad), description: "Watch items from Projects & Budgets that need management follow-up." },
+        { id: `${selected}-team-pressure`, title: "Team Pressure", metric: score(b.riskLoad), description: "Execution team members currently near the top workload band." },
+        { id: `${selected}-work-value`, title: "Active Work Value", metric: score(b.budgetLoad), description: "Active work value factor, capped so large budgets do not dominate the score." },
+        { id: `${selected}-escalation`, title: "Escalation", metric: score(b.bottleneckLoad), description: "Overdue task pressure that may require executive unblock." },
+        { id: `${selected}-project-budget-value`, title: "Portfolio Work Value", metric: moneyCompact(data.reports.projectPortfolio.totalBudget), description: `${data.reports.projectPortfolio.totalProjects} projects visible from ${data.reports.projectPortfolio.sourceName}.` },
+        { id: `${selected}-suggested`, title: selectedMember.suggestedReport, metric: "Ready", description: "Executive report template for decision, risk, approval and assignment review." },
+      ];
+    }
+
     return [
       { id: `${selected}-1`, title: `${selectedMember.name} Task Summary`, metric: `${selectedMember.activeTasks} active`, description: "Live active tasks assigned to this team member." },
       { id: `${selected}-2`, title: "Completed This Week", metric: `${selectedMember.completedThisWeek} done`, description: "Live task completions from the Tasks sheet." },
@@ -54,25 +70,25 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
       },
       {
         id: `${selected}-workload`,
-        title: "Skill-Adjusted Workload",
+        title: "Execution Workload",
         metric: `${selectedMember.workload.percent}% ${selectedMember.workload.label}`,
         description: `${selectedMember.workload.skillMatch}. Raw score ${score(selectedMember.workload.score)} after skill, risk, budget and bottleneck weighting.`,
       },
       {
         id: `${selected}-breakdown-1`,
-        title: "Execution / Risk",
+        title: "Task Execution / Risk",
         metric: `${score(b.executionLoad)} / ${score(b.riskLoad)}`,
         description: "Open task load and high-priority / overdue risk load after skill factor.",
       },
       {
         id: `${selected}-breakdown-2`,
-        title: "Project / Watch",
+        title: "Projects / Watchlist",
         metric: `${score(b.projectLoad)} / ${score(b.watchLoad)}`,
         description: "Active project rows and watch items weighted by owner skill fit.",
       },
       {
         id: `${selected}-breakdown-3`,
-        title: "Budget / Bottleneck",
+        title: "Budget Value / Bottleneck",
         metric: `${score(b.budgetLoad)} / ${score(b.bottleneckLoad)}`,
         description: "Weighted active, watch and completed budget responsibility plus approval / decision bottleneck load.",
       },
@@ -104,7 +120,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     <section className="workspace-main-card reports-by-member">
       <div className="workspace-section-title">
         <div><span>REPORT BY TEAM MEMBER</span><h2>Generate by responsibility</h2></div>
-        <small>Select a team member to see report modules calculated from the same skill-adjusted workload model.</small>
+        <small>Select a team member to see report modules. Tammasit uses Management Load; the execution team uses skill-adjusted workload.</small>
       </div>
       <div className="reports-member-tabs">
         {tabs.map((tab) => (

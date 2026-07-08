@@ -2,11 +2,34 @@ import Image from "next/image";
 import type { LiveDashboardData } from "@/lib/dashboard/live-dashboard-data";
 
 function moneyCompact(value: number) {
-  return `฿${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
+  return `THB ${new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}`;
 }
 
 function score(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
+}
+
+function breakdownItems(member: LiveDashboardData["reports"]["teamMembers"][number]) {
+  const breakdown = member.workload.breakdown;
+  if (member.id === "tammasit") {
+    return [
+      ["Active Control", breakdown.executionLoad],
+      ["Approvals", breakdown.projectLoad],
+      ["Watchlist", breakdown.watchLoad],
+      ["Team Pressure", breakdown.riskLoad],
+      ["Work Value", breakdown.budgetLoad],
+      ["Escalation", breakdown.bottleneckLoad],
+    ] as const;
+  }
+
+  return [
+    ["Task Execution", breakdown.executionLoad],
+    ["Projects", breakdown.projectLoad],
+    ["Watchlist", breakdown.watchLoad],
+    ["Risk", breakdown.riskLoad],
+    ["Budget Value", breakdown.budgetLoad],
+    ["Bottleneck", breakdown.bottleneckLoad],
+  ] as const;
 }
 
 export function TeamMemberReportCards({ members }: { members: LiveDashboardData["reports"]["teamMembers"] }) {
@@ -14,19 +37,13 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
     <section className="workspace-main-card reports-team-section">
       <div className="workspace-section-title">
         <div><span>TEAM MEMBER OVERVIEW</span><h2>Who owns the work value</h2></div>
-        <small>Workload now blends live work volume, budget responsibility, bottlenecks, and skill fit for each person.</small>
+        <small>Execution team workload is separated from Tammasit&apos;s Control Tower management load.</small>
       </div>
       <div className="reports-team-grid">
         {members.map((member) => {
           const topProject = member.projectSummary.topProjects[0];
-          const breakdown = [
-            ["Exec", member.workload.breakdown.executionLoad],
-            ["Project", member.workload.breakdown.projectLoad],
-            ["Watch", member.workload.breakdown.watchLoad],
-            ["Risk", member.workload.breakdown.riskLoad],
-            ["Budget", member.workload.breakdown.budgetLoad],
-            ["Block", member.workload.breakdown.bottleneckLoad],
-          ];
+          const isManagementLoad = member.id === "tammasit";
+          const breakdown = breakdownItems(member);
 
           return (
             <article className="reports-member-card" key={member.id}>
@@ -57,11 +74,11 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
               </div>
               <div className={`reports-member-workload tone-${member.workload.tone}`}>
                 <div>
-                  <span>TEAM WORKLOAD</span>
+                  <span>{isManagementLoad ? "MANAGEMENT LOAD" : "TEAM WORKLOAD"}</span>
                   <strong>{member.workload.percent}%</strong>
                 </div>
                 <i><b style={{ width: `${member.workload.percent}%` }} /></i>
-                <small>{member.workload.label} · {member.workload.skillMatch} · score {score(member.workload.score)}</small>
+                <small>{member.workload.label} | {member.workload.skillMatch} | raw score {score(member.workload.score)}</small>
                 <div className="reports-workload-breakdown">
                   {breakdown.map(([label, value]) => (
                     <em key={label}>

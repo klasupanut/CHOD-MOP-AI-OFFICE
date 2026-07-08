@@ -508,6 +508,38 @@ function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof su
   };
 }
 
+function managementLoadScore(
+  budgetUtilizeData: BudgetUtilizeData,
+  pendingApprovalCount: number,
+  overdueTaskCount: number,
+  executionScores: number[],
+) {
+  const activeControlLoad = budgetStatusCount(budgetUtilizeData, "active") * 1.0;
+  const approvalLoad = pendingApprovalCount * 2.0;
+  const watchlistLoad = budgetUtilizeData.summary.watchItems * 2.5;
+  const maxExecutionScore = Math.max(...executionScores, 1);
+  const highWorkloadTeamMembers = executionScores.filter((score) => Math.round((score / maxExecutionScore) * 100) >= 85).length;
+  const teamRiskLoad = highWorkloadTeamMembers * 3.0;
+  const activeWorkValueLoad = Math.min(20, ((budgetUtilizeData.summary.activeBudget || budgetStatusBudget(budgetUtilizeData, "active")) / 1_000_000) * 0.5);
+  const escalationLoad = overdueTaskCount * 2.5;
+
+  const breakdown: WorkloadBreakdown = {
+    executionLoad: roundScore(activeControlLoad),
+    projectLoad: roundScore(approvalLoad),
+    watchLoad: roundScore(watchlistLoad),
+    riskLoad: roundScore(teamRiskLoad),
+    budgetLoad: roundScore(activeWorkValueLoad),
+    bottleneckLoad: roundScore(escalationLoad),
+  };
+  const score = roundScore(Object.values(breakdown).reduce((sum, value) => sum + value, 0));
+
+  return {
+    score,
+    breakdown,
+    skillMatch: "Control Tower management model",
+  };
+}
+
 function workloadBalance(scores: number[]) {
   const activeScores = scores.filter((score) => score > 0);
   if (activeScores.length < 2) return 100;
@@ -663,9 +695,18 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
       suggestedReport: "Executive Decision Summary",
     },
   ];
-  const workloadResults = baseReportTeamMembers.map((member) => workloadScore(tasks, member.projectSummary, member.name, budgetUtilizeData.tasks, pendingApprovals.length));
-  const workloadScores = workloadResults.map((result) => result.score);
-  const maxWorkloadScore = Math.max(...workloadScores, 1);
+  const executionWorkloadResults = baseReportTeamMembers
+    .filter((member) => member.id !== "tammasit")
+    .map((member) => [member.id, workloadScore(tasks, member.projectSummary, member.name, budgetUtilizeData.tasks, pendingApprovals.length)] as const);
+  const executionWorkloadById = new Map(executionWorkloadResults);
+  const executionWorkloadScores = executionWorkloadResults.map(([, result]) => result.score);
+  const tammasitManagementResult = managementLoadScore(budgetUtilizeData, pendingApprovals.length, overdueTasks.length, executionWorkloadScores);
+  const workloadResults = baseReportTeamMembers.map((member) =>
+    member.id === "tammasit"
+      ? tammasitManagementResult
+      : executionWorkloadById.get(member.id) || workloadScore(tasks, member.projectSummary, member.name, budgetUtilizeData.tasks, pendingApprovals.length),
+  );
+  const maxWorkloadScore = Math.max(...executionWorkloadScores, 1);
   const reportTeamMembers: LiveDashboardData["reports"]["teamMembers"] = baseReportTeamMembers.map((member, index) => {
     const result = workloadResults[index] || {
       score: 0,
@@ -673,7 +714,9 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
       breakdown: { executionLoad: 0, projectLoad: 0, watchLoad: 0, riskLoad: 0, budgetLoad: 0, bottleneckLoad: 0 },
     };
     const score = result.score;
-    const percent = Math.round((score / maxWorkloadScore) * 100);
+    const percent = member.id === "tammasit"
+      ? Math.max(0, Math.min(100, Math.round(score)))
+      : Math.round((score / maxWorkloadScore) * 100);
     const level = workloadLabel(percent);
     return {
       ...member,
@@ -684,12 +727,14 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         tone: level.tone,
         skillMatch: result.skillMatch,
         breakdown: result.breakdown,
-        detail: `${member.projectSummary.activeProjects} active projects / ${member.activeTasks} open tasks / ${result.skillMatch}`,
+        detail: member.id === "tammasit"
+          ? `${budgetStatusCount(budgetUtilizeData, "active")} active projects / ${budgetUtilizeData.summary.watchItems} watch items / ${pendingApprovals.length} approvals / Control Tower`
+          : `${member.projectSummary.activeProjects} active projects / ${member.activeTasks} open tasks / ${result.skillMatch}`,
       },
     };
   });
-  const balanceScore = workloadBalance(workloadScores);
-  const busiestMember = reportTeamMembers.slice().sort((a, b) => b.workload.score - a.workload.score)[0];
+  const balanceScore = workloadBalance(executionWorkloadScores);
+  const busiestMember = reportTeamMembers.filter((member) => member.id !== "tammasit").slice().sort((a, b) => b.workload.score - a.workload.score)[0];
   const overdueProjectCount = projects.filter(isProjectOverdue).length;
   const completedProjectCount = projects.filter((project) => project.status === "Completed").length;
   const budgetProjectPortfolio = budgetUtilizeIsLive
@@ -827,7 +872,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { label: "Project Work Value", value: formatBaht(projectPortfolio.totalBudget), detail: `${formatBaht(projectPortfolio.completedBudget)} completed value tracked`, tone: "success" },
         { label: budgetUtilizeIsLive ? "Watch Items" : "Overdue Projects", value: String(projectPortfolio.overdueProjects), detail: `${formatBaht(projectPortfolio.watchBudget)} value needs follow-up`, tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { label: budgetUtilizeIsLive ? "Done Rate" : "Project Completion", value: `${projectPortfolio.doneRate}%`, detail: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} projects completed`, tone: "blue" },
-        { label: "Skill Workload Balance", value: `${projectPortfolio.workloadBalance}%`, detail: `Busiest: ${projectPortfolio.busiestMember} / score ${projectPortfolio.busiestScore}`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "cyan" },
+        { label: "Execution Workload Balance", value: `${projectPortfolio.workloadBalance}%`, detail: `Busiest execution owner: ${projectPortfolio.busiestMember} / score ${projectPortfolio.busiestScore}`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "cyan" },
       ],
       teamMembers: reportTeamMembers,
       recommended: [
@@ -835,7 +880,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { id: "active-value", owner: projectPortfolio.busiestMember, title: "Active Project Action List", reason: `${projectPortfolio.activeProjects} active projects worth ${formatBaht(projectPortfolio.activeBudget)} need weekly status tracking.`, tone: projectPortfolio.activeProjects ? "blue" : "success" },
         { id: "watch-items", owner: "Kla + Film", title: "Watch Items Follow-up", reason: `${projectPortfolio.overdueProjects} watch items worth ${formatBaht(projectPortfolio.watchBudget)} should be checked before the next report.`, tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { id: "done-rate", owner: "Tammasit", title: "Done Rate & Completion Review", reason: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed (${projectPortfolio.doneRate}%) with ${formatBaht(projectPortfolio.completedBudget)} completed value.`, tone: "cyan" },
-        { id: "workload-balance", owner: "Tammasit", title: "Skill Workload Balance", reason: `${projectPortfolio.workloadBalance}% balance score after skill, budget, risk and bottleneck weighting. Busiest owner is ${projectPortfolio.busiestMember} with score ${projectPortfolio.busiestScore}.`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "workload-balance", owner: "Tammasit", title: "Execution Workload Balance", reason: `${projectPortfolio.workloadBalance}% balance score for Film, Kla, Moss and Foreman. Tammasit is tracked separately as Control Tower load. Busiest execution owner is ${projectPortfolio.busiestMember} with score ${projectPortfolio.busiestScore}.`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
         { id: "approval-queue", owner: "Tammasit", title: "Quotation Approval Summary", reason: `${pendingApprovals.length} live quotation approvals are waiting for internal decision.`, tone: pendingApprovals.length ? "warning" : "success" },
       ],
       insights: [
@@ -843,7 +888,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { id: "value", title: "Work Value Exposure", summary: `${formatBaht(projectPortfolio.totalBudget)} total value, with ${formatBaht(projectPortfolio.activeBudget)} still active.`, action: "Review work value", tone: "success" },
         { id: "watch", title: "Watch Item Pressure", summary: `${projectPortfolio.overdueProjects} watch items represent ${formatBaht(projectPortfolio.watchBudget)} that needs follow-up.`, action: "View watch items", tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { id: "completion", title: "Completion Signal", summary: `${projectPortfolio.doneRate}% done rate from ${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed project rows.`, action: "Review completion", tone: "blue" },
-        { id: "load", title: "Skill Workload Hotspot", summary: `${projectPortfolio.busiestMember} is the busiest owner after skill-adjusted scoring; balance is ${projectPortfolio.workloadBalance}%.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "load", title: "Execution Workload Hotspot", summary: `${projectPortfolio.busiestMember} is the busiest execution owner; team balance is ${projectPortfolio.workloadBalance}%. Tammasit is measured as Management Load separately.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
       ],
     },
   };
