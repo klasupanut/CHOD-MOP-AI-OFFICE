@@ -120,22 +120,38 @@ function canWriteBudgetUtilize(user: NonNullable<Awaited<ReturnType<typeof getAp
   return user.role === "Super Admin" || user.role === "Admin" || user.characterId === "tammasit" || email === superAdminEmail;
 }
 
+function canDeleteBudgetUtilize(user: NonNullable<Awaited<ReturnType<typeof getApiUser>>>) {
+  return canWriteBudgetUtilize(user) || Boolean(String(user.characterId || "").trim());
+}
+
 function writeConfigFor(user: NonNullable<Awaited<ReturnType<typeof getApiUser>>>) {
   if (!isWriteModeEnabled()) {
     return {
       enabled: false,
+      canDelete: false,
       reason: "Budget Utilize write mode is locked. Set BUDGET_UTILIZE_WRITE_MODE=enabled after approval.",
+      deleteReason: "Budget Utilize write mode is locked. Set BUDGET_UTILIZE_WRITE_MODE=enabled after approval.",
     };
   }
-  if (!canWriteBudgetUtilize(user)) {
+  const canWrite = canWriteBudgetUtilize(user);
+  const canDelete = canDeleteBudgetUtilize(user);
+  if (!canWrite && !canDelete) {
     return {
       enabled: false,
-      reason: "Only Super Admin, Admin, or Tammasit can write Projects & Budgets data.",
+      canDelete: false,
+      reason: "Only Super Admin, Admin, or Tammasit can edit Projects & Budgets data.",
+      deleteReason: "Only approved character users can delete Projects & Budgets site rows.",
     };
   }
   return {
-    enabled: true,
-    reason: "Live write mode is enabled with guarded Google Sheets proxy.",
+    enabled: canWrite,
+    canDelete,
+    reason: canWrite
+      ? "Live write mode is enabled with guarded Google Sheets proxy."
+      : "Edit is limited to Super Admin, Admin, or Tammasit. Delete is enabled for approved characters.",
+    deleteReason: canDelete
+      ? "Delete is enabled for approved character users with guarded Google Sheets row checks."
+      : "Only approved character users can delete Projects & Budgets site rows.",
   };
 }
 
@@ -450,8 +466,14 @@ export async function POST(
   const requested = (await context.params).path.join("/");
   if (["api/update-task", "api/add-project", "api/delete-project"].includes(requested)) {
     const config = writeConfigFor(user);
-    if (!config.enabled) {
-      return NextResponse.json({ ok: false, error: "Budget Utilize write mode is locked.", detail: config.reason }, { status: 403 });
+    const isDeleteRequest = requested === "api/delete-project";
+    const isAllowed = isDeleteRequest ? config.canDelete : config.enabled;
+    if (!isAllowed) {
+      return NextResponse.json({
+        ok: false,
+        error: isDeleteRequest ? "Budget Utilize delete is locked." : "Budget Utilize write mode is locked.",
+        detail: isDeleteRequest ? config.deleteReason : config.reason,
+      }, { status: 403 });
     }
 
     try {

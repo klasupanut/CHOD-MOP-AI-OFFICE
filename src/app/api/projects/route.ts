@@ -8,13 +8,17 @@ function canManageProjects(user: { role: string; characterId?: string }) {
   return user.role === "Super Admin" || user.characterId === "tammasit";
 }
 
+function canDeleteProjects(user: { role: string; characterId?: string }) {
+  return canManageProjects(user) || Boolean(String(user.characterId || "").trim());
+}
+
 export async function DELETE(request: Request) {
   const unsafe = rejectUnsafeMutationRequest(request);
   if (unsafe) return unsafe;
 
   const user = await getApiUser("Projects");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManageProjects(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canDeleteProjects(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const body = (await request.json()) as { projectId?: string };
     if (!body.projectId) throw new Error("Project ID is required.");

@@ -102,6 +102,7 @@ export function ProjectWorkspace({
   const [showCreate, setShowCreate] = useState(false);
   const [saveMessage, setSaveMessage] = useState(dataMessage || "");
   const allowProjectAdmin = canManageProjects(currentUser);
+  const allowProjectDelete = allowProjectAdmin || Boolean(String(currentUser.characterId || "").trim());
   const [newProject, setNewProject] = useState<ProjectRecord>(() => createEmptyProject(currentUser.name));
 
   const selectedProject = projects.find((project) => project.projectId === selectedId) ?? projects[0];
@@ -196,7 +197,7 @@ export function ProjectWorkspace({
   };
 
   const deleteSelectedProject = async () => {
-    if (!selectedProject || !allowProjectAdmin) return;
+    if (!selectedProject || !allowProjectDelete) return;
     if (!window.confirm(`Delete project "${selectedProject.projectName}" from Google Sheet? Linked tasks will not be deleted.`)) return;
     setSaveMessage("");
     try {
@@ -447,7 +448,7 @@ export function ProjectWorkspace({
                 <span>{selectedProject.projectType}</span>
                 <h2>{selectedProject.projectName}</h2>
                 <p>{selectedProject.description}</p>
-                {allowProjectAdmin ? <button type="button" className="danger-action inline-danger" onClick={deleteSelectedProject}><Trash2 size={16} /> Delete project</button> : null}
+                {allowProjectDelete ? <button type="button" className="danger-action inline-danger" onClick={deleteSelectedProject}><Trash2 size={16} /> Delete project</button> : null}
               </div>
               <div className="detail-tabs">
                 {["Overview", "Timeline", "Tasks", "Team", "Approvals", "Activity"].map((item) => (

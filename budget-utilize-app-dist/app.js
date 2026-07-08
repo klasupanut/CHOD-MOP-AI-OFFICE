@@ -2116,11 +2116,15 @@ function renderSelectedDrilldown(tasks) {
 
 function renderLiveEditForm(task) {
   const canEdit = state.writeConfig.enabled && task.sourceGroup === "location";
-  const disabled = canEdit ? "" : "disabled";
+  const canDelete = (state.writeConfig.canDelete || state.writeConfig.enabled) && task.sourceGroup === "location";
+  const editDisabled = canEdit ? "" : "disabled";
+  const deleteDisabled = canDelete ? "" : "disabled";
   const helper = task.sourceGroup !== "location"
     ? "แก้ได้เฉพาะ sheet ของ site เท่านั้น"
     : state.writeConfig.enabled
       ? "บันทึกเฉพาะ field ที่อนุญาต ไม่แตะ template หรือข้อมูล column อื่น"
+      : state.writeConfig.canDelete
+        ? "Delete is enabled for approved characters. Edit is limited to Super Admin, Admin, or Tammasit."
       : state.writeConfig.reason;
 
   return `
@@ -2131,14 +2135,14 @@ function renderLiveEditForm(task) {
           <strong>แก้ข้อมูลใน Google Sheet</strong>
         </div>
         <div class="live-edit-actions">
-          <button class="text-button danger-action" type="button" data-delete-project ${disabled}>ลบ Project</button>
-          <button class="text-button primary-action" type="submit" ${disabled}>บันทึก</button>
+          <button class="text-button danger-action" type="button" data-delete-project ${deleteDisabled}>ลบ Project</button>
+          <button class="text-button primary-action" type="submit" ${editDisabled}>บันทึก</button>
         </div>
       </div>
       <div class="live-edit-grid">
         <label>
           <span>Status</span>
-          <select name="statusKey" ${disabled}>
+          <select name="statusKey" ${editDisabled}>
             ${statusWriteOptions()
               .map(([value, label]) => `<option value="${escapeHtml(value)}" ${task.statusKey === value ? "selected" : ""}>${escapeHtml(label)}</option>`)
               .join("")}
@@ -2147,12 +2151,12 @@ function renderLiveEditForm(task) {
         <fieldset class="stage-checkbox-field">
           <legend>สถานะจัดจ้าง</legend>
           <div class="stage-checkbox-grid">
-            ${renderProgressCheckboxes(task, disabled)}
+            ${renderProgressCheckboxes(task, editDisabled)}
           </div>
         </fieldset>
         <label>
           <span>Owner</span>
-          <select name="owner" ${disabled}>
+          <select name="owner" ${editDisabled}>
             ${ownerWriteOptions()
               .map(([value, label]) => `<option value="${escapeHtml(value)}" ${task.owner === value ? "selected" : ""}>${escapeHtml(label)}</option>`)
               .join("")}
@@ -2161,15 +2165,15 @@ function renderLiveEditForm(task) {
         </label>
         <label>
           <span>Budget code</span>
-          <input name="budgetCode" type="text" maxlength="20" list="budgetCodeSuggestions" value="${escapeHtml(task.budgetCode || "")}" ${disabled} />
+          <input name="budgetCode" type="text" maxlength="20" list="budgetCodeSuggestions" value="${escapeHtml(task.budgetCode || "")}" ${editDisabled} />
         </label>
         <label>
           <span>PO Number</span>
-          <input name="poNumber" type="text" maxlength="80" value="${escapeHtml(task.poNumber || "")}" ${disabled} />
+          <input name="poNumber" type="text" maxlength="80" value="${escapeHtml(task.poNumber || "")}" ${editDisabled} />
         </label>
         <label class="full-field">
           <span>Note / Issue</span>
-          <textarea name="note" maxlength="1000" rows="3" ${disabled}>${escapeHtml(task.issue || task.note || "")}</textarea>
+          <textarea name="note" maxlength="1000" rows="3" ${editDisabled}>${escapeHtml(task.issue || task.note || "")}</textarea>
         </label>
       </div>
       <p class="write-helper">${escapeHtml(helper || "")}</p>
@@ -2215,8 +2219,8 @@ function bindLiveEditForm(task) {
   });
   const deleteButton = form.querySelector("[data-delete-project]");
   deleteButton?.addEventListener("click", async () => {
-    if (!state.writeConfig.enabled) {
-      showWriteToast(state.writeConfig.reason || "ยังไม่ได้เปิด write mode", "error");
+    if (!(state.writeConfig.canDelete || state.writeConfig.enabled)) {
+      showWriteToast(state.writeConfig.deleteReason || state.writeConfig.reason || "ยังไม่ได้เปิด write mode", "error");
       return;
     }
     if (task.sourceGroup !== "location") {
