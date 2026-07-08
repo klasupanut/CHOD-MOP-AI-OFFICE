@@ -59,16 +59,20 @@ export function ThemeModeToggle() {
     <button
       aria-label={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
       aria-pressed={mode === "light"}
-      className="theme-mode-toggle"
+      className={`theme-mode-toggle theme-mode-toggle--${mode}`}
       onClick={toggleThemeMode}
       title={`Switch to ${mode === "dark" ? "light" : "dark"} mode`}
       type="button"
     >
-      <span className="theme-mode-toggle__icon theme-mode-toggle__icon--sun" aria-hidden="true">
-        <Sun size={17} />
-      </span>
-      <span className="theme-mode-toggle__icon theme-mode-toggle__icon--moon" aria-hidden="true">
-        <Moon size={17} />
+      <span className="theme-mode-toggle__track" aria-hidden="true">
+        <span className="theme-mode-toggle__knob">
+          <span className="theme-mode-toggle__icon theme-mode-toggle__icon--sun">
+            <Sun size={11} />
+          </span>
+          <span className="theme-mode-toggle__icon theme-mode-toggle__icon--moon">
+            <Moon size={11} />
+          </span>
+        </span>
       </span>
       <span className="theme-mode-toggle__label">{mode === "dark" ? "Dark" : "Light"}</span>
     </button>
