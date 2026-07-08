@@ -35,7 +35,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
         { id: "all-work-value", title: "Project Work Value", metric: moneyCompact(portfolio.totalBudget), description: `${moneyCompact(portfolio.completedBudget)} completed value is already tracked.` },
         { id: "all-watch", title: "Watch Items", metric: `${portfolio.overdueProjects} watch`, description: `${moneyCompact(portfolio.watchBudget)} value requires follow-up before the next review.` },
         { id: "all-done-rate", title: "Done Rate", metric: `${portfolio.doneRate}%`, description: `${portfolio.completedProjects}/${portfolio.totalProjects} projects completed.` },
-        { id: "all-load", title: "Execution Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest execution owner: ${portfolio.busiestMember} / score ${score(portfolio.busiestScore)}. Tammasit is measured separately as Management Load.` },
+        { id: "all-load", title: "Execution Workload Balance", metric: `${portfolio.workloadBalance}%`, description: `Busiest execution owner: ${portfolio.busiestMember} / score ${score(portfolio.busiestScore)}. Tammasit is measured separately as MNG Load.` },
         { id: "all-approval", title: "Executive Action List", metric: `${data.quotation.waitingApproval} approvals`, description: "Live approval queue for Tammasit / super admin." },
       ];
     }
@@ -43,14 +43,14 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     if (!selectedMember) return [];
     const topProject = selectedMember.projectSummary.topProjects[0] || "No top project found";
     const b = selectedMember.workload.breakdown;
-    const isManagementLoad = selectedMember.id === "tammasit";
+    const isMngLoad = selectedMember.id === "tammasit";
 
-    if (isManagementLoad) {
+    if (isMngLoad) {
       return [
-        { id: `${selected}-control`, title: "Management Load", metric: `${selectedMember.workload.percent}% ${selectedMember.workload.label}`, description: `${selectedMember.workload.detail}. Raw control score ${score(selectedMember.workload.score)}.` },
+        { id: `${selected}-control`, title: "MNG Load", metric: `${selectedMember.workload.percent}% ${selectedMember.workload.label}`, description: `${selectedMember.workload.detail}. Raw control score ${score(selectedMember.workload.score)}.` },
         { id: `${selected}-active-control`, title: "Active Control", metric: score(b.executionLoad), description: "Active Projects & Budgets rows under control tower monitoring." },
         { id: `${selected}-approvals`, title: "Approvals", metric: score(b.projectLoad), description: "Internal approval queue weighting that can block downstream work." },
-        { id: `${selected}-watchlist`, title: "Watchlist Pressure", metric: score(b.watchLoad), description: "Watch items from Projects & Budgets that need management follow-up." },
+        { id: `${selected}-watchlist`, title: "Watchlist Pressure", metric: score(b.watchLoad), description: "Watch items from Projects & Budgets that need MNG follow-up." },
         { id: `${selected}-team-pressure`, title: "Team Pressure", metric: score(b.riskLoad), description: "Execution team members currently near the top workload band." },
         { id: `${selected}-work-value`, title: "Active Work Value", metric: score(b.budgetLoad), description: "Active work value factor, capped so large budgets do not dominate the score." },
         { id: `${selected}-escalation`, title: "Escalation", metric: score(b.bottleneckLoad), description: "Overdue task pressure that may require executive unblock." },
@@ -120,7 +120,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
     <section className="workspace-main-card reports-by-member">
       <div className="workspace-section-title">
         <div><span>REPORT BY TEAM MEMBER</span><h2>Generate by responsibility</h2></div>
-        <small>Select a team member to see report modules. Tammasit uses Management Load; the execution team uses skill-adjusted workload.</small>
+        <small>Select a team member to see report modules. Tammasit uses MNG Load; the execution team uses skill-adjusted workload.</small>
       </div>
       <div className="reports-member-tabs">
         {tabs.map((tab) => (

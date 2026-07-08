@@ -508,7 +508,7 @@ function workloadScore(tasks: TaskRecord[], projectSummary: ReturnType<typeof su
   };
 }
 
-function managementLoadScore(
+function mngLoadScore(
   budgetUtilizeData: BudgetUtilizeData,
   pendingApprovalCount: number,
   overdueTaskCount: number,
@@ -536,7 +536,7 @@ function managementLoadScore(
   return {
     score,
     breakdown,
-    skillMatch: "Control Tower management model",
+    skillMatch: "Control Tower MNG model",
   };
 }
 
@@ -700,10 +700,10 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     .map((member) => [member.id, workloadScore(tasks, member.projectSummary, member.name, budgetUtilizeData.tasks, pendingApprovals.length)] as const);
   const executionWorkloadById = new Map(executionWorkloadResults);
   const executionWorkloadScores = executionWorkloadResults.map(([, result]) => result.score);
-  const tammasitManagementResult = managementLoadScore(budgetUtilizeData, pendingApprovals.length, overdueTasks.length, executionWorkloadScores);
+  const tammasitMngResult = mngLoadScore(budgetUtilizeData, pendingApprovals.length, overdueTasks.length, executionWorkloadScores);
   const workloadResults = baseReportTeamMembers.map((member) =>
     member.id === "tammasit"
-      ? tammasitManagementResult
+      ? tammasitMngResult
       : executionWorkloadById.get(member.id) || workloadScore(tasks, member.projectSummary, member.name, budgetUtilizeData.tasks, pendingApprovals.length),
   );
   const maxWorkloadScore = Math.max(...executionWorkloadScores, 1);
@@ -880,7 +880,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { id: "active-value", owner: projectPortfolio.busiestMember, title: "Active Project Action List", reason: `${projectPortfolio.activeProjects} active projects worth ${formatBaht(projectPortfolio.activeBudget)} need weekly status tracking.`, tone: projectPortfolio.activeProjects ? "blue" : "success" },
         { id: "watch-items", owner: "Kla + Film", title: "Watch Items Follow-up", reason: `${projectPortfolio.overdueProjects} watch items worth ${formatBaht(projectPortfolio.watchBudget)} should be checked before the next report.`, tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { id: "done-rate", owner: "Tammasit", title: "Done Rate & Completion Review", reason: `${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed (${projectPortfolio.doneRate}%) with ${formatBaht(projectPortfolio.completedBudget)} completed value.`, tone: "cyan" },
-        { id: "workload-balance", owner: "Tammasit", title: "Execution Workload Balance", reason: `${projectPortfolio.workloadBalance}% balance score for Film, Kla, Moss and Foreman. Tammasit is tracked separately as Control Tower load. Busiest execution owner is ${projectPortfolio.busiestMember} with score ${projectPortfolio.busiestScore}.`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "workload-balance", owner: "Tammasit", title: "Execution Workload Balance", reason: `${projectPortfolio.workloadBalance}% balance score for Film, Kla, Moss and Foreman. Tammasit is tracked separately as MNG Load. Busiest execution owner is ${projectPortfolio.busiestMember} with score ${projectPortfolio.busiestScore}.`, tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
         { id: "approval-queue", owner: "Tammasit", title: "Quotation Approval Summary", reason: `${pendingApprovals.length} live quotation approvals are waiting for internal decision.`, tone: pendingApprovals.length ? "warning" : "success" },
       ],
       insights: [
@@ -888,7 +888,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
         { id: "value", title: "Work Value Exposure", summary: `${formatBaht(projectPortfolio.totalBudget)} total value, with ${formatBaht(projectPortfolio.activeBudget)} still active.`, action: "Review work value", tone: "success" },
         { id: "watch", title: "Watch Item Pressure", summary: `${projectPortfolio.overdueProjects} watch items represent ${formatBaht(projectPortfolio.watchBudget)} that needs follow-up.`, action: "View watch items", tone: projectPortfolio.overdueProjects ? "warning" : "success" },
         { id: "completion", title: "Completion Signal", summary: `${projectPortfolio.doneRate}% done rate from ${projectPortfolio.completedProjects}/${projectPortfolio.totalProjects} completed project rows.`, action: "Review completion", tone: "blue" },
-        { id: "load", title: "Execution Workload Hotspot", summary: `${projectPortfolio.busiestMember} is the busiest execution owner; team balance is ${projectPortfolio.workloadBalance}%. Tammasit is measured as Management Load separately.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
+        { id: "load", title: "Execution Workload Hotspot", summary: `${projectPortfolio.busiestMember} is the busiest execution owner; team balance is ${projectPortfolio.workloadBalance}%. Tammasit is measured as MNG Load separately.`, action: "View workload detail", tone: projectPortfolio.workloadBalance < 50 ? "warning" : "blue" },
       ],
     },
   };
