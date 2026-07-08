@@ -49,7 +49,9 @@ def main() -> None:
         "try{"
         "const F=new Date().toISOString(),"
         'U={signingStatus:"INTERNAL_VERIFIED",clientSigningStatus:"INTERNAL_VERIFIED",signedAt:F,signedByName:"Internal Verification",internalVerifiedAt:F,signingTokenStatus:"INTERNAL_VERIFIED"},'
-        "C=It({...L,...U,updatedAt:F}),"
+        'D=S.find(te=>te.signaturePngUrl===L.signatureUrl||te.name.trim().toLowerCase()===String(L.preparedBy||"").trim().toLowerCase());'
+        'if(!L.signatureUrl&&!D)throw new Error("Select a saved Quoter & Signature before Internal Verify.");'
+        'const C=It({...L,...U,signatureUrl:L.signatureUrl||((D==null?void 0:D.signaturePngUrl)||""),updatedAt:F}),'
         'b=document.createElement("div");'
         'Object.assign(b.style,{position:"fixed",left:"-10000px",top:"0",width:"210mm",zIndex:"-1",pointerEvents:"none"}),'
         "document.body.appendChild(b);"
@@ -67,7 +69,7 @@ def main() -> None:
         'M("Internal verification PDF saved to Google Drive")'
         '}catch(F){alert(F instanceof Error?F.message:"Unable to record Internal Verify.")}'
         'finally{try{$&&$.unmount()}catch{}G&&G.remove()}'
-        "},[u])"
+        "},[u,S])"
     )
     source = source[:old_start] + new_handler + source[old_end:]
 
