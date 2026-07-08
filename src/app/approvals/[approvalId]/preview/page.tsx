@@ -15,9 +15,37 @@ function money(value: number) {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(value);
 }
 
+function configuredAppHost() {
+  const raw = process.env.AUTH_URL || process.env.NEXTAUTH_URL || "";
+  try {
+    return raw ? new URL(raw).hostname.toLowerCase() : "";
+  } catch {
+    return "";
+  }
+}
+
 function validPdfUrl(url: string) {
   const normalized = url.trim();
-  return Boolean(normalized) && normalized !== "/quotations";
+  if (!normalized || normalized === "/quotations") return false;
+  if (normalized.startsWith("/") && !normalized.startsWith("//")) return true;
+
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase();
+    const appHost = configuredAppHost();
+    return (
+      host === "drive.google.com" ||
+      host === "docs.google.com" ||
+      host === "script.google.com" ||
+      host === "script.googleusercontent.com" ||
+      host === "storage.googleapis.com" ||
+      host.endsWith(".googleusercontent.com") ||
+      Boolean(appHost && host === appHost)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export default async function QuotationApprovalPreviewPage({ params }: { params: Promise<{ approvalId: string }> }) {

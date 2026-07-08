@@ -5,6 +5,7 @@ import { canUserApproveQuotation } from "@/lib/approvals/approval-utils";
 import { findApprovalRow, updateApprovalStatus } from "@/lib/approvals/approval-store";
 import { syncQuotationStatusToBackend } from "@/lib/approvals/quotation-approval-source";
 import { requireModule } from "@/lib/auth/session";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 import type { AgentId } from "@/lib/types";
 
 const writableStatuses: QuotationApprovalStatus[] = ["Waiting Final Approval", "Approved", "Rejected", "Revision Required"];
@@ -22,6 +23,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ approvalId
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ approvalId: string }> }) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await requireModule("Approvals");
   const { approvalId } = await params;
   const approval = await findApprovalRow(approvalId);

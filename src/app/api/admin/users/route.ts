@@ -20,6 +20,7 @@ import {
   type QuotationPermission,
   type Role,
 } from "@/lib/auth/permissions";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { AgentId } from "@/lib/types";
 
@@ -87,6 +88,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const actor = await getApiUser("Settings");
   if (!actor) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!isAdmin(actor.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -116,6 +120,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const actor = await getApiUser("Settings");
   if (!actor) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!isAdmin(actor.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });

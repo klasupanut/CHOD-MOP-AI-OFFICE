@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import type { ProjectRecord } from "@/data/projects";
 import { createProjectInSheet, deleteProjectInSheet, updateProjectInSheet } from "@/lib/connectors/google-sheet-task-project";
 import { getApiUser } from "@/lib/auth/api";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 function canManageProjects(user: { role: string; characterId?: string }) {
   return user.role === "Super Admin" || user.characterId === "tammasit";
 }
 
 export async function DELETE(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Projects");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!canManageProjects(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -25,6 +29,9 @@ export async function DELETE(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Projects");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!canManageProjects(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -45,6 +52,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Projects");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!canManageProjects(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });

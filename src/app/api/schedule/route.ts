@@ -14,6 +14,7 @@ import {
   updateTaskInSheet,
 } from "@/lib/connectors/google-sheet-task-project";
 import { getApiUser } from "@/lib/auth/api";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 const characterNameMap = {
   tammasit: "Tammasit",
@@ -58,6 +59,9 @@ function dateOnly(value?: string) {
 }
 
 export async function POST(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -81,6 +85,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Calendar / Schedule");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -191,6 +198,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Calendar / Schedule");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

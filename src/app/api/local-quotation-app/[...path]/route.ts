@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { isLocalNetworkRequest } from "@/lib/local-network";
+import { isLocalQuotationAccessAllowed } from "@/lib/local-network";
 
 const assetRoot = path.join(process.cwd(), "quotation-app-dist");
 
@@ -40,7 +40,7 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ path: string[] }> },
 ) {
-  if (!isLocalNetworkRequest(request)) {
+  if (!isLocalQuotationAccessAllowed(request)) {
     return NextResponse.json({ error: "Local Wi-Fi quotation access only." }, { status: 403 });
   }
 

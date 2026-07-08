@@ -12,3 +12,19 @@ export function isLocalNetworkRequest(request: Request) {
 
   return false;
 }
+
+export function isLocalQuotationAccessAllowed(request: Request) {
+  if (process.env.LOCAL_QUOTATION_ACCESS_ENABLED === "false") return false;
+  if (!isLocalNetworkRequest(request)) return false;
+
+  const expectedToken = process.env.LOCAL_QUOTATION_ACCESS_TOKEN?.trim();
+  if (!expectedToken) return true;
+
+  const url = new URL(request.url);
+  const providedToken =
+    request.headers.get("x-local-quotation-token")?.trim() ||
+    url.searchParams.get("token")?.trim() ||
+    "";
+
+  return providedToken === expectedToken;
+}

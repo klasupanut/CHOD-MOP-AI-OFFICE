@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { mockAnswer, routeQuestion } from "@/lib/ai/agent-router";
 import { getApiUser } from "@/lib/auth/api";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 const responseCache = new Map<string, ReturnType<typeof mockAnswer>>();
 
 export async function POST(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = (await request.json()) as { question?: string };

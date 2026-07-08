@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { getApiUser } from "@/lib/auth/api";
 import { probeApprovedUsersSheet } from "@/lib/auth/google-sheets-store";
 import { getQuotationAppsScriptUrl, probeQuotationAppsScript } from "@/lib/quotations/apps-script-backend";
+import { getBearerToken } from "@/lib/security/request-guards";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +38,7 @@ export async function GET(request: Request) {
     {
       ok: appUrl.includes("localhost:3010") || appUrl.includes("127.0.0.1:3010") || !appUrl.includes("localhost"),
       label: "auth-url",
-      message: `Active auth URL: ${appUrl}`,
+      message: "Auth URL is configured for the current environment.",
     },
     {
       ok: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
@@ -48,7 +50,7 @@ export async function GET(request: Request) {
     {
       ok: Boolean(fitoutSheetId),
       label: "fitout-sheet-id",
-      message: `Fit-out sheet ID: ${fitoutSheetId}`,
+      message: fitoutSheetId ? "Fit-out sheet ID is configured." : "Fit-out sheet ID is missing.",
     },
     {
       ok: process.env.NEXT_PUBLIC_USE_SUPABASE !== "true" || Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
@@ -67,6 +69,21 @@ export async function GET(request: Request) {
   ];
 
   if (deep) {
+    const allowed = await canRunDeepHealth(request);
+    if (!allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          status: "locked",
+          app: "CHOD MOP OFFICE",
+          checkedAt: new Date().toISOString(),
+          deep,
+          message: "Deep health checks require an active Settings admin session or HEALTH_CHECK_TOKEN.",
+        },
+        { status: 401 },
+      );
+    }
+
     checks.push(await probeUsersSheet(10_000));
     checks.push(await probeBudgetUtilizeSheet(budgetUtilizeSheetId, BUDGET_UTILIZE_PROBE_GID, 10_000));
     checks.push(await probePublicSheet(fitoutSheetId, "RESTORATION", 10_000));
@@ -90,12 +107,25 @@ export async function GET(request: Request) {
       bootedAt,
       checkedAt: new Date().toISOString(),
       nodeEnv: process.env.NODE_ENV || "unknown",
-      appUrl,
+      appUrl: deep ? appUrl : undefined,
       deep,
       checks,
     },
     { status: 200 },
   );
+}
+
+async function canRunDeepHealth(request: Request) {
+  const expectedToken = process.env.HEALTH_CHECK_TOKEN?.trim();
+  const providedToken = request.headers.get("x-health-check-token")?.trim() || getBearerToken(request);
+  if (expectedToken && providedToken && providedToken === expectedToken) return true;
+
+  try {
+    const user = await getApiUser("Settings");
+    return Boolean(user && ["Admin", "Super Admin"].includes(user.role));
+  } catch {
+    return false;
+  }
 }
 
 async function probeUsersSheet(timeoutMs: number): Promise<HealthCheck> {

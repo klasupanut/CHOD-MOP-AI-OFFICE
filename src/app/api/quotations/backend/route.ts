@@ -4,6 +4,7 @@ import type { ApprovedUser } from "@/lib/auth/types";
 import type { QuotationPermission } from "@/lib/auth/permissions";
 import { enrichQuotationExtraFields, syncQuotationExtraFields, updateQuotationSheetInternalVerification } from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript, formatAppsScriptError, getQuotationAppsScriptUrl, isSigningAction } from "@/lib/quotations/apps-script-backend";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 type BackendRequest = {
   action?: string;
@@ -79,6 +80,9 @@ function redactInternalPricing(value: unknown, user: ApprovedUser): unknown {
 }
 
 export async function POST(request: NextRequest) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Quotations");
   if (!user || !user.quotationPermissions.includes("quotation.view")) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

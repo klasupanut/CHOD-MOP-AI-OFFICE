@@ -3,6 +3,7 @@ import type { ApprovalPermission } from "@/data/approval-permissions";
 import { listApprovalPermissions, saveApprovalPermissions } from "@/lib/approvals/approval-permission-store";
 import { getApiUser } from "@/lib/auth/api";
 import { canEditApprovalPermissions } from "@/lib/auth/permissions";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 function canManage(user: Awaited<ReturnType<typeof getApiUser>>) {
   return Boolean(user && canEditApprovalPermissions(user.role, user.email));
@@ -40,6 +41,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Settings");
   if (!canManage(user)) return NextResponse.json({ error: "Forbidden" }, { status: user ? 403 : 401 });
   try {

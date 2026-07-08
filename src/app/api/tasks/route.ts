@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { TaskRecord } from "@/data/tasks";
 import { createTaskInSheet, deleteTaskInSheet, updateTaskInSheet } from "@/lib/connectors/google-sheet-task-project";
 import { getApiUser } from "@/lib/auth/api";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 const characterNameMap = {
   tammasit: "Tammasit",
@@ -23,6 +24,9 @@ function getUserTaskOwner(user: { characterId?: string; name: string; email: str
 }
 
 export async function POST(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Tasks");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
@@ -46,6 +50,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Tasks");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
@@ -64,6 +71,9 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await getApiUser("Tasks");
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {

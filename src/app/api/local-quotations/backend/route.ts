@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isLocalNetworkRequest } from "@/lib/local-network";
+import { isLocalQuotationAccessAllowed } from "@/lib/local-network";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 import { enrichQuotationExtraFields, syncQuotationExtraFields, updateQuotationSheetInternalVerification } from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript, formatAppsScriptError, getQuotationAppsScriptUrl, isSigningAction } from "@/lib/quotations/apps-script-backend";
 
@@ -16,7 +17,10 @@ function withRequestedQuotationNo(data: unknown, payload: unknown) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isLocalNetworkRequest(request)) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
+  if (!isLocalQuotationAccessAllowed(request)) {
     return NextResponse.json({ ok: false, error: "Local Wi-Fi quotation access only." }, { status: 403 });
   }
 

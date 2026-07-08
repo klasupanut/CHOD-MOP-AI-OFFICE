@@ -4,6 +4,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/api";
 import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
+import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 const assetRoot = path.join(process.cwd(), "budget-utilize-app-dist");
 const DEFAULT_BUDGET_UTILIZE_SHEET_ID = "1NmVPZkEGxeUvIQYsuoyF7L9Xhjn03zH5RZvDf8UJ2Po";
@@ -440,6 +441,9 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ path: string[] }> },
 ) {
+  const unsafe = rejectUnsafeMutationRequest(request);
+  if (unsafe) return unsafe;
+
   const user = await assertProjectAccess();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
