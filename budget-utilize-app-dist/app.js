@@ -370,7 +370,9 @@ async function loadWriteConfig() {
     state.writeConfig = {
       loaded: true,
       enabled: Boolean(config.enabled),
-      reason: config.reason || ""
+      canDelete: Boolean(config.canDelete),
+      reason: config.reason || "",
+      deleteReason: config.deleteReason || config.reason || ""
     };
   } catch (error) {
     state.writeConfig = {
@@ -386,12 +388,12 @@ async function loadWriteConfig() {
 }
 
 function updateWriteModeUi() {
-  const { loaded, enabled, reason } = state.writeConfig;
-  els.writeModeBadge.textContent = !loaded ? "Write: checking" : enabled ? "Write: live" : "Write: locked";
+  const { loaded, enabled, canDelete, reason, deleteReason } = state.writeConfig;
+  els.writeModeBadge.textContent = !loaded ? "Write: checking" : enabled ? "Write: live" : canDelete ? "Delete: live" : "Write: locked";
   els.writeModeBadge.classList.toggle("enabled", Boolean(enabled));
-  els.writeModeBadge.classList.toggle("disabled", loaded && !enabled);
+  els.writeModeBadge.classList.toggle("disabled", loaded && !enabled && !canDelete);
   els.writeModeBadge.classList.toggle("pending", !loaded);
-  els.writeModeBadge.title = reason || "";
+  els.writeModeBadge.title = enabled ? (reason || "") : (deleteReason || reason || "");
   els.submitProjectButton.disabled = !enabled || state.writeBusy;
   els.newProjectHelper.textContent = enabled
     ? "เพิ่มเป็นแถวใหม่ท้ายชีทของ site ที่เลือกเท่านั้น ไม่แทรกหรือแก้ template เดิม"
