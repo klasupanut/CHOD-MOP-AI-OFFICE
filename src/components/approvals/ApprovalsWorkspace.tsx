@@ -204,7 +204,7 @@ export function ApprovalsWorkspace({
                       <td>{item.priority}</td>
                       <td>{item.status}</td>
                       <td>{isInternallyApproved
-                        ? <span className="inline-action approval-action-approved"><CheckCircle2 size={15} />Approved</span>
+                        ? <span className="inline-action approval-action-approved">Approved</span>
                         : <button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={(event) => { event.stopPropagation(); selectApproval(item); }} type="button">Review</button>}
                       </td>
                     </tr>
