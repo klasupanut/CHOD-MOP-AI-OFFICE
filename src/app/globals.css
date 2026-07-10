@@ -2237,12 +2237,18 @@ a { color: inherit; text-decoration: none; }
 .workspace-table th { color: #72dbff; background: rgba(12,47,72,.72); text-align: left; font-size: 12px; letter-spacing: .09em; text-transform: uppercase; }
 .workspace-table tr { cursor: pointer; }
 .workspace-table tr:hover td { background: rgba(57,208,255,.06); }
+.workspace-table tr.approval-row-pending {
+  background: linear-gradient(90deg, rgba(255, 190, 58, .24) 0%, rgba(255, 190, 58, .15) 48%, rgba(255, 190, 58, .07) 100%);
+}
 .workspace-table tr.approval-row-pending td {
-  background: linear-gradient(90deg, rgba(255, 190, 58, .16), rgba(255, 190, 58, .055));
+  background: transparent;
   border-bottom-color: rgba(255, 199, 82, .22);
 }
+.workspace-table tr.approval-row-pending:hover {
+  background: linear-gradient(90deg, rgba(255, 199, 82, .34) 0%, rgba(255, 199, 82, .22) 48%, rgba(255, 199, 82, .11) 100%);
+}
 .workspace-table tr.approval-row-pending:hover td {
-  background: linear-gradient(90deg, rgba(255, 199, 82, .24), rgba(255, 199, 82, .09));
+  background: transparent;
 }
 .detail-heading span { color: var(--cyan); font-size: 12px; font-weight: 900; letter-spacing: .12em; }
 .detail-heading h2 { margin: 7px 0; font-size: 24px; }
@@ -6642,13 +6648,21 @@ html[data-theme="light"] .workspace-table tr:hover td {
   background: rgba(0, 143, 135, .055);
 }
 
+html[data-theme="light"] .workspace-table tr.approval-row-pending {
+  background: linear-gradient(90deg, rgba(255, 193, 7, .27) 0%, rgba(255, 193, 7, .17) 48%, rgba(255, 193, 7, .08) 100%);
+}
+
 html[data-theme="light"] .workspace-table tr.approval-row-pending td {
-  background: linear-gradient(90deg, rgba(255, 193, 7, .2), rgba(255, 193, 7, .08));
+  background: transparent;
   border-bottom-color: rgba(183, 123, 0, .2);
 }
 
+html[data-theme="light"] .workspace-table tr.approval-row-pending:hover {
+  background: linear-gradient(90deg, rgba(255, 193, 7, .36) 0%, rgba(255, 193, 7, .24) 48%, rgba(255, 193, 7, .13) 100%);
+}
+
 html[data-theme="light"] .workspace-table tr.approval-row-pending:hover td {
-  background: linear-gradient(90deg, rgba(255, 193, 7, .28), rgba(255, 193, 7, .12));
+  background: transparent;
 }
 
 html[data-theme="light"] .inline-action.review-pending {
