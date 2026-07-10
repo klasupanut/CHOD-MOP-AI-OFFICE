@@ -39,7 +39,11 @@ export function publishApprovalNotificationSnapshot(snapshot: ApprovalNotificati
   if (typeof window === "undefined") return nextSnapshot;
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSnapshot));
+    if (nextSnapshot.pendingCount <= 0) {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSnapshot));
+    }
   } catch {
     // Keep UI responsive even if localStorage is unavailable.
   }

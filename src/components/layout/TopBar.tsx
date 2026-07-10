@@ -6,11 +6,12 @@ import { Bell, Cloud, ExternalLink, ShieldCheck } from "lucide-react";
 import { useThailandTime } from "@/components/office/ThailandTimeController";
 import { ThemeModeToggle } from "@/components/layout/ThemeModeToggle";
 import { CHOD_LOGO_DATA_URI } from "@/lib/brand/chod-logo";
-import { getApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
+import { getApprovalNotificationSnapshot, publishApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
 import {
   fetchLiveWorkspaceNotifications,
   getReadNotificationIds,
   getWorkspaceNotifications,
+  isApprovalWorkspaceNotification,
   writeReadNotificationIds,
 } from "@/lib/notifications/workspace-notifications";
 import type { WorkspaceNotification } from "@/lib/notifications/types";
@@ -40,7 +41,13 @@ export function TopBar() {
     async function loadNotifications() {
       try {
         const notifications = await fetchLiveWorkspaceNotifications();
-        if (mounted) setLiveNotifications(notifications);
+        if (mounted) {
+          const liveApprovalNotification = notifications.find(isApprovalWorkspaceNotification);
+          const livePendingCount = Number(liveApprovalNotification?.badgeValue || 0);
+          publishApprovalNotificationSnapshot({ pendingCount: livePendingCount });
+          setApprovalPendingCount(livePendingCount);
+          setLiveNotifications(notifications);
+        }
       } catch {
         if (mounted) setLiveNotifications([]);
       }

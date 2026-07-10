@@ -10,6 +10,25 @@ let liveNotificationCache: { expiresAt: number; notifications: WorkspaceNotifica
   notifications: [],
 };
 const LIVE_NOTIFICATION_CACHE_MS = 120_000;
+const APPROVAL_NOTIFICATION_PREFIX = "notif-approval-pending";
+
+export function isApprovalWorkspaceNotification(notification: WorkspaceNotification) {
+  return notification.id.startsWith(APPROVAL_NOTIFICATION_PREFIX);
+}
+
+function notificationKey(notification: WorkspaceNotification) {
+  return notification.id || `${notification.href}|${notification.title}|${notification.detail}`;
+}
+
+function dedupeWorkspaceNotifications(notifications: WorkspaceNotification[]) {
+  const seen = new Set<string>();
+  return notifications.filter((notification) => {
+    const key = notificationKey(notification);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export function getReadNotificationIds() {
   if (typeof window === "undefined") return [];
@@ -70,8 +89,9 @@ export async function fetchLiveWorkspaceNotifications() {
 }
 
 export function getWorkspaceNotifications(approvalPendingCount: number, isHydrated: boolean, liveNotifications: WorkspaceNotification[] = []) {
-  const approvalNotification: WorkspaceNotification[] = isHydrated && approvalPendingCount > 0 ? [{
-    id: "notif-approval-pending",
+  const liveHasApprovalNotification = liveNotifications.some(isApprovalWorkspaceNotification);
+  const approvalNotification: WorkspaceNotification[] = isHydrated && approvalPendingCount > 0 && !liveHasApprovalNotification ? [{
+    id: `${APPROVAL_NOTIFICATION_PREFIX}-fallback-${approvalPendingCount}`,
     title: `${approvalPendingCount} quotation approval pending`,
     detail: "Review quotation approval request in Approvals menu.",
     href: "/approvals",
@@ -80,7 +100,7 @@ export function getWorkspaceNotifications(approvalPendingCount: number, isHydrat
     badgeValue: approvalPendingCount,
   }] : [];
 
-  return [...approvalNotification, ...liveNotifications];
+  return dedupeWorkspaceNotifications([...liveNotifications, ...approvalNotification]);
 }
 
 export function getSidebarNotificationBadges(notifications: WorkspaceNotification[], readIds: string[]) {

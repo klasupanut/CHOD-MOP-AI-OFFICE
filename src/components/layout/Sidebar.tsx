@@ -10,12 +10,13 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { ModulePermission } from "@/lib/auth/permissions";
-import { getApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
+import { getApprovalNotificationSnapshot, publishApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
 import {
   fetchLiveWorkspaceNotifications,
   getReadNotificationIds,
   getSidebarNotificationBadges,
   getWorkspaceNotifications,
+  isApprovalWorkspaceNotification,
   markWorkspaceNotificationsRead,
   subscribeWorkspaceNotificationReads,
 } from "@/lib/notifications/workspace-notifications";
@@ -70,7 +71,13 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
     async function loadNotifications() {
       try {
         const notifications = await fetchLiveWorkspaceNotifications();
-        if (mounted) setLiveNotifications(notifications);
+        if (mounted) {
+          const liveApprovalNotification = notifications.find(isApprovalWorkspaceNotification);
+          const livePendingCount = Number(liveApprovalNotification?.badgeValue || 0);
+          publishApprovalNotificationSnapshot({ pendingCount: livePendingCount });
+          setApprovalBadgeCount(livePendingCount);
+          setLiveNotifications(notifications);
+        }
       } catch {
         if (mounted) setLiveNotifications([]);
       }

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import type { ProjectRecord } from "@/data/projects";
+import type { QuotationApprovalItem } from "@/data/quotation-approvals";
 import type { ScheduleEvent } from "@/data/schedule";
 import type { TaskRecord } from "@/data/tasks";
+import { listApprovalRows } from "@/lib/approvals/approval-store";
 import { getApiUser } from "@/lib/auth/api";
 import { listTaskProjectScheduleData } from "@/lib/connectors/google-sheet-task-project";
 import type { WorkspaceNotification } from "@/lib/notifications/types";
@@ -119,13 +121,43 @@ function scheduleNotifications(events: ScheduleEvent[], currentUser: Awaited<Ret
     }));
 }
 
+function approvalNotifications(approvals: QuotationApprovalItem[], currentUser: Awaited<ReturnType<typeof getApiUser>>) {
+  if (!currentUser?.modulePermissions.includes("Approvals")) return [];
+
+  const pendingApprovals = approvals
+    .filter((approval) => approval.status === "Waiting Approval" || approval.status === "Waiting Final Approval")
+    .sort((a, b) => dateKey(a.dueDate).localeCompare(dateKey(b.dueDate)) || a.quotationNo.localeCompare(b.quotationNo));
+
+  if (!pendingApprovals.length) return [];
+
+  const oldest = pendingApprovals[0];
+  const overdueCount = pendingApprovals.filter((approval) => dateKey(approval.dueDate) < bangkokTodayKey()).length;
+  const pendingKey = pendingApprovals.map((approval) => approval.approvalId).sort().join("-");
+
+  return [{
+    id: `notif-approval-pending-${pendingApprovals.length}-${pendingKey}`,
+    title: `${pendingApprovals.length} quotation approval pending`,
+    detail: overdueCount
+      ? `${overdueCount} overdue / oldest ${oldest.quotationNo} ${dueWord(oldest.dueDate)}`
+      : `Next review: ${oldest.quotationNo} ${dueWord(oldest.dueDate)}`,
+    href: "/approvals",
+    tone: overdueCount ? "critical" : "warning",
+    meta: "Approvals",
+    badgeValue: pendingApprovals.length,
+  }] satisfies WorkspaceNotification[];
+}
+
 export async function GET() {
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const taskProjectData = await listTaskProjectScheduleData();
+    const [taskProjectData, approvalRows] = await Promise.all([
+      listTaskProjectScheduleData(),
+      listApprovalRows().catch(() => []),
+    ]);
     const notifications = [
+      ...approvalNotifications(approvalRows, user),
       ...taskNotifications(taskProjectData.tasks, user),
       ...projectNotifications(taskProjectData.projects, user),
       ...scheduleNotifications(taskProjectData.manualEvents, user),
