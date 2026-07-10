@@ -173,8 +173,8 @@ export function ApprovalsWorkspace({
         {tabs.map((item) => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)} type="button">{item}</button>)}
       </div>
 
-      <div className="workspace-grid">
-        <section className="workspace-main-card">
+      <div className="workspace-grid approvals-workspace-grid">
+        <section className="workspace-main-card approvals-list-card">
           <div className="workspace-section-title">
             <div><span>REAL QUOTATION DATA</span><h2>Quotation approval requests</h2></div>
             <small>Loaded from the real Auto Quotation source. No document, payment, contract, shop drawing, handover, or report approvals are shown here.</small>
@@ -212,7 +212,7 @@ export function ApprovalsWorkspace({
           </div>
         </section>
 
-        <aside className="workspace-detail-panel">
+        <aside className="workspace-detail-panel approvals-detail-panel">
           {selected ? (
             <>
               <div className="detail-heading">

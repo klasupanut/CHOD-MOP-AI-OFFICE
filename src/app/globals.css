@@ -4073,6 +4073,19 @@ a { color: inherit; text-decoration: none; }
 }
 .approval-summary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .approval-summary strong { font-size: clamp(20px, 1.55vw, 28px); }
+.approvals-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.approvals-list-card,
+.approvals-detail-panel {
+  width: 100%;
+}
+.approvals-detail-panel {
+  position: relative;
+  top: auto;
+  max-height: none;
+  overflow: visible;
+}
 .approvals-table {
   width: max-content;
   min-width: 1560px;
