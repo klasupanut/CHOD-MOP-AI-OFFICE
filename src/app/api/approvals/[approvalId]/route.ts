@@ -51,7 +51,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ap
     );
   }
 
-  const updated = await updateApprovalStatus(approvalId, finalStatus, user.name, body.note);
+  const updated = await updateApprovalStatus(approvalId, finalStatus, user.name, body.note) ?? {
+    ...approval,
+    status: finalStatus,
+    approver: user.name,
+    lastUpdate: new Date().toISOString().slice(0, 16).replace("T", " "),
+    remark: body.note ? `${approval.remark} | ${body.note}` : approval.remark,
+  };
   return NextResponse.json({
     approval: updated,
     mode: syncResult.mode,

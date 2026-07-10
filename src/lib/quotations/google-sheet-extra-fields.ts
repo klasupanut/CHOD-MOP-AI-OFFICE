@@ -437,7 +437,9 @@ export async function enrichQuotationExtraFields<T>(data: T): Promise<T> {
         ...value as object,
         projectType: asString(row.projectType) || extra.projectType,
         mainContractor: asString(row.mainContractor) || extra.mainContractor,
-        approvalStatus: asString(row.approvalStatus) || extra.approvalStatus,
+        // The dedicated sheet column is written by the internal approval flow
+        // and is therefore authoritative over an older Apps Script payload.
+        approvalStatus: extra.approvalStatus || asString(row.approvalStatus),
         approvalAt: asString(row.approvalAt) || extra.approvalAt,
         approvalBy: asString(row.approvalBy) || extra.approvalBy,
         approvalNote: asString(row.approvalNote) || extra.approvalNote,

@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { QuotationApprovalItem, QuotationApprovalStatus } from "@/data/quotation-approvals";
-import { updateQuotationSheetInternalApproval } from "@/lib/quotations/google-sheet-extra-fields";
+import { enrichQuotationExtraFields, updateQuotationSheetInternalApproval } from "@/lib/quotations/google-sheet-extra-fields";
 
 type QuotationBackendRow = {
   quotationId?: string;
@@ -336,7 +336,12 @@ export async function listQuotationApprovalsFromBackend(): Promise<QuotationAppr
     if (!response.ok || !result.ok || !Array.isArray(result.data)) {
       return fallbackRealQuotationApprovals;
     }
-    return uniqueQuotationRows(result.data).map(mapQuotationToApproval);
+    // The Apps Script payload is the quotation source, while the dedicated
+    // approval columns in the Google Sheet are the latest internal decision.
+    // Enrich before mapping so an approved/rejected decision immediately
+    // survives a page refresh and cannot stay in the pending visual state.
+    const enrichedRows = await enrichQuotationExtraFields(result.data);
+    return uniqueQuotationRows(enrichedRows).map(mapQuotationToApproval);
   } catch {
     return fallbackRealQuotationApprovals;
   }

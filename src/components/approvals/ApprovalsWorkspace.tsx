@@ -108,10 +108,17 @@ export function ApprovalsWorkspace({
 
   async function updateStatus(status: QuotationApprovalStatus, actionNote?: string) {
     if (!selected) return;
+    const approvalBeforeUpdate = selected;
     setIsSaving(true);
     setApiMessage("");
+    setApprovals((current) => current.map((item) => item.approvalId === approvalBeforeUpdate.approvalId ? {
+      ...item,
+      status,
+      approver: currentUser.name,
+      lastUpdate: new Date().toISOString().slice(0, 16).replace("T", " "),
+    } : item));
     try {
-      const response = await fetch(`/api/approvals/${selected.approvalId}`, {
+      const response = await fetch(`/api/approvals/${approvalBeforeUpdate.approvalId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, note: actionNote }),
@@ -124,16 +131,14 @@ export function ApprovalsWorkspace({
       };
       if (!response.ok || !payload.approval) throw new Error(payload.error || "Approval update failed.");
 
-      const nextApprovals = approvals.map((item) => item.approvalId === payload.approval?.approvalId ? { ...item, ...payload.approval } : item);
-      setApprovals(nextApprovals);
-      setSelectedId(payload.approval.approvalId);
-      publishApprovalNotificationSnapshot({
-        pendingCount: countPendingApprovals(nextApprovals),
-        lastResolvedApprovalId: payload.approval.status === "Approved" ? payload.approval.approvalId : undefined,
+      setApprovals((current) => {
+        return current.map((item) => item.approvalId === payload.approval?.approvalId ? { ...item, ...payload.approval } : item);
       });
+      setSelectedId(payload.approval.approvalId);
       const syncLabel = payload.quotationSync === "synced" ? " + quotation status synced" : "";
       setApiMessage(`Saved via ${payload.mode || "approval API"}: ${payload.approval.status}${syncLabel}`);
     } catch (error) {
+      setApprovals((current) => current.map((item) => item.approvalId === approvalBeforeUpdate.approvalId ? approvalBeforeUpdate : item));
       setApiMessage(error instanceof Error ? error.message : "Approval update failed.");
     } finally {
       setIsSaving(false);
@@ -175,7 +180,7 @@ export function ApprovalsWorkspace({
             <small>Loaded from the real Auto Quotation source. No document, payment, contract, shop drawing, handover, or report approvals are shown here.</small>
           </div>
           <div className="workspace-table-wrap">
-            <table className="workspace-table">
+            <table className="workspace-table approvals-table">
               <thead>
                 <tr><th>Quotation No.</th><th>Project / Site</th><th>Quotation Type</th><th>Requested By</th><th>Amount</th><th>Requested Date</th><th>Due Date</th><th>Priority</th><th>Status</th><th>Action</th></tr>
               </thead>
@@ -189,7 +194,7 @@ export function ApprovalsWorkspace({
                       onClick={() => selectApproval(item)}
                     >
                       <td>{item.quotationNo}</td>
-                      <td>{item.projectName}<small>{item.site}</small></td>
+                      <td><span className="approval-project-site">{item.projectName} · {item.site}</span></td>
                       <td>{quotationTypeLabel(item.quotationType)}</td>
                       <td>{item.requestedBy}</td>
                       <td>{money(item.amount)}</td>
@@ -197,7 +202,7 @@ export function ApprovalsWorkspace({
                       <td>{item.dueDate}</td>
                       <td>{item.priority}</td>
                       <td>{item.status}</td>
-                      <td><button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} type="button">Review</button></td>
+                      <td><button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={(event) => { event.stopPropagation(); selectApproval(item); }} type="button">Review</button></td>
                     </tr>
                   );
                 })}
