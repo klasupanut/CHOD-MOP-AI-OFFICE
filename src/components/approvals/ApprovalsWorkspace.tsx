@@ -187,9 +187,10 @@ export function ApprovalsWorkspace({
               <tbody>
                 {filtered.map((item) => {
                   const isWaitingApproval = item.status === "Waiting Approval" || item.status === "Waiting Final Approval";
+                  const isInternallyApproved = item.status === "Approved";
                   return (
                     <tr
-                      className={isWaitingApproval ? "approval-row-pending" : undefined}
+                      className={isWaitingApproval ? "approval-row-pending" : isInternallyApproved ? "approval-row-approved" : undefined}
                       key={item.approvalId}
                       onClick={() => selectApproval(item)}
                     >
@@ -202,7 +203,10 @@ export function ApprovalsWorkspace({
                       <td>{item.dueDate}</td>
                       <td>{item.priority}</td>
                       <td>{item.status}</td>
-                      <td><button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={(event) => { event.stopPropagation(); selectApproval(item); }} type="button">Review</button></td>
+                      <td>{isInternallyApproved
+                        ? <span className="inline-action approval-action-approved"><CheckCircle2 size={15} />Approved</span>
+                        : <button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={(event) => { event.stopPropagation(); selectApproval(item); }} type="button">Review</button>}
+                      </td>
                     </tr>
                   );
                 })}

@@ -2250,6 +2250,17 @@ a { color: inherit; text-decoration: none; }
 .workspace-table tr.approval-row-pending:hover td {
   background: transparent;
 }
+.workspace-table tr.approval-row-approved {
+  background: linear-gradient(90deg, rgba(28, 205, 132, .23) 0%, rgba(28, 205, 132, .14) 48%, rgba(28, 205, 132, .07) 100%);
+}
+.workspace-table tr.approval-row-approved td {
+  background: transparent;
+  border-bottom-color: rgba(69, 229, 163, .22);
+}
+.workspace-table tr.approval-row-approved:hover {
+  background: linear-gradient(90deg, rgba(28, 205, 132, .33) 0%, rgba(28, 205, 132, .22) 48%, rgba(28, 205, 132, .11) 100%);
+}
+.workspace-table tr.approval-row-approved:hover td { background: transparent; }
 .detail-heading span { color: var(--cyan); font-size: 12px; font-weight: 900; letter-spacing: .12em; }
 .detail-heading h2 { margin: 7px 0; font-size: 24px; }
 .detail-heading p { margin: 0; color: #9bb1c4; font-size: 14px; line-height: 1.55; }
@@ -4125,6 +4136,15 @@ a { color: inherit; text-decoration: none; }
   color: #2a1600;
   background: linear-gradient(135deg, #ffe37a, #ffbd32);
   box-shadow: 0 0 0 1px rgba(255, 237, 150, .2) inset, 0 0 18px rgba(255, 189, 50, .26);
+}
+.inline-action.approval-action-approved {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: rgba(92, 239, 174, .66);
+  color: #042518;
+  background: linear-gradient(135deg, #9cf4c9, #32ca86);
+  box-shadow: 0 0 0 1px rgba(219, 255, 237, .23) inset, 0 0 18px rgba(44, 218, 142, .22);
 }
 .quotation-preview-card {
   display: grid;
@@ -6665,11 +6685,33 @@ html[data-theme="light"] .workspace-table tr.approval-row-pending:hover td {
   background: transparent;
 }
 
+html[data-theme="light"] .workspace-table tr.approval-row-approved {
+  background: linear-gradient(90deg, rgba(29, 169, 103, .24) 0%, rgba(29, 169, 103, .15) 48%, rgba(29, 169, 103, .07) 100%);
+}
+
+html[data-theme="light"] .workspace-table tr.approval-row-approved td {
+  background: transparent;
+  border-bottom-color: rgba(22, 127, 76, .2);
+}
+
+html[data-theme="light"] .workspace-table tr.approval-row-approved:hover {
+  background: linear-gradient(90deg, rgba(29, 169, 103, .33) 0%, rgba(29, 169, 103, .21) 48%, rgba(29, 169, 103, .11) 100%);
+}
+
+html[data-theme="light"] .workspace-table tr.approval-row-approved:hover td { background: transparent; }
+
 html[data-theme="light"] .inline-action.review-pending {
   border-color: rgba(176, 113, 0, .42);
   color: #3b2500;
   background: linear-gradient(135deg, #ffdf74, #f7b51c);
   box-shadow: 0 0 0 1px rgba(255,255,255,.38) inset, 0 9px 18px rgba(172, 106, 0, .14);
+}
+
+html[data-theme="light"] .inline-action.approval-action-approved {
+  border-color: rgba(16, 126, 74, .45);
+  color: #062517;
+  background: linear-gradient(135deg, #aaf0c9, #42bf7d);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.48) inset, 0 8px 18px rgba(24, 147, 87, .14);
 }
 
 html[data-theme="light"] .task-create-grid label,
