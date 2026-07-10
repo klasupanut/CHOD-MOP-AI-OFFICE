@@ -182,6 +182,74 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
   };
 }
 
+function normalizedQuotationIdentity(row: QuotationBackendRow) {
+  const quotationNo = String(row.quotationNo || "").trim().toUpperCase();
+  if (quotationNo) return `quotation-no:${quotationNo}`;
+
+  const quotationId = String(row.quotationId || "").trim();
+  if (quotationId) return `quotation-id:${quotationId}`;
+
+  return "";
+}
+
+function quotationRowUpdatedAt(row: QuotationBackendRow) {
+  const value = String(row.approvalUpdatedAt || row.updatedAt || row.createdAt || "").trim();
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function quotationRowCompleteness(row: QuotationBackendRow) {
+  return [
+    row.approvalStatus,
+    row.signingStatus,
+    row.pdfUrl,
+    row.signingUrl,
+    row.client,
+    row.subject,
+    row.projectSite,
+    row.items?.length,
+  ].filter(Boolean).length;
+}
+
+/**
+ * The quotation backend can temporarily return the same quotation more than
+ * once while a sheet update is being propagated. Keep only the newest,
+ * most-complete version for display. This is read-only: it never edits the
+ * source sheet or changes a quotation status.
+ */
+function uniqueQuotationRows(rows: QuotationBackendRow[]) {
+  const unique = new Map<string, QuotationBackendRow>();
+  let duplicateCount = 0;
+
+  for (const row of rows) {
+    const identity = normalizedQuotationIdentity(row);
+    if (!identity) {
+      unique.set(`unidentified:${unique.size}`, row);
+      continue;
+    }
+
+    const existing = unique.get(identity);
+    if (!existing) {
+      unique.set(identity, row);
+      continue;
+    }
+
+    duplicateCount += 1;
+    const existingUpdatedAt = quotationRowUpdatedAt(existing);
+    const candidateUpdatedAt = quotationRowUpdatedAt(row);
+    const shouldReplace = candidateUpdatedAt > existingUpdatedAt
+      || (candidateUpdatedAt === existingUpdatedAt && quotationRowCompleteness(row) > quotationRowCompleteness(existing));
+
+    if (shouldReplace) unique.set(identity, row);
+  }
+
+  if (duplicateCount) {
+    console.warn(`[approvals] Removed ${duplicateCount} duplicate quotation row(s) from the display payload.`);
+  }
+
+  return [...unique.values()];
+}
+
 export const fallbackRealQuotationApprovals: QuotationApprovalWithItems[] = [
   mapQuotationToApproval({
     quotationId: "QUO-mqte3t7d-1hsobp",
@@ -268,7 +336,7 @@ export async function listQuotationApprovalsFromBackend(): Promise<QuotationAppr
     if (!response.ok || !result.ok || !Array.isArray(result.data)) {
       return fallbackRealQuotationApprovals;
     }
-    return result.data.map(mapQuotationToApproval);
+    return uniqueQuotationRows(result.data).map(mapQuotationToApproval);
   } catch {
     return fallbackRealQuotationApprovals;
   }
