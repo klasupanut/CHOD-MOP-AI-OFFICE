@@ -275,11 +275,11 @@ export function TaskWorkspace({
         </section>
       ) : null}
 
-      <section className="workspace-summary task-summary">
-        <article className="task-summary-card task-summary-total"><strong>{summary.total}</strong><span>Total Tasks</span></article>
-        <article className="task-summary-card task-summary-overdue"><strong>{summary.overdue}</strong><span>Overdue</span></article>
-        <article className="task-summary-card task-summary-waiting"><strong>{summary.waiting}</strong><span>Waiting Approval</span></article>
-        <article className="task-summary-card task-summary-done"><strong>{summary.done}</strong><span>Done</span></article>
+      <section className="workspace-summary">
+        <article><strong>{summary.total}</strong><span>Total Tasks</span></article>
+        <article><strong>{summary.overdue}</strong><span>Overdue</span></article>
+        <article><strong>{summary.waiting}</strong><span>Waiting Approval</span></article>
+        <article><strong>{summary.done}</strong><span>Done</span></article>
       </section>
 
       <div className="task-filter-bar">

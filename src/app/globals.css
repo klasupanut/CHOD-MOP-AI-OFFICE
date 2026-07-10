@@ -6554,40 +6554,45 @@ html[data-theme="light"] .user-row small {
   color: #526b63;
 }
 
-html[data-theme="light"] .task-summary-card {
+html[data-theme="light"] .task-column {
   border-width: 1px;
-  box-shadow: 0 14px 28px rgba(20, 71, 58, .09), inset 0 1px 0 rgba(255,255,255,.66);
+  box-shadow: 0 14px 26px rgba(19, 72, 58, .08), inset 0 1px 0 rgba(255,255,255,.66);
 }
 
-html[data-theme="light"] .task-summary-card strong,
-html[data-theme="light"] .task-summary-card span { position: relative; }
-
-html[data-theme="light"] .task-summary-total {
-  border-color: rgba(0, 137, 123, .24);
-  background: radial-gradient(circle at 88% 6%, rgba(94, 234, 212, .34), transparent 38%), linear-gradient(135deg, #e9fbf7, #d8f5ed);
+html[data-theme="light"] .task-column:nth-child(1) {
+  border-color: rgba(14, 116, 144, .24);
+  background: radial-gradient(circle at 88% 6%, rgba(103, 232, 249, .3), transparent 38%), linear-gradient(160deg, #effcff, #e0f6fb);
 }
-html[data-theme="light"] .task-summary-total strong { color: #08796f; }
+html[data-theme="light"] .task-column:nth-child(1) header strong { color: #13788d; }
+html[data-theme="light"] .task-column:nth-child(1) header span { color: #063743; background: #8be7f4; }
 
-html[data-theme="light"] .task-summary-overdue {
-  border-color: rgba(220, 78, 77, .25);
-  background: radial-gradient(circle at 88% 6%, rgba(255, 178, 164, .3), transparent 38%), linear-gradient(135deg, #fff2ef, #ffe3dd);
+html[data-theme="light"] .task-column:nth-child(2) {
+  border-color: rgba(26, 118, 183, .24);
+  background: radial-gradient(circle at 88% 6%, rgba(147, 197, 253, .32), transparent 38%), linear-gradient(160deg, #f0f7ff, #e2eefc);
 }
-html[data-theme="light"] .task-summary-overdue strong { color: #b43c3d; }
-html[data-theme="light"] .task-summary-overdue span { color: #8d4c47; }
+html[data-theme="light"] .task-column:nth-child(2) header strong { color: #216ca6; }
+html[data-theme="light"] .task-column:nth-child(2) header span { color: #073966; background: #a9d0fa; }
 
-html[data-theme="light"] .task-summary-waiting {
-  border-color: rgba(195, 132, 18, .26);
-  background: radial-gradient(circle at 88% 6%, rgba(255, 223, 127, .34), transparent 38%), linear-gradient(135deg, #fff9e5, #fff0c7);
+html[data-theme="light"] .task-column:nth-child(3) {
+  border-color: rgba(195, 132, 18, .27);
+  background: radial-gradient(circle at 88% 6%, rgba(255, 223, 127, .34), transparent 38%), linear-gradient(160deg, #fffaf0, #fff1cc);
 }
-html[data-theme="light"] .task-summary-waiting strong { color: #996813; }
-html[data-theme="light"] .task-summary-waiting span { color: #79622e; }
+html[data-theme="light"] .task-column:nth-child(3) header strong { color: #996813; }
+html[data-theme="light"] .task-column:nth-child(3) header span { color: #4d3702; background: #ffe27d; }
 
-html[data-theme="light"] .task-summary-done {
+html[data-theme="light"] .task-column:nth-child(4) {
   border-color: rgba(31, 151, 92, .24);
-  background: radial-gradient(circle at 88% 6%, rgba(134, 239, 172, .34), transparent 38%), linear-gradient(135deg, #eefcf2, #dcf7e4);
+  background: radial-gradient(circle at 88% 6%, rgba(134, 239, 172, .32), transparent 38%), linear-gradient(160deg, #f0fcf4, #ddf7e6);
 }
-html[data-theme="light"] .task-summary-done strong { color: #19834f; }
-html[data-theme="light"] .task-summary-done span { color: #3c7655; }
+html[data-theme="light"] .task-column:nth-child(4) header strong { color: #19834f; }
+html[data-theme="light"] .task-column:nth-child(4) header span { color: #063c20; background: #8ce8b5; }
+
+html[data-theme="light"] .task-column:nth-child(5) {
+  border-color: rgba(220, 78, 77, .26);
+  background: radial-gradient(circle at 88% 6%, rgba(255, 178, 164, .32), transparent 38%), linear-gradient(160deg, #fff4f2, #ffe3dd);
+}
+html[data-theme="light"] .task-column:nth-child(5) header strong { color: #b43c3d; }
+html[data-theme="light"] .task-column:nth-child(5) header span { color: #561619; background: #ffb6a8; }
 
 html[data-theme="light"] .workspace-hero span,
 html[data-theme="light"] .workspace-section-title span,
