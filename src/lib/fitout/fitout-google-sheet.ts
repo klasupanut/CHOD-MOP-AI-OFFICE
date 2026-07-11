@@ -59,77 +59,84 @@ type FitoutDataSnapshot = Pick<FitoutWorkspaceData, "miniRows" | "megaRows" | "a
 
 const DEFAULT_FITOUT_SHEET_ID = "1UdyLxEI-v07rzwpKanJAGuJlyPV8bC9BN9gxBxXnB1U";
 const FITOUT_SHEET_TIMEOUT_MS = 15_000;
+const FITOUT_CACHE_MS = 60_000;
 
 const miniAliases = ["RESTORATION", "restoration", "MINI FIT-OUT", "mini fit-out", "Mini Fit-Out"];
 const megaAliases = ["FIT-OUT", "fit-out", "Fit-Out", "MEGA FIT-OUT", "mega fit-out", "Mega Fit-Out"];
 
 let cachedLiveFitoutSnapshot: FitoutDataSnapshot | null = null;
+let cachedLiveFitoutAt = 0;
+let fitoutLoadPromise: Promise<FitoutWorkspaceData> | null = null;
 
 export async function getFitoutWorkspaceData(options: { allowFallback?: boolean } = {}): Promise<FitoutWorkspaceData> {
   const allowFallback = options.allowFallback ?? true;
   const sheetId = process.env.GOOGLE_SHEET_ID_FITOUT_PROJECT || DEFAULT_FITOUT_SHEET_ID;
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
 
-  try {
-    const [miniRows, megaRows] = await Promise.all([
-      loadFirstAvailableFitoutSheet(sheetId, miniAliases, "Mini Fit-out"),
-      loadFirstAvailableFitoutSheet(sheetId, megaAliases, "Mega Fit-out"),
-    ]);
-
-    const snapshot = buildFitoutSnapshot(miniRows, megaRows);
-    cachedLiveFitoutSnapshot = snapshot;
+  if (cachedLiveFitoutSnapshot && cachedLiveFitoutAt > Date.now() - FITOUT_CACHE_MS) {
     return {
       source: {
         sheetId,
         sheetUrl,
-        syncedAt: new Date().toISOString(),
+        syncedAt: new Date(cachedLiveFitoutAt).toISOString(),
         status: "live",
-        message: "Synced from public Google Sheet tabs: RESTORATION and FIT-OUT.",
+        message: "Using a recent live Google Sheet snapshot (cached for quota resilience).",
       },
-      ...snapshot,
+      ...cachedLiveFitoutSnapshot,
     };
-  } catch (error) {
-    if (cachedLiveFitoutSnapshot && allowFallback) {
-      return {
-        source: {
-          sheetId,
-          sheetUrl,
-          syncedAt: new Date().toISOString(),
-          status: "fallback",
-          message: `${formatError(error)} Showing last cached live Fit-out data.`,
-        },
-        ...cachedLiveFitoutSnapshot,
-      };
-    }
+  }
+  if (fitoutLoadPromise) return fitoutLoadPromise;
 
-    if (!allowFallback) {
+  fitoutLoadPromise = (async () => {
+    try {
+      const [miniRows, megaRows] = await Promise.all([
+        loadFirstAvailableFitoutSheet(sheetId, miniAliases, "Mini Fit-out"),
+        loadFirstAvailableFitoutSheet(sheetId, megaAliases, "Mega Fit-out"),
+      ]);
+
+      const snapshot = buildFitoutSnapshot(miniRows, megaRows);
+      cachedLiveFitoutSnapshot = snapshot;
+      cachedLiveFitoutAt = Date.now();
+      return {
+        source: {
+          sheetId,
+          sheetUrl,
+          syncedAt: new Date(cachedLiveFitoutAt).toISOString(),
+          status: "live" as const,
+          message: "Synced from public Google Sheet tabs: RESTORATION and FIT-OUT.",
+        },
+        ...snapshot,
+      };
+    } catch (error) {
+      if (cachedLiveFitoutSnapshot && allowFallback) {
+        return {
+          source: {
+            sheetId,
+            sheetUrl,
+            syncedAt: new Date(cachedLiveFitoutAt || Date.now()).toISOString(),
+            status: "fallback" as const,
+            message: `${formatError(error)} Showing the last cached live Fit-out data.`,
+          },
+          ...cachedLiveFitoutSnapshot,
+        };
+      }
+
       return {
         source: {
           sheetId,
           sheetUrl,
           syncedAt: new Date().toISOString(),
-          status: "fallback",
+          status: "fallback" as const,
           message: `${formatError(error)} Live Fit-out data unavailable. No sample data is displayed.`,
         },
         ...buildFitoutSnapshot([], []),
       };
+    } finally {
+      fitoutLoadPromise = null;
     }
+  })();
 
-    const miniRows = sampleMiniFitoutRows;
-    const megaRows = sampleMegaFitoutRows;
-    const snapshot = buildFitoutSnapshot(miniRows, megaRows);
-
-    return {
-      source: {
-        sheetId,
-        sheetUrl,
-        syncedAt: new Date().toISOString(),
-        status: "fallback",
-        message: `${formatError(error)} Showing fallback Fit-out data.`,
-      },
-      ...snapshot,
-    };
-  }
+  return fitoutLoadPromise;
 }
 
 async function loadFirstAvailableFitoutSheet(sheetId: string, aliases: string[], type: FitoutProjectRow["type"]) {
@@ -161,7 +168,11 @@ async function fetchWithTimeout(url: string, timeoutMs: number) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(url, { cache: "no-store", signal: controller.signal });
+    return await fetch(url, {
+      cache: "force-cache",
+      next: { revalidate: 60 },
+      signal: controller.signal,
+    });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(`Google Sheet sync timed out after ${timeoutMs}ms.`);
@@ -376,35 +387,3 @@ function deriveBlockFromUnit(value: string) {
 function sum(rows: FitoutProjectRow[], key: "actualCapex" | "realizedRevenue" | "netOperatingProfit") {
   return rows.reduce((total, row) => total + row[key], 0);
 }
-
-const sampleMiniFitoutRows: FitoutProjectRow[] = [
-  ["F&WH CHODTHANAWAT 1", "A-01", "2026-01-05", "2026-01-25", 95000, 150000],
-  ["F&WH CHODTHANAWAT 2", "B-02", "2026-02-01", "2026-02-18", 120000, 180000],
-  ["F&WH CHODTHANAWAT 3", "C-01", "2026-03-02", "2026-03-22", 110000, 172000],
-].map(([project, unit, startDate, finishDate, actualCapex, realizedRevenue], index) => ({
-  id: `fallback-mini-${index}`,
-  project: String(project),
-  block: deriveBlockFromUnit(String(unit)),
-  unit: String(unit),
-  startDate: String(startDate),
-  finishDate: String(finishDate),
-  actualCapex: Number(actualCapex),
-  realizedRevenue: Number(realizedRevenue),
-  netOperatingProfit: Number(realizedRevenue) - Number(actualCapex),
-  type: "Mini Fit-out",
-}));
-
-const sampleMegaFitoutRows: FitoutProjectRow[] = [
-  ["F&WH CHODTHANAWAT 2", "F7-F8", "2026-01-26", "2026-03-22", 1550000, 2200000],
-].map(([project, unit, startDate, finishDate, actualCapex, realizedRevenue], index) => ({
-  id: `fallback-mega-${index}`,
-  project: String(project),
-  block: deriveBlockFromUnit(String(unit)),
-  unit: String(unit),
-  startDate: String(startDate),
-  finishDate: String(finishDate),
-  actualCapex: Number(actualCapex),
-  realizedRevenue: Number(realizedRevenue),
-  netOperatingProfit: Number(realizedRevenue) - Number(actualCapex),
-  type: "Mega Fit-out",
-}));

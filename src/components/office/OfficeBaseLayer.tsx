@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { OfficePeriod } from "./ThailandTimeController";
 
 const periodBackgrounds: Record<OfficePeriod, string> = {
@@ -12,7 +13,15 @@ const periodBackgrounds: Record<OfficePeriod, string> = {
 export function OfficeBaseLayer({ period }: { period: OfficePeriod }) {
   return (
     <div className="office-asset-layer office-base-layer" aria-hidden="true">
-      <img src={periodBackgrounds[period]} alt="" draggable={false} />
+      <Image
+        alt=""
+        draggable={false}
+        fill
+        priority
+        quality={90}
+        sizes="(max-width: 760px) 100vw, (max-width: 1200px) 82vw, 70vw"
+        src={periodBackgrounds[period]}
+      />
     </div>
   );
 }

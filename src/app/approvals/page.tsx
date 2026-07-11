@@ -17,7 +17,6 @@ export default async function ApprovalsPage() {
       return [];
     }),
   ]);
-  const liveApprovals = approvals.filter((approval) => approval.source !== "quotation-fallback");
   return (
     <main className="hq-shell module-shell">
       <Sidebar user={user} />
@@ -25,7 +24,7 @@ export default async function ApprovalsPage() {
         <TopBar />
         <ApprovalsWorkspace
           currentUser={user}
-          initialApprovals={liveApprovals}
+          initialApprovals={approvals}
           initialApprovalPermissions={approvalPermissions}
         />
       </section>

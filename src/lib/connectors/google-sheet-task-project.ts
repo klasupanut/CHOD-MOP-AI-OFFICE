@@ -83,7 +83,7 @@ export const taskProjectSheetConfig = {
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 let ensureSheetsPromise: Promise<void> | null = null;
-const READ_CACHE_MS = 30_000;
+const READ_CACHE_MS = 60_000;
 
 type TaskProjectData = {
   mode: "google-sheet" | "not-configured";
@@ -102,7 +102,9 @@ let taskProjectScheduleCache: { expiresAt: number; data: TaskProjectScheduleData
 let taskProjectSchedulePromise: Promise<TaskProjectScheduleData> | null = null;
 
 function getSheetId() {
-  return process.env.GOOGLE_SHEET_ID_TASK_PROJECT || process.env.GOOGLE_SHEET_ID_USERS || "";
+  // Never fall back to the Users workbook: a missing Tasks/Projects ID must
+  // fail safely rather than write operational rows into the access-control sheet.
+  return process.env.GOOGLE_SHEET_ID_TASK_PROJECT || "";
 }
 
 function base64Url(value: string) {
@@ -344,23 +346,27 @@ async function ensureTaskProjectSheetsOnce() {
       }),
     });
   }
-  const projectsRange = encodeURIComponent(`${PROJECTS_TAB}!A1:R1`);
-  const tasksRange = encodeURIComponent(`${TASKS_TAB}!A1:P1`);
-  const scheduleRange = encodeURIComponent(`${SCHEDULE_TAB}!A1:P1`);
-  await Promise.all([
-    sheetsFetch(`/values/${projectsRange}?valueInputOption=RAW`, {
+  const expectedHeaders = [
+    { tab: PROJECTS_TAB, lastColumn: "R", headers: PROJECT_HEADERS },
+    { tab: TASKS_TAB, lastColumn: "P", headers: TASK_HEADERS },
+    { tab: SCHEDULE_TAB, lastColumn: "P", headers: SCHEDULE_HEADERS },
+  ] as const;
+  const query = new URLSearchParams();
+  expectedHeaders.forEach(({ tab, lastColumn }) => query.append("ranges", `${tab}!A1:${lastColumn}1`));
+  const headerResponse = await sheetsFetch(`/values:batchGet?${query.toString()}`);
+  const headerPayload = (await headerResponse.json()) as { valueRanges?: Array<{ values?: unknown[][] }> };
+  const headerWrites: Promise<Response>[] = [];
+  expectedHeaders.forEach(({ tab, lastColumn, headers }, index) => {
+    const existingHeader = headerPayload.valueRanges?.[index]?.values?.[0] || [];
+    const matches = headers.every((value, column) => String(existingHeader[column] || "").trim() === value);
+    if (matches) return;
+    const range = encodeURIComponent(`${tab}!A1:${lastColumn}1`);
+    headerWrites.push(sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
       method: "PUT",
-      body: JSON.stringify({ values: [[...PROJECT_HEADERS]] }),
-    }),
-    sheetsFetch(`/values/${tasksRange}?valueInputOption=RAW`, {
-      method: "PUT",
-      body: JSON.stringify({ values: [[...TASK_HEADERS]] }),
-    }),
-    sheetsFetch(`/values/${scheduleRange}?valueInputOption=RAW`, {
-      method: "PUT",
-      body: JSON.stringify({ values: [[...SCHEDULE_HEADERS]] }),
-    }),
-  ]);
+      body: JSON.stringify({ values: [[...headers]] }),
+    }));
+  });
+  if (headerWrites.length) await Promise.all(headerWrites);
 }
 
 async function ensureTaskProjectSheets() {

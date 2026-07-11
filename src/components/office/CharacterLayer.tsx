@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { UserRound } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Agent } from "@/lib/types";
 
 const sizes: Record<Agent["id"], string> = {
@@ -17,9 +17,16 @@ const frontFacingAgents = new Set<Agent["id"]>(["tammasit", "film", "kla", "moss
 
 export function CharacterLayer({ agent, isLooking }: { agent: Agent; isLooking: boolean }) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [frontRequested, setFrontRequested] = useState(false);
+  const [frontReady, setFrontReady] = useState(false);
+  const [frontFailed, setFrontFailed] = useState(false);
   const hasFrontAsset = frontFacingAgents.has(agent.id);
   const backAsset = `/assets/characters/${agent.id}-back.png`;
   const frontAsset = hasFrontAsset ? `/assets/characters/${agent.id}-front.png` : null;
+
+  useEffect(() => {
+    if (isLooking && frontAsset && !frontFailed) setFrontRequested(true);
+  }, [frontAsset, frontFailed, isLooking]);
 
   return (
     <div className={`character-layer character-${agent.id} ${sizes[agent.id]} ${isLooking ? "is-looking" : ""}`}>
@@ -44,16 +51,20 @@ export function CharacterLayer({ agent, isLooking }: { agent: Agent; isLooking: 
                 className={`character-swap-image character-back ${isLooking ? "" : "is-visible"}`}
                 src={backAsset}
                 alt={`${agent.name}, ${agent.role}, working at desk`}
+                decoding="async"
+                loading="eager"
                 onError={() => setImageFailed(true)}
                 draggable={false}
               />
-              {frontAsset ? (
+              {frontAsset && frontRequested && !frontFailed ? (
                 <img
-                  className={`character-swap-image character-front ${isLooking ? "is-visible" : ""}`}
+                  className={`character-swap-image character-front ${isLooking && frontReady ? "is-visible" : ""}`}
                   src={frontAsset}
                   alt=""
                   aria-hidden={!isLooking}
-                  onError={() => setImageFailed(true)}
+                  decoding="async"
+                  onError={() => setFrontFailed(true)}
+                  onLoad={() => setFrontReady(true)}
                   draggable={false}
                 />
               ) : null}

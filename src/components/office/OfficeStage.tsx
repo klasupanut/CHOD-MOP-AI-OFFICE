@@ -32,9 +32,10 @@ export function OfficeStage({
 }) {
   const { period, timeLabel } = useThailandTime();
   const [activeAgent, setActiveAgent] = useState<Agent["id"] | null>(null);
+  const [liveOnlineCharacterIds, setLiveOnlineCharacterIds] = useState<AgentId[]>(onlineCharacterIds);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentUserCharacterId = currentUser.characterId || (currentUser.email.toLowerCase() === "chod.mopteam@gmail.com" ? "kla" : "");
-  const onlineCharacters = new Set<AgentId>(onlineCharacterIds.length ? onlineCharacterIds : currentUserCharacterId ? [currentUserCharacterId] : []);
+  const onlineCharacters = new Set<AgentId>(liveOnlineCharacterIds.length ? liveOnlineCharacterIds : currentUserCharacterId ? [currentUserCharacterId] : []);
   const director = agents.find((agent) => agent.id === "tammasit");
   const middleAgents = agents.filter((agent) => agent.id === "film" || agent.id === "kla");
   const frontAgents = agents.filter((agent) => agent.id === "foreman" || agent.id === "moss");
@@ -50,6 +51,30 @@ export function OfficeStage({
 
   useEffect(() => () => {
     if (resetTimer.current) clearTimeout(resetTimer.current);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    async function refreshOnlineCharacters() {
+      try {
+        const response = await fetch("/api/presence", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as { onlineCharacterIds?: AgentId[] };
+        if (mounted && Array.isArray(payload.onlineCharacterIds)) {
+          setLiveOnlineCharacterIds(payload.onlineCharacterIds);
+        }
+      } catch {
+        // Preserve the latest server-provided presence state during a short outage.
+      }
+    }
+    refreshOnlineCharacters();
+    const timer = window.setInterval(refreshOnlineCharacters, 60_000);
+    window.addEventListener("focus", refreshOnlineCharacters);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshOnlineCharacters);
+    };
   }, []);
 
   return (

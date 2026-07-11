@@ -1,0 +1,44 @@
+name: Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUTH_SECRET: ci-only-auth-secret-not-for-production
+      AUTH_URL: http://127.0.0.1:3010
+      NEXTAUTH_URL: http://127.0.0.1:3010
+      NEXT_PUBLIC_SHOW_AI_HQ: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Start production server
+        run: |
+          npm run start > /tmp/chod-next.log 2>&1 &
+          echo $! > /tmp/chod-next.pid
+      - name: Wait for health route
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3010/api/health > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/chod-next.log
+          exit 1
+      - run: npm run smoke:routes
+      - name: Show server log on failure
+        if: failure()
+        run: cat /tmp/chod-next.log

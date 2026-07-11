@@ -1,7 +1,9 @@
 import type { ApprovedUser } from "./types";
 import type { AgentId } from "@/lib/types";
 
-const SESSION_WINDOW_MS = 8 * 60 * 60 * 1000;
+// Two missed one-minute heartbeats are tolerated before a user is considered
+// offline. Visibility/pagehide events normally update the state immediately.
+const SESSION_WINDOW_MS = 150_000;
 
 function fallbackCharacterId(email: string): AgentId | "" {
   return email.toLowerCase() === "chod.mopteam@gmail.com" ? "kla" : "";

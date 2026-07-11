@@ -17,6 +17,10 @@ export function getQuotationAppsScriptUrl() {
   return process.env.QUOTATION_APPS_SCRIPT_URL?.trim() || "";
 }
 
+function getQuotationInternalApiSecret() {
+  return process.env.QUOTATION_APPS_SCRIPT_INTERNAL_SECRET?.trim() || "";
+}
+
 export function isSigningAction(action: string) {
   return action === "createSigningLink" || action === "revokeSigningLink";
 }
@@ -39,10 +43,17 @@ export async function callQuotationAppsScript(action: string, payload: unknown):
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
   try {
+    const internalApiSecret = getQuotationInternalApiSecret();
     const response = await fetch(backendUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action, payload }),
+      body: JSON.stringify({
+        action,
+        payload,
+        // This secret is sent only by the server. Customer signing actions
+        // remain token/OTP protected by Apps Script and never receive it.
+        ...(internalApiSecret ? { internalApiSecret } : {}),
+      }),
       cache: "no-store",
       signal: controller.signal,
     });

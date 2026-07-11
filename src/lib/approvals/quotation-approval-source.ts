@@ -2,6 +2,7 @@ import "server-only";
 
 import type { QuotationApprovalItem, QuotationApprovalStatus } from "@/data/quotation-approvals";
 import { enrichQuotationExtraFields, updateQuotationSheetInternalApproval } from "@/lib/quotations/google-sheet-extra-fields";
+import { callQuotationAppsScript } from "@/lib/quotations/apps-script-backend";
 
 type QuotationBackendRow = {
   quotationId?: string;
@@ -48,8 +49,6 @@ type QuotationBackendResponse = {
   error?: string;
 };
 
-const QUOTATION_BACKEND_TIMEOUT_MS = 7_000;
-
 export type ApprovalQuotationLineItem = {
   description: string;
   quantity: number;
@@ -59,6 +58,8 @@ export type ApprovalQuotationLineItem = {
 };
 
 export type QuotationApprovalWithItems = QuotationApprovalItem & {
+  // Retained while legacy rows are removed from source; the live loader no
+  // longer returns this branch when Apps Script is unavailable.
   source: "quotation-backend" | "quotation-fallback";
   quotationItems?: ApprovalQuotationLineItem[];
   clientSigningStatus?: string;
@@ -306,35 +307,18 @@ export const fallbackRealQuotationApprovals: QuotationApprovalWithItems[] = [
   }),
 ].map((item) => ({ ...item, source: "quotation-fallback" }));
 
-async function fetchQuotationBackend(url: string, init: RequestInit) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), QUOTATION_BACKEND_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Auto Quotation backend timed out after ${QUOTATION_BACKEND_TIMEOUT_MS}ms.`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export async function listQuotationApprovalsFromBackend(): Promise<QuotationApprovalWithItems[]> {
   const backendUrl = process.env.QUOTATION_APPS_SCRIPT_URL?.trim();
-  if (!backendUrl) return fallbackRealQuotationApprovals;
+  if (!backendUrl) {
+    console.warn("[approvals] Auto Quotation backend is not configured; no approval rows will be displayed.");
+    return [];
+  }
 
   try {
-    const response = await fetchQuotationBackend(backendUrl, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "listQuotations", payload: {} }),
-      cache: "no-store",
-    });
-    const result = (await response.json()) as QuotationBackendResponse;
+    const { response, result } = await callQuotationAppsScript("listQuotations", {});
     if (!response.ok || !result.ok || !Array.isArray(result.data)) {
-      return fallbackRealQuotationApprovals;
+      console.warn("[approvals] Auto Quotation backend returned no live quotation rows.");
+      return [];
     }
     // The Apps Script payload is the quotation source, while the dedicated
     // approval columns in the Google Sheet are the latest internal decision.
@@ -342,8 +326,9 @@ export async function listQuotationApprovalsFromBackend(): Promise<QuotationAppr
     // survives a page refresh and cannot stay in the pending visual state.
     const enrichedRows = await enrichQuotationExtraFields(result.data);
     return uniqueQuotationRows(enrichedRows).map(mapQuotationToApproval);
-  } catch {
-    return fallbackRealQuotationApprovals;
+  } catch (error) {
+    console.warn("[approvals] Unable to load live quotation approval rows.", error);
+    return [];
   }
 }
 

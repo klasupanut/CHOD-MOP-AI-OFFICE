@@ -12,6 +12,7 @@
     "dev:3001": "next dev -H 0.0.0.0 -p 3001",
     "preflight": "powershell -ExecutionPolicy Bypass -File scripts\\preflight-chod.ps1",
     "preflight:repair": "powershell -ExecutionPolicy Bypass -File scripts\\preflight-chod.ps1 -Repair",
+    "smoke:routes": "node scripts/smoke-routes.mjs",
     "cleanup:test": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\User\\.codex\\skills\\chod-mock-data-cleanup\\scripts\\cleanup-chod-test-artifacts.ps1\"",
     "tunnel:cloudflare": "cloudflared tunnel --url http://localhost:3010",
     "tunnel:chod": "cloudflared tunnel --url http://localhost:3010",

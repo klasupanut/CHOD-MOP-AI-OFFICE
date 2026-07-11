@@ -32,8 +32,18 @@ const USER_HEADERS = [
 
 const USERS_TAB = "Users";
 const AUDIT_TAB = "Audit";
+const NOTIFICATION_READS_TAB = "Notification_Reads";
+const NOTIFICATION_READ_HEADERS = ["userEmail", "notificationId", "readAt"] as const;
 let cachedToken: { value: string; expiresAt: number } | null = null;
 const characterIds: AgentId[] = ["tammasit", "film", "kla", "foreman", "moss"];
+const APPROVED_USER_CACHE_MS = 60_000;
+const PRESENCE_WRITE_INTERVAL_MS = 45_000;
+const NOTIFICATION_READ_CACHE_MS = 120_000;
+let approvedUserCache: { expiresAt: number; users: ApprovedUser[] } | null = null;
+let approvedUserPromise: Promise<ApprovedUser[]> | null = null;
+const recentPresenceWrites = new Map<string, { at: number; online: boolean }>();
+const notificationReadCache = new Map<string, { expiresAt: number; ids: string[] }>();
+const notificationReadPromises = new Map<string, Promise<string[]>>();
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -183,13 +193,39 @@ async function readRows() {
   return payload.values || [];
 }
 
-export async function listApprovedUsers() {
-  const users = (await readRows()).map(rowToUser).filter((user): user is ApprovedUser => Boolean(user));
+function hydrateApprovedUsers(rows: unknown[][]) {
+  const users = rows.map(rowToUser).filter((user): user is ApprovedUser => Boolean(user));
   const superAdmin = users.find((user) => user.email === getSuperAdminEmail());
-  if (!superAdmin) {
-    users.unshift(createSuperAdmin());
-  }
+  if (!superAdmin) users.unshift(createSuperAdmin());
   return users;
+}
+
+function invalidateApprovedUserCache() {
+  approvedUserCache = null;
+  approvedUserPromise = null;
+}
+
+export async function listApprovedUsers() {
+  if (approvedUserCache && approvedUserCache.expiresAt > Date.now()) {
+    return approvedUserCache.users.map((user) => ({ ...user }));
+  }
+  if (approvedUserPromise) return approvedUserPromise;
+
+  approvedUserPromise = readRows()
+    .then((rows) => {
+      const users = hydrateApprovedUsers(rows);
+      approvedUserCache = { expiresAt: Date.now() + APPROVED_USER_CACHE_MS, users };
+      return users;
+    })
+    .catch((error) => {
+      if (approvedUserCache) return approvedUserCache.users;
+      throw error;
+    })
+    .finally(() => {
+      approvedUserPromise = null;
+    });
+
+  return approvedUserPromise;
 }
 
 export async function probeApprovedUsersSheet() {
@@ -241,6 +277,88 @@ async function appendRows(tab: string, rows: unknown[][]) {
   });
 }
 
+function hasExpectedHeader(actual: unknown[], expected: readonly string[]) {
+  return expected.every((value, index) => String(actual[index] || "").trim() === value);
+}
+
+async function readHeaderRow(tab: string, lastColumn: string) {
+  const range = encodeURIComponent(`${tab}!A1:${lastColumn}1`);
+  const response = await sheetsFetch(`/values/${range}`);
+  const payload = (await response.json()) as { values?: unknown[][] };
+  return payload.values?.[0] || [];
+}
+
+async function listUserStoreSheetTitles() {
+  const metadataResponse = await sheetsFetch("?fields=sheets.properties.title");
+  const metadata = (await metadataResponse.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
+  return new Set(metadata.sheets?.map((sheet) => sheet.properties?.title).filter((title): title is string => Boolean(title)));
+}
+
+async function ensureNotificationReadSheet() {
+  const titles = await listUserStoreSheetTitles();
+  if (!titles.has(NOTIFICATION_READS_TAB)) {
+    await sheetsFetch(":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: NOTIFICATION_READS_TAB } } }] }),
+    });
+  }
+  const header = await readHeaderRow(NOTIFICATION_READS_TAB, "C");
+  if (!hasExpectedHeader(header, NOTIFICATION_READ_HEADERS)) {
+    const range = encodeURIComponent(`${NOTIFICATION_READS_TAB}!A1:C1`);
+    await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [[...NOTIFICATION_READ_HEADERS]] }),
+    });
+  }
+}
+
+export async function listReadNotificationIds(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  const cached = notificationReadCache.get(normalizedEmail);
+  if (cached && cached.expiresAt > Date.now()) return [...cached.ids];
+  const pending = notificationReadPromises.get(normalizedEmail);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const titles = await listUserStoreSheetTitles();
+    if (!titles.has(NOTIFICATION_READS_TAB)) return [];
+    const range = encodeURIComponent(`${NOTIFICATION_READS_TAB}!A2:C`);
+    const response = await sheetsFetch(`/values/${range}`);
+    const payload = (await response.json()) as { values?: unknown[][] };
+    const ids = [...new Set((payload.values || [])
+      .filter((row) => normalizeEmail(String(row[0] || "")) === normalizedEmail)
+      .map((row) => String(row[1] || "").trim())
+      .filter(Boolean))];
+    notificationReadCache.set(normalizedEmail, { expiresAt: Date.now() + NOTIFICATION_READ_CACHE_MS, ids });
+    return ids;
+  })().finally(() => {
+    notificationReadPromises.delete(normalizedEmail);
+  });
+  notificationReadPromises.set(normalizedEmail, load);
+  return load;
+}
+
+export async function markNotificationsRead(email: string, notificationIds: string[]) {
+  const normalizedEmail = normalizeEmail(email);
+  const requestedIds = [...new Set(notificationIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!requestedIds.length) return listReadNotificationIds(normalizedEmail);
+
+  await ensureNotificationReadSheet();
+  const existingIds = await listReadNotificationIds(normalizedEmail);
+  const existing = new Set(existingIds);
+  const nextIds = requestedIds.filter((id) => !existing.has(id));
+  if (nextIds.length) {
+    await appendRows(NOTIFICATION_READS_TAB, nextIds.map((notificationId) => [
+      normalizedEmail,
+      notificationId,
+      new Date().toISOString(),
+    ]));
+  }
+  const ids = [...new Set([...existingIds, ...requestedIds])];
+  notificationReadCache.set(normalizedEmail, { expiresAt: Date.now() + NOTIFICATION_READ_CACHE_MS, ids });
+  return ids;
+}
+
 export async function ensureSheetHeaders() {
   const metadataResponse = await sheetsFetch("?fields=sheets.properties.title");
   const metadata = (await metadataResponse.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
@@ -254,48 +372,40 @@ export async function ensureSheetHeaders() {
       }),
     });
   }
-  const usersRange = encodeURIComponent(`${USERS_TAB}!A1:M1`);
-  const auditRange = encodeURIComponent(`${AUDIT_TAB}!A1:F1`);
-  await Promise.all([
-    sheetsFetch(`/values/${usersRange}?valueInputOption=RAW`, {
+  const [usersHeader, auditHeader] = await Promise.all([
+    readHeaderRow(USERS_TAB, "M"),
+    readHeaderRow(AUDIT_TAB, "F"),
+  ]);
+  const headerWrites: Promise<Response>[] = [];
+  if (!hasExpectedHeader(usersHeader, USER_HEADERS)) {
+    const usersRange = encodeURIComponent(`${USERS_TAB}!A1:M1`);
+    headerWrites.push(sheetsFetch(`/values/${usersRange}?valueInputOption=RAW`, {
       method: "PUT",
       body: JSON.stringify({ values: [[...USER_HEADERS]] }),
-    }),
-    sheetsFetch(`/values/${auditRange}?valueInputOption=RAW`, {
+    }));
+  }
+  const auditHeaders = ["timestamp", "event", "actorEmail", "targetEmail", "provider", "details"];
+  if (!hasExpectedHeader(auditHeader, auditHeaders)) {
+    const auditRange = encodeURIComponent(`${AUDIT_TAB}!A1:F1`);
+    headerWrites.push(sheetsFetch(`/values/${auditRange}?valueInputOption=RAW`, {
       method: "PUT",
-      body: JSON.stringify({ values: [["timestamp", "event", "actorEmail", "targetEmail", "provider", "details"]] }),
-    }),
-  ]);
+      body: JSON.stringify({ values: [auditHeaders] }),
+    }));
+  }
+  if (headerWrites.length) {
+    await Promise.all(headerWrites);
+    invalidateApprovedUserCache();
+  }
   await ensureSuperAdminRow();
 }
 
 async function ensureSuperAdminRow() {
   const rows = await readRows();
-  const now = new Date().toISOString();
   const superAdminEmail = getSuperAdminEmail();
   const index = rows.findIndex((row) => normalizeEmail(String(row[2] || "")) === superAdminEmail);
-  const current = index >= 0 ? rowToUser(rows[index]) : null;
-  const superAdmin = {
-    ...createSuperAdmin(),
-    userId: current?.userId || "super-admin",
-    name: current?.name || "CHODTHANAWAT OPERATION TEAM",
-    lastSignInProvider: current?.lastSignInProvider || "",
-    lastSeenAt: current?.lastSeenAt || "",
-    createdAt: current?.createdAt || now,
-    updatedAt: now,
-  };
-
-  if (index >= 0) {
-    const rowNumber = index + 2;
-    const range = encodeURIComponent(`${USERS_TAB}!A${rowNumber}:M${rowNumber}`);
-    await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
-      method: "PUT",
-      body: JSON.stringify({ values: [userToRow(superAdmin)] }),
-    });
-    return;
-  }
-
-  await appendRows(USERS_TAB, [userToRow(superAdmin)]);
+  if (index >= 0) return;
+  await appendRows(USERS_TAB, [userToRow(createSuperAdmin())]);
+  invalidateApprovedUserCache();
 }
 
 export async function createApprovedUser(
@@ -321,6 +431,7 @@ export async function createApprovedUser(
     updatedAt: now,
   };
   await appendRows(USERS_TAB, [userToRow(user)]);
+  invalidateApprovedUserCache();
   return user;
 }
 
@@ -358,6 +469,7 @@ export async function updateApprovedUser(userId: string, patch: Partial<Approved
     method: "PUT",
     body: JSON.stringify({ values: [userToRow(updated)] }),
   });
+  invalidateApprovedUserCache();
   return updated;
 }
 
@@ -398,9 +510,38 @@ export async function recordSuccessfulLogin(email: string, provider: string, nam
         createdAt: now,
         updatedAt: now,
       })]);
+      invalidateApprovedUserCache();
     }
   } catch (error) {
     console.error("Unable to persist last sign-in provider", error);
   }
   await recordAudit({ event: "login", actorEmail: email, provider, details: "Successful OAuth login" });
+}
+
+export async function setApprovedUserPresence(email: string, online = true) {
+  const normalizedEmail = normalizeEmail(email);
+  const recentWrite = recentPresenceWrites.get(normalizedEmail);
+  if (recentWrite?.online === online && Date.now() - recentWrite.at < PRESENCE_WRITE_INTERVAL_MS) return false;
+
+  const rows = await readRows();
+  const index = rows.findIndex((row) => normalizeEmail(String(row[2] || "")) === normalizedEmail);
+  if (index < 0) return false;
+  const current = rowToUser(rows[index]);
+  if (!current?.active) return false;
+
+  const now = new Date().toISOString();
+  const updated: ApprovedUser = {
+    ...current,
+    lastSeenAt: online ? now : "1970-01-01T00:00:00.000Z",
+    updatedAt: now,
+  };
+  const rowNumber = index + 2;
+  const range = encodeURIComponent(`${USERS_TAB}!A${rowNumber}:M${rowNumber}`);
+  await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [userToRow(updated)] }),
+  });
+  recentPresenceWrites.set(normalizedEmail, { at: Date.now(), online });
+  invalidateApprovedUserCache();
+  return true;
 }

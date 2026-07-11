@@ -9,6 +9,7 @@ let liveNotificationCache: { expiresAt: number; notifications: WorkspaceNotifica
   expiresAt: 0,
   notifications: [],
 };
+let persistedReadIdsPromise: Promise<string[]> | null = null;
 const LIVE_NOTIFICATION_CACHE_MS = 120_000;
 const APPROVAL_NOTIFICATION_PREFIX = "notif-approval-pending";
 
@@ -40,16 +41,52 @@ export function getReadNotificationIds() {
   }
 }
 
-export function writeReadNotificationIds(readIds: string[]) {
+function uniqueReadIds(readIds: string[]) {
+  return [...new Set(readIds.map((id) => String(id || "").trim()).filter(Boolean))];
+}
+
+async function persistReadNotificationIds(readIds: string[]) {
+  try {
+    await fetch("/api/notifications/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ notificationIds: readIds }),
+    });
+  } catch {
+    // Local storage remains a resilient offline fallback.
+  }
+}
+
+export function writeReadNotificationIds(readIds: string[], options: { persist?: boolean } = {}) {
   if (typeof window === "undefined") return readIds;
-  const uniqueIds = [...new Set(readIds)];
+  const uniqueIds = uniqueReadIds(readIds);
   try {
     window.localStorage.setItem(READ_NOTIFICATION_STORAGE_KEY, JSON.stringify(uniqueIds));
   } catch {
     // Navigation must still work even if localStorage is unavailable.
   }
   window.dispatchEvent(new CustomEvent<string[]>(WORKSPACE_NOTIFICATION_EVENT, { detail: uniqueIds }));
+  if (options.persist !== false) void persistReadNotificationIds(uniqueIds);
   return uniqueIds;
+}
+
+export async function hydrateWorkspaceNotificationReadIds() {
+  if (typeof window === "undefined") return [];
+  if (!persistedReadIdsPromise) {
+    persistedReadIdsPromise = fetch("/api/notifications/read", { cache: "no-store", credentials: "same-origin" })
+      .then(async (response) => {
+        if (!response.ok) return [];
+        const payload = (await response.json()) as { readIds?: unknown };
+        return Array.isArray(payload.readIds) ? payload.readIds.map((id) => String(id || "")).filter(Boolean) : [];
+      })
+      .catch(() => [])
+      .finally(() => {
+        persistedReadIdsPromise = null;
+      });
+  }
+  const persistedIds = await persistedReadIdsPromise;
+  return writeReadNotificationIds([...getReadNotificationIds(), ...persistedIds], { persist: false });
 }
 
 export function markWorkspaceNotificationsRead(notificationIds: string[]) {
