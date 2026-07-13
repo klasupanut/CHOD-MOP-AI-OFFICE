@@ -6269,6 +6269,77 @@ html[data-theme="light"] body {
     linear-gradient(145deg, #f7fbf7, #edf7f1 48%, #e6f0e9);
 }
 
+html[data-theme="light"] .login-shell {
+  color: #10201e;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(0, 164, 151, .18), transparent 34%),
+    radial-gradient(circle at 12% 88%, rgba(82, 145, 107, .12), transparent 32%),
+    linear-gradient(145deg, #f8fcf9, #edf7f1 52%, #e3efe7);
+}
+
+html[data-theme="light"] .login-card {
+  border-color: rgba(18, 112, 94, .24);
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 28px 80px rgba(16, 64, 52, .16), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+html[data-theme="light"] .login-brand {
+  border-bottom-color: rgba(29, 94, 82, .18);
+}
+
+html[data-theme="light"] .login-brand-logo {
+  filter: brightness(0) saturate(100%) opacity(.88);
+}
+
+html[data-theme="light"] .login-brand strong,
+html[data-theme="light"] .login-copy h1,
+html[data-theme="light"] .access-card h1 {
+  color: #10201e;
+}
+
+html[data-theme="light"] .login-brand span {
+  color: #527269;
+}
+
+html[data-theme="light"] .secure-kicker {
+  color: #007f78;
+}
+
+html[data-theme="light"] .login-copy p,
+html[data-theme="light"] .access-card p {
+  color: #405f57;
+}
+
+html[data-theme="light"] .oauth-button {
+  color: #12312b;
+  border-color: rgba(18, 112, 94, .25);
+  background: linear-gradient(180deg, rgba(236, 249, 242, .98), rgba(218, 241, 229, .94));
+  box-shadow: 0 8px 20px rgba(18, 84, 68, .08);
+}
+
+html[data-theme="light"] .oauth-button:hover {
+  color: #071c17;
+  border-color: #008f87;
+  background: linear-gradient(180deg, #e1f7eb, #c9edd9);
+}
+
+html[data-theme="light"] .login-alert {
+  border-color: rgba(202, 128, 18, .38);
+  background: #fff7e6;
+}
+
+html[data-theme="light"] .login-alert strong {
+  color: #8a5308;
+}
+
+html[data-theme="light"] .login-alert span {
+  color: #5f513b;
+}
+
+html[data-theme="light"] .login-footnote {
+  color: #536f67;
+}
+
 html[data-theme="light"] .hq-shell,
 html[data-theme="light"] .admin-shell,
 html[data-theme="light"] .module-shell {
