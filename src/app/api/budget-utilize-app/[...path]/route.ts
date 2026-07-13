@@ -364,10 +364,17 @@ function rewriteBudgetUtilizeSource(source: string) {
     .replaceAll("/api/delete-project", "/api/budget-utilize-app/api/delete-project");
 }
 
+const budgetThemeRuntime = `<script id="chod-theme-runtime">(()=>{const root=document.documentElement;const key="chod-theme-mode:v1";const normalize=(value)=>value==="light"?"light":"dark";const apply=(value)=>{const mode=normalize(value);root.dataset.theme=mode;root.style.colorScheme=mode;};const shellRoot=()=>{try{if(window.parent!==window)return window.parent.document.documentElement;if(window.opener&&!window.opener.closed)return window.opener.document.documentElement;}catch{}return null;};const initialRoot=shellRoot();let stored="";try{stored=window.localStorage.getItem(key)||"";}catch{}apply(initialRoot?.dataset.theme||stored||"dark");if(initialRoot){new MutationObserver(()=>apply(initialRoot.dataset.theme)).observe(initialRoot,{attributes:true,attributeFilter:["data-theme"]});}window.addEventListener("storage",(event)=>{if(event.key===key)apply(event.newValue);});window.addEventListener("message",(event)=>{if(event.origin!==window.location.origin||event.data?.type!=="chod:theme")return;apply(event.data.mode);});})();</script>`;
+
 function injectCursorRuntime(html: string) {
-  const rewritten = rewriteBudgetUtilizeSource(html);
-  if (rewritten.includes("chod-cursor-runtime.js")) return rewritten;
-  return rewritten.replace("</body>", '<script src="/cursors/chod-cursor-runtime.js"></script></body>');
+  let rewritten = rewriteBudgetUtilizeSource(html);
+  if (!rewritten.includes("chod-theme-runtime")) {
+    rewritten = rewritten.replace("</head>", `${budgetThemeRuntime}</head>`);
+  }
+  if (!rewritten.includes("chod-cursor-runtime.js")) {
+    rewritten = rewritten.replace("</body>", '<script src="/cursors/chod-cursor-runtime.js"></script></body>');
+  }
+  return rewritten;
 }
 
 function localAssetResponse(body: BodyInit, requested: string, ext: string) {

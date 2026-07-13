@@ -68,7 +68,7 @@ export function DashboardWorkspace({ data }: { data: LiveDashboardData }) {
         <section className="workspace-main-card dashboard-command-card">
           <div className="workspace-section-title">
             <div><span>PROJECT STATUS</span><h2>Operation portfolio health</h2></div>
-            <small>Dashboard menu owns the detailed data UI. Office monitor stays dark to avoid visual collision.</small>
+            <small>Live portfolio status from connected operations data.</small>
           </div>
           <div className="dashboard-status-chart">
             {projectStatus.map((item) => (
@@ -169,7 +169,7 @@ export function DashboardWorkspace({ data }: { data: LiveDashboardData }) {
         </div>
         <div className="budget-overview-grid">
           <article><span>Total Budget</span><strong>{money(budget.totalBudget)}</strong></article>
-          <article><span>Approved Project Budget</span><strong>{money(budget.committedBudget)}</strong></article>
+          <article><span>Approved Task / Project Budget</span><strong>{money(budget.committedBudget)}</strong></article>
           <article><span>Annual Cost</span><strong>{money(budget.actualCost)}</strong></article>
           <article><span>Remaining Budget</span><strong>{money(budget.remainingBudget)}</strong></article>
           <article className="budget-utilization"><span>Utilization</span><strong>{budget.utilization}%</strong><i><b style={{ width: `${budget.utilization}%` }} /></i></article>

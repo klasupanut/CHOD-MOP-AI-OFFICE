@@ -123,14 +123,22 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
           const badgeCount = href ? sidebarBadges[href] || 0 : 0;
           const content = <><Icon size={21} strokeWidth={1.8} /><span>{displayLabel || label}</span>{isHydrated && badgeCount > 0 ? <em>{badgeCount}</em> : null}</>;
           return href ? (
-            <Link key={label} href={href} className={active ? "active" : ""} onClick={() => markMenuNotificationsRead(href)}>{content}</Link>
+            <Link
+              key={label}
+              href={href}
+              className={active ? "active" : ""}
+              onClick={() => markMenuNotificationsRead(href)}
+              title={displayLabel || label}
+            >
+              {content}
+            </Link>
           ) : (
             <button
               aria-disabled={pendingConnector ? "true" : undefined}
               className={pendingConnector ? "pending-connector" : undefined}
               data-hover-label="Google Sheet pending"
               key={label}
-              title={pendingConnector ? "Google Sheet connector is not live yet" : undefined}
+              title={pendingConnector ? `${displayLabel || label}: Google Sheet connector is not live yet` : displayLabel || label}
               type="button"
             >
               {content}

@@ -7056,3 +7056,163 @@ html[data-theme="light"] .tone-cyan strong { color: #007f79; }
     padding: 6px 0;
   }
 }
+
+/* 2026-07 UX audit refinements: preserve the existing visual system while
+   improving navigation, density, keyboard access and embedded-theme parity. */
+:where(a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--signal-info);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(57, 208, 255, .16);
+}
+
+:where(button, input, select, textarea):disabled:focus-visible,
+:where([aria-disabled="true"]):focus-visible {
+  outline-color: var(--muted);
+  box-shadow: 0 0 0 4px rgba(120, 148, 173, .14);
+}
+
+html[data-theme="light"] :where(a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline-color: #007f79;
+  box-shadow: 0 0 0 5px rgba(0, 127, 121, .16);
+}
+
+.budget-utilize-embedded-frame {
+  background: var(--panel-solid);
+}
+
+.task-card strong,
+.task-card small {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+@media (min-width: 761px) and (max-width: 1240px) {
+  .dashboard-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-metric {
+    min-height: 126px;
+    padding: 14px;
+  }
+
+  .workspace-summary article {
+    min-height: 108px;
+  }
+
+  .task-board {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(270px, 34%);
+    scroll-snap-type: x proximity;
+    scrollbar-color: rgba(57, 208, 255, .5) rgba(82, 157, 204, .1);
+    scrollbar-width: thin;
+  }
+
+  .task-column {
+    scroll-snap-align: start;
+  }
+}
+
+@media (min-width: 480px) and (max-width: 760px) {
+  .workspace-summary,
+  .dashboard-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-metric {
+    min-height: 124px;
+    padding: 13px;
+  }
+
+  .right-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .right-panel-heading,
+  .right-panel > .metric-grid,
+  .right-panel > .solar-strip {
+    grid-column: 1 / -1;
+  }
+
+  .right-panel .rail-section,
+  .right-panel .rail-section:first-of-type,
+  .right-panel .quick-actions {
+    grid-column: auto;
+    grid-row: auto;
+    min-width: 0;
+    border-top: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar nav {
+    padding: 3px 10px 5px 2px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(57, 208, 255, .55) rgba(82, 157, 204, .08);
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    display: block;
+    height: 3px;
+  }
+
+  .sidebar nav::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(57, 208, 255, .55);
+  }
+
+  .sidebar nav::-webkit-scrollbar-track {
+    background: rgba(82, 157, 204, .08);
+  }
+
+  .sidebar nav a,
+  .sidebar nav button {
+    min-width: 98px;
+    min-height: 50px;
+    scroll-snap-align: start;
+  }
+
+  .sidebar nav a span,
+  .sidebar nav button span {
+    display: -webkit-box !important;
+    max-width: 94px;
+    overflow: hidden;
+    line-height: 1.15;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .task-board {
+    grid-template-columns: 1fr;
+    overflow-x: visible;
+  }
+
+  .task-column {
+    min-height: 132px;
+  }
+
+  .task-column:has(.task-card) {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 479px) {
+  .workspace-summary,
+  .dashboard-metric-grid,
+  .right-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .right-panel-heading,
+  .right-panel > .metric-grid,
+  .right-panel > .solar-strip {
+    grid-column: 1;
+  }
+}

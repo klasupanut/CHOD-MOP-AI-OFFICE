@@ -771,7 +771,7 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
 
   return {
     executiveKPIs: [
-      { id: "active-projects", label: "Active Projects", value: activeProjects.length, detail: "From live Projects sheet", tone: "cyan" },
+      { id: "active-projects", label: "Task-Linked Projects", value: activeProjects.length, detail: "Active rows from the live Tasks / Projects source", tone: "cyan" },
       { id: "open-tasks", label: "Open Tasks", value: tasks.filter((task) => task.status !== "Done").length, detail: "From live Tasks sheet", tone: "blue" },
       { id: "budget-utilization", label: "Budget Utilization", value: `${utilization}%`, detail: budgetUtilizeIsLive ? "Budget Utilize actual + Fit-out / Restoration cost" : "Approved annual cost / total budget", tone: "success" },
       { id: "pending-approvals", label: "Pending Approvals", value: pendingApprovals.length, detail: "From live quotation approvals", tone: "warning" },
