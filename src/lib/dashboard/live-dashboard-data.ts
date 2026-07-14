@@ -580,7 +580,11 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
     const date = parseDate(approval.lastUpdate || approval.requestedAt);
     return approval.status === "Approved" && !!date && date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
   });
-  const customerSignedQuotations = liveApprovals.filter(isCustomerSigned);
+  // A cancelled quotation remains in the audit history, but must no longer
+  // contribute to live signed-value and revenue summaries.
+  const customerSignedQuotations = liveApprovals.filter(
+    (approval) => approval.status !== "Cancelled" && isCustomerSigned(approval),
+  );
   const signedThisMonth = customerSignedQuotations.filter((approval) => {
     const date = parseDate(approval.clientSignedAt || approval.lastUpdate || approval.requestedAt);
     return !!date && date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();

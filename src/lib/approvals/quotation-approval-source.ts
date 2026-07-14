@@ -81,10 +81,14 @@ function normalizeApprovalStatus(value?: string): QuotationApprovalStatus | null
 }
 
 function approvalStatusFromQuotation(row: QuotationBackendRow): QuotationApprovalStatus {
+  // Cancellation is the final active-workflow state even when an older
+  // approval_status cell still contains Approved for audit history.
+  const baseStatus = normalizeApprovalStatus(row.status);
+  if (baseStatus === "Cancelled") return "Cancelled";
+
   const explicitApproval = normalizeApprovalStatus(row.approvalStatus);
   if (explicitApproval) return explicitApproval;
 
-  const baseStatus = normalizeApprovalStatus(row.status);
   const signingStatus = String(row.signingStatus || "").trim().toLowerCase();
 
   // Customer signing is client acceptance. It must not be treated as Tammasit's approval.

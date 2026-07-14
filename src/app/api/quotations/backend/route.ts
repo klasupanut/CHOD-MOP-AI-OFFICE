@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/api";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { QuotationPermission } from "@/lib/auth/permissions";
-import { enrichQuotationExtraFields, syncQuotationExtraFields, updateQuotationSheetInternalVerification } from "@/lib/quotations/google-sheet-extra-fields";
+import {
+  enrichQuotationExtraFields,
+  syncQuotationExtraFields,
+  updateQuotationSheetInternalApproval,
+  updateQuotationSheetInternalVerification,
+} from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript, formatAppsScriptError, getQuotationAppsScriptUrl, isSigningAction } from "@/lib/quotations/apps-script-backend";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
@@ -34,6 +39,7 @@ const actionPermissions: Record<string, QuotationPermission[]> = {
   createSigningLink: ["quotation.createSigningLink"],
   revokeSigningLink: ["quotation.createSigningLink"],
   internalVerifyQuotation: ["quotation.createSigningLink"],
+  setQuotationCancelled: ["quotation.edit"],
 };
 
 const sensitiveCostKeys = new Set([
@@ -98,6 +104,57 @@ export async function POST(request: NextRequest) {
   const action = body.action?.trim() ?? "";
   if (!canRun(user, action)) {
     return NextResponse.json({ ok: false, error: "Permission denied" }, { status: 403 });
+  }
+
+  if (action === "setQuotationCancelled") {
+    const payload = body.payload && typeof body.payload === "object" ? body.payload as {
+      quotationId?: unknown;
+      quotationNo?: unknown;
+      cancelled?: unknown;
+    } : {};
+    const quotationId = String(payload.quotationId || "").trim();
+    const quotationNo = String(payload.quotationNo || "").trim();
+    const cancelled = payload.cancelled === true;
+    if (!quotationId && !quotationNo) {
+      return NextResponse.json({ ok: false, error: "Missing quotation id/no for cancellation." }, { status: 400 });
+    }
+
+    // Restoring a cancelled quotation deliberately returns it to Draft so it
+    // must pass internal approval again instead of silently regaining an old
+    // Approved status.
+    const status = cancelled ? "Cancelled" : "Draft";
+    const updatedAt = new Date().toISOString();
+    const result = await updateQuotationSheetInternalApproval({
+      quotationId,
+      quotationNo,
+      status,
+      approver: user.email,
+      note: cancelled
+        ? "Cancelled from Quotation List; excluded from quotation financial totals."
+        : "Cancellation removed from Quotation List; returned to Draft for review.",
+      updatedAt,
+    });
+    if (!result.ok || result.skipped) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: result.error || "Quotation Google Sheet cancellation update is not configured.",
+        },
+        { status: result.skipped ? 503 : 400 },
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      data: {
+        quotationId,
+        quotationNo,
+        status,
+        approvalStatus: status,
+        approvalBy: user.email,
+        approvalUpdatedAt: updatedAt,
+        updatedAt,
+      },
+    });
   }
 
   if (action === "internalVerifyQuotation") {
