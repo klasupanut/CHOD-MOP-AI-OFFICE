@@ -35,6 +35,10 @@ export async function listApprovalRows() {
   return (await rows()).map((item) => ({ ...item }));
 }
 
+export function invalidateApprovalRows() {
+  globalStore.chodApprovalRowsLoadedAt = 0;
+}
+
 export async function findApprovalRow(approvalId: string) {
   return (await rows()).find((item) => item.approvalId === approvalId) || null;
 }

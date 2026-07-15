@@ -10,7 +10,7 @@ import type { ApprovedUser } from "@/lib/auth/types";
 import { publishApprovalNotificationSnapshot } from "@/lib/notifications/approval-notifications";
 import type { AgentId } from "@/lib/types";
 
-const tabs = ["All", "Waiting Approval", "Approved", "Rejected / Revision Required", "High Priority"] as const;
+const tabs = ["All", "Waiting Approval", "Approved", "Rejected / Cancelled / Revision", "High Priority"] as const;
 
 type ApprovalLineItem = {
   description: string;
@@ -73,6 +73,7 @@ export function ApprovalsWorkspace({
 
   const agentId = userAgentId(currentUser);
   const selected = approvals.find((approval) => approval.approvalId === selectedId) ?? approvals[0];
+  const selectedIsCancelled = selected?.status === "Cancelled";
   const permissionState = selected ? canUserApproveQuotation(currentUser, agentId, selected, approvalPermissions) : null;
   const selectedPdfUrl = selected && validPdfUrl(selected.quotationPdfUrl) ? selected.quotationPdfUrl : "";
   const selectedLineItems = selected?.quotationItems?.length
@@ -83,7 +84,9 @@ export function ApprovalsWorkspace({
 
   const filtered = useMemo(() => approvals.filter((item) => {
     if (tab === "All") return true;
-    if (tab === "Rejected / Revision Required") return item.status === "Rejected" || item.status === "Revision Required";
+    if (tab === "Rejected / Cancelled / Revision") {
+      return item.status === "Rejected" || item.status === "Cancelled" || item.status === "Revision Required";
+    }
     if (tab === "High Priority") return item.priority === "High" || item.priority === "Critical";
     return item.status === tab;
   }), [approvals, tab]);
@@ -92,7 +95,7 @@ export function ApprovalsWorkspace({
     total: approvals.length,
     waiting: approvals.filter((item) => item.status === "Waiting Approval" || item.status === "Waiting Final Approval").length,
     approved: approvals.filter((item) => item.status === "Approved").length,
-    rejected: approvals.filter((item) => item.status === "Rejected" || item.status === "Revision Required").length,
+    rejected: approvals.filter((item) => item.status === "Rejected" || item.status === "Cancelled" || item.status === "Revision Required").length,
     high: approvals.filter((item) => item.priority === "High" || item.priority === "Critical").length,
     value: approvals.reduce((sum, item) => sum + item.amount, 0),
   };
@@ -163,7 +166,7 @@ export function ApprovalsWorkspace({
         <article><strong>{summary.total}</strong><span>Total Quotation Approvals</span></article>
         <article><strong>{summary.waiting}</strong><span>Waiting Approval</span></article>
         <article><strong>{summary.approved}</strong><span>Approved</span></article>
-        <article><strong>{summary.rejected}</strong><span>Rejected / Revision</span></article>
+        <article><strong>{summary.rejected}</strong><span>Rejected / Cancelled / Revision</span></article>
         <article><strong>{summary.high}</strong><span>High Priority</span></article>
         <article><strong>{money(summary.value)}</strong><span>Total Quotation Value</span></article>
       </section>
@@ -187,9 +190,10 @@ export function ApprovalsWorkspace({
                 {filtered.map((item) => {
                   const isWaitingApproval = item.status === "Waiting Approval" || item.status === "Waiting Final Approval";
                   const isInternallyApproved = item.status === "Approved";
+                  const isCancelled = item.status === "Cancelled";
                   return (
                     <tr
-                      className={`${isWaitingApproval ? "approval-row-pending" : isInternallyApproved ? "approval-row-approved" : ""} ${selected?.approvalId === item.approvalId ? "is-selected" : ""}`.trim()}
+                      className={`${isWaitingApproval ? "approval-row-pending" : isInternallyApproved ? "approval-row-approved" : isCancelled ? "approval-row-cancelled" : ""} ${selected?.approvalId === item.approvalId ? "is-selected" : ""}`.trim()}
                       key={item.approvalId}
                       onClick={() => selectApproval(item)}
                     >
@@ -198,9 +202,11 @@ export function ApprovalsWorkspace({
                       <td><strong>{item.requestedBy}</strong><small>{item.requestedAt}</small></td>
                       <td><strong className="approval-amount">{money(item.amount)}</strong></td>
                       <td><strong>{item.dueDate}</strong><small className={`approval-priority priority-${item.priority.toLowerCase()}`}>{item.priority}</small></td>
-                      <td><span className={`approval-status ${isWaitingApproval ? "is-pending" : isInternallyApproved ? "is-approved" : "is-closed"}`}>{item.status}</span></td>
+                      <td><span className={`approval-status ${isWaitingApproval ? "is-pending" : isInternallyApproved ? "is-approved" : isCancelled ? "is-cancelled" : "is-closed"}`}>{item.status}</span></td>
                       <td>{isInternallyApproved
                         ? <span className="inline-action approval-action-approved">Approved</span>
+                        : isCancelled
+                          ? <span className="inline-action approval-action-cancelled">Cancelled</span>
                         : <button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={(event) => { event.stopPropagation(); selectApproval(item); }} type="button">Review</button>}
                       </td>
                     </tr>
@@ -212,9 +218,10 @@ export function ApprovalsWorkspace({
               {filtered.map((item) => {
                 const isWaitingApproval = item.status === "Waiting Approval" || item.status === "Waiting Final Approval";
                 const isInternallyApproved = item.status === "Approved";
+                const isCancelled = item.status === "Cancelled";
                 return (
                   <article
-                    className={`${isWaitingApproval ? "approval-mobile-pending" : isInternallyApproved ? "approval-mobile-approved" : ""} ${selected?.approvalId === item.approvalId ? "is-selected" : ""}`.trim()}
+                    className={`${isWaitingApproval ? "approval-mobile-pending" : isInternallyApproved ? "approval-mobile-approved" : isCancelled ? "approval-mobile-cancelled" : ""} ${selected?.approvalId === item.approvalId ? "is-selected" : ""}`.trim()}
                     key={item.approvalId}
                   >
                     <button className="approval-mobile-select" onClick={() => selectApproval(item)} type="button">
@@ -229,10 +236,12 @@ export function ApprovalsWorkspace({
                       </span>
                     </button>
                     <footer>
-                      <span className={`approval-status ${isWaitingApproval ? "is-pending" : isInternallyApproved ? "is-approved" : "is-closed"}`}>{item.status}</span>
+                      <span className={`approval-status ${isWaitingApproval ? "is-pending" : isInternallyApproved ? "is-approved" : isCancelled ? "is-cancelled" : "is-closed"}`}>{item.status}</span>
                       <span className={`approval-priority priority-${item.priority.toLowerCase()}`}>{item.priority}</span>
                       {isInternallyApproved
                         ? <span className="inline-action approval-action-approved">Approved</span>
+                        : isCancelled
+                          ? <span className="inline-action approval-action-cancelled">Cancelled</span>
                         : <button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={() => selectApproval(item)} type="button">Review</button>}
                     </footer>
                   </article>
@@ -300,12 +309,17 @@ export function ApprovalsWorkspace({
                   <span>Validity: <strong>{selected.validity}</strong></span>
                   <span>Payment: <strong>{selected.paymentTerms}</strong></span>
                 </div>
-              </section>              {permissionState && !permissionState.allowed ? <p className="approval-denied">{permissionState.reason}</p> : null}
-              {permissionState?.allowed && permissionState.needsFinal ? <p className="approval-warning">Review / Recommend Approval only. Tammasit must approve final.</p> : null}
+              </section>
+              {selectedIsCancelled
+                ? <p className="approval-cancelled-notice">This quotation is cancelled. Restore it to Draft from Quotation List before starting approval again.</p>
+                : permissionState && !permissionState.allowed
+                  ? <p className="approval-denied">{permissionState.reason}</p>
+                  : null}
+              {!selectedIsCancelled && permissionState?.allowed && permissionState.needsFinal ? <p className="approval-warning">Review / Recommend Approval only. Tammasit must approve final.</p> : null}
               {apiMessage ? <p className={apiMessage.includes("failed") || apiMessage.includes("Not allowed") || apiMessage.includes("sync failed") ? "approval-denied" : "approval-success"}>{apiMessage}</p> : null}
               <div className="approval-actions">
-                <button disabled={!permissionState?.allowed || isSaving} onClick={approve} type="button"><CheckCircle2 size={16} />{isSaving ? "Saving..." : permissionState?.needsFinal ? "Review / Recommend Approval" : "Approve"}</button>
-                <button disabled={!permissionState?.allowed || isSaving} onClick={() => void updateStatus("Rejected", "Rejected from CHOD MOP OFFICE approval flow.")} type="button"><XCircle size={16} />Reject</button>
+                {!selectedIsCancelled ? <button disabled={!permissionState?.allowed || isSaving} onClick={approve} type="button"><CheckCircle2 size={16} />{isSaving ? "Saving..." : permissionState?.needsFinal ? "Review / Recommend Approval" : "Approve"}</button> : null}
+                {!selectedIsCancelled ? <button disabled={!permissionState?.allowed || isSaving} onClick={() => void updateStatus("Rejected", "Rejected from CHOD MOP OFFICE approval flow.")} type="button"><XCircle size={16} />Reject</button> : null}
                 <button onClick={() => setNote("Note added locally.")} type="button"><MessageSquare size={16} />Add Note</button>
                 <Link href={selectedPdfUrl || selected.quotationPreviewUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />Preview Quotation</Link>
               </div>

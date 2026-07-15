@@ -10,6 +10,7 @@ import {
 } from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript, formatAppsScriptError, getQuotationAppsScriptUrl, isSigningAction } from "@/lib/quotations/apps-script-backend";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
+import { invalidateApprovalRows } from "@/lib/approvals/approval-store";
 
 type BackendRequest = {
   action?: string;
@@ -143,6 +144,9 @@ export async function POST(request: NextRequest) {
         { status: result.skipped ? 503 : 400 },
       );
     }
+    // Do not leave the Approvals page on its short-lived cached state after a
+    // cancellation/restore. The next read reloads the authoritative sheet row.
+    invalidateApprovalRows();
     return NextResponse.json({
       ok: true,
       data: {

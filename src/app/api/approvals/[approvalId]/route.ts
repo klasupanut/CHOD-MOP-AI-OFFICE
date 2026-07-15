@@ -30,6 +30,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ap
   const { approvalId } = await params;
   const approval = await findApprovalRow(approvalId);
   if (!approval) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+  if (approval.status === "Cancelled") {
+    return NextResponse.json(
+      { error: "Cancelled quotations must be restored to Draft from Quotation List before approval." },
+      { status: 409 },
+    );
+  }
 
   const body = (await request.json().catch(() => ({}))) as { status?: QuotationApprovalStatus; note?: string };
   if (!body.status || !writableStatuses.includes(body.status)) {
