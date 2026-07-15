@@ -24,6 +24,7 @@ function score(value: number) {
 
 export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
   const [selected, setSelected] = useState<TeamReportMemberId>("film");
+  const [showAll, setShowAll] = useState(false);
   const selectedMember = data.reports.teamMembers.find((member) => member.id === selected);
   const modules = useMemo(() => {
     if (selected === "all") {
@@ -115,6 +116,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
       { id: `${selected}-suggested`, title: selectedMember.suggestedReport, metric: "Ready", description: "Report template using the current live operation dataset." },
     ];
   }, [data, selected, selectedMember]);
+  const visibleModules = showAll ? modules : modules.slice(0, 6);
 
   return (
     <section className="workspace-main-card reports-by-member">
@@ -124,13 +126,13 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
       </div>
       <div className="reports-member-tabs">
         {tabs.map((tab) => (
-          <button className={selected === tab.id ? "active" : ""} type="button" key={tab.id} onClick={() => setSelected(tab.id)}>
+          <button className={selected === tab.id ? "active" : ""} type="button" key={tab.id} onClick={() => { setSelected(tab.id); setShowAll(false); }}>
             {tab.label}
           </button>
         ))}
       </div>
       <div className="reports-module-grid">
-        {modules.map((module) => (
+        {visibleModules.map((module) => (
           <article key={module.id}>
             <FileBarChart2 size={21} />
             <span>{module.title}</span>
@@ -139,6 +141,7 @@ export function ReportByMemberPanel({ data }: { data: LiveDashboardData }) {
           </article>
         ))}
       </div>
+      {modules.length > 6 ? <button className="reports-show-more" type="button" onClick={() => setShowAll((value) => !value)}>{showAll ? "Show fewer modules" : `Show all ${modules.length} modules`}</button> : null}
     </section>
   );
 }

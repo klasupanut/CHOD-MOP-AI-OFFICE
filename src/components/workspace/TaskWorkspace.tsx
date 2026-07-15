@@ -316,8 +316,8 @@ export function TaskWorkspace({
             ))}
           </div>
 
-          <section className="person-task-lists">
-            <div className="workspace-section-title"><div><span>BY PERSON</span><h2>{showAllTasks ? "Task Lists by Person" : "My Task List"}</h2></div></div>
+          <details className="workspace-disclosure person-task-lists">
+            <summary><span><small>BY PERSON</small><strong>{showAllTasks ? "Task lists by person" : "My task list"}</strong></span><em>{peopleToShow.length} lane{peopleToShow.length === 1 ? "" : "s"}</em></summary>
             <div className="person-grid">
               {peopleToShow.map((person) => (
                 <article key={person}>
@@ -328,26 +328,29 @@ export function TaskWorkspace({
                 </article>
               ))}
             </div>
-          </section>
+          </details>
 
-          <div className="workspace-table-wrap">
-            <table className="workspace-table">
-              <thead><tr><th>Task</th><th>Project</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Progress</th></tr></thead>
-              <tbody>
-                {filteredTasks.map((task) => (
-                  <tr key={task.taskId} onClick={() => setSelectedId(task.taskId)}>
-                    <td>{task.taskTitle}</td>
-                    <td>{projectLabel(task.projectId)}</td>
-                    <td>{task.assignedTo}</td>
-                    <td>{task.status}</td>
-                    <td>{task.priority}</td>
-                    <td>{task.progress}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!filteredTasks.length ? <p className="empty-workspace">No live task rows found. Add rows in the Tasks tab of the configured Google Sheet.</p> : null}
-          </div>
+          <details className="workspace-disclosure task-register-disclosure">
+            <summary><span><small>REGISTER VIEW</small><strong>Full task register</strong></span><em>{filteredTasks.length} record{filteredTasks.length === 1 ? "" : "s"}</em></summary>
+            <div className="workspace-table-wrap">
+              <table className="workspace-table">
+                <thead><tr><th>Task</th><th>Project</th><th>Assigned</th><th>Status</th><th>Priority</th><th>Progress</th></tr></thead>
+                <tbody>
+                  {filteredTasks.map((task) => (
+                    <tr key={task.taskId} onClick={() => setSelectedId(task.taskId)}>
+                      <td>{task.taskTitle}</td>
+                      <td>{projectLabel(task.projectId)}</td>
+                      <td>{task.assignedTo}</td>
+                      <td>{task.status}</td>
+                      <td>{task.priority}</td>
+                      <td>{task.progress}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!filteredTasks.length ? <p className="empty-workspace">No live task rows found. Add rows in the Tasks tab of the configured Google Sheet.</p> : null}
+            </div>
+          </details>
         </section>
 
         <aside className="workspace-detail-panel">

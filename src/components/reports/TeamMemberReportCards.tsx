@@ -36,17 +36,13 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
                 <p><span>Active Tasks</span><strong>{member.activeTasks}</strong></p>
                 <p><span>Completed This Week</span><strong>{member.completedThisWeek}</strong></p>
               </div>
-              <div className="reports-member-projects">
-                <span>PROJECTS &amp; BUDGETS RESPONSIBILITY</span>
+              <div className="reports-member-projects reports-member-projects-compact">
+                <span>PROJECT RESPONSIBILITY</span>
                 <div>
-                  <p><small>Active Projects</small><strong>{member.projectSummary.activeProjects}</strong></p>
-                  <p><small>Total Projects</small><strong>{member.projectSummary.totalProjects}</strong></p>
+                  <p><small>Active</small><strong>{member.projectSummary.activeProjects}</strong></p>
+                  <p><small>Total</small><strong>{member.projectSummary.totalProjects}</strong></p>
                   <p><small>Work Value</small><strong>{moneyCompact(member.projectSummary.totalBudget)}</strong></p>
-                  <p><small>Watch Items</small><strong>{member.projectSummary.overdueProjects}</strong></p>
                 </div>
-                <small className="reports-member-top-project">
-                  {topProject ? `Top project: ${topProject}` : "No project ownership found from Projects & Budgets."}
-                </small>
               </div>
               <div className={`reports-member-workload tone-${member.workload.tone}`}>
                 <div>
@@ -56,19 +52,31 @@ export function TeamMemberReportCards({ members }: { members: LiveDashboardData[
                 <i><b style={{ width: `${member.workload.percent}%` }} /></i>
                 <small>{member.workload.label} | {member.workload.skillMatch} | raw score {score(member.workload.score)}</small>
               </div>
-              <div className="reports-member-kpis">
-                {member.kpis.map((kpi) => (
-                  <em className={`tone-${kpi.tone}`} key={kpi.label}>
-                    <span>{kpi.label}</span>
-                    <strong>{kpi.value}</strong>
-                  </em>
-                ))}
-              </div>
-              <footer>
-                <span>Main Area</span>
-                <strong>{member.mainArea}</strong>
-                <small>Suggested Report: {member.suggestedReport}</small>
-              </footer>
+              <details className="reports-member-details">
+                <summary>Responsibility details</summary>
+                <div className="reports-member-projects">
+                  <span>PROJECT FOLLOW-UP</span>
+                  <div>
+                    <p><small>Watch Items</small><strong>{member.projectSummary.overdueProjects}</strong></p>
+                  </div>
+                  <small className="reports-member-top-project">
+                    {topProject ? `Top project: ${topProject}` : "No project ownership found from Projects & Budgets."}
+                  </small>
+                </div>
+                <div className="reports-member-kpis">
+                  {member.kpis.map((kpi) => (
+                    <em className={`tone-${kpi.tone}`} key={kpi.label}>
+                      <span>{kpi.label}</span>
+                      <strong>{kpi.value}</strong>
+                    </em>
+                  ))}
+                </div>
+                <footer>
+                  <span>Main Area</span>
+                  <strong>{member.mainArea}</strong>
+                  <small>Suggested Report: {member.suggestedReport}</small>
+                </footer>
+              </details>
             </article>
           );
         })}

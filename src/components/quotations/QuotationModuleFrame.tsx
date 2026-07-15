@@ -31,8 +31,8 @@ export function QuotationModuleFrame() {
 
   return (
     <div className="quotation-module">
-      <div className="quotation-module-bar">
-        <div>
+      <div className="quotation-module-bar embedded-module-toolbar">
+        <div className="embedded-module-identity">
           <span>AUTO QUOTATION</span>
           <strong>Fit-out Quotation Generator</strong>
         </div>
@@ -46,11 +46,11 @@ export function QuotationModuleFrame() {
             aria-label="Reload Auto Quotation"
           >
             <RefreshCw size={17} />
-            Refresh
+            <span className="embedded-action-label">Refresh</span>
           </button>
           <a href="/api/quotation-app/index.html" target="_blank" rel="noreferrer">
             <ExternalLink size={17} />
-            Full screen
+            <span className="embedded-action-label">Full screen</span>
           </a>
         </div>
       </div>

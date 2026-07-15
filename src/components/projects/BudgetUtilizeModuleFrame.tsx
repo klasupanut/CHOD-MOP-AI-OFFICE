@@ -41,8 +41,8 @@ export function BudgetUtilizeModuleFrame() {
 
   return (
     <div className="quotation-module budget-utilize-embedded-module">
-      <div className="quotation-module-bar">
-        <div>
+      <div className="quotation-module-bar embedded-module-toolbar">
+        <div className="embedded-module-identity">
           <span>PROJECTS & BUDGETS</span>
           <strong>Budget Utilize Workspace</strong>
         </div>
@@ -56,11 +56,11 @@ export function BudgetUtilizeModuleFrame() {
             aria-label="Reload Budget Utilize"
           >
             <RefreshCw size={17} />
-            Refresh
+            <span className="embedded-action-label">Refresh</span>
           </button>
           <a href="/api/budget-utilize-app/index.html?theme=light" target="_blank" rel="noreferrer">
             <ExternalLink size={17} />
-            Full screen
+            <span className="embedded-action-label">Full screen</span>
           </a>
         </div>
       </div>

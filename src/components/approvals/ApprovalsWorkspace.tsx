@@ -156,7 +156,6 @@ export function ApprovalsWorkspace({
         <div>
           <span>QUOTATION APPROVALS</span>
           <h1>Approvals</h1>
-          <p>Review real quotation requests pulled from the Auto Quotation database. This page only handles quotation approval for now.</p>
         </div>
       </div>
 
@@ -177,12 +176,12 @@ export function ApprovalsWorkspace({
         <section className="workspace-main-card approvals-list-card">
           <div className="workspace-section-title">
             <div><span>REAL QUOTATION DATA</span><h2>Quotation approval requests</h2></div>
-            <small>Loaded from the real Auto Quotation source. No document, payment, contract, shop drawing, handover, or report approvals are shown here.</small>
+            <small>{filtered.length} live request{filtered.length === 1 ? "" : "s"} from Auto Quotation</small>
           </div>
           <div className="workspace-table-wrap">
             <table className="workspace-table approvals-table">
               <thead>
-                <tr><th>Quotation No.</th><th>Project / Site</th><th>Quotation Type</th><th>Requested By</th><th>Amount</th><th>Requested Date</th><th>Due Date</th><th>Priority</th><th>Status</th><th>Action</th></tr>
+                <tr><th>Quotation</th><th>Project / Site</th><th>Request</th><th>Amount</th><th>Due / Priority</th><th>Status</th><th>Action</th></tr>
               </thead>
               <tbody>
                 {filtered.map((item) => {
@@ -190,19 +189,16 @@ export function ApprovalsWorkspace({
                   const isInternallyApproved = item.status === "Approved";
                   return (
                     <tr
-                      className={isWaitingApproval ? "approval-row-pending" : isInternallyApproved ? "approval-row-approved" : undefined}
+                      className={`${isWaitingApproval ? "approval-row-pending" : isInternallyApproved ? "approval-row-approved" : ""} ${selected?.approvalId === item.approvalId ? "is-selected" : ""}`.trim()}
                       key={item.approvalId}
                       onClick={() => selectApproval(item)}
                     >
-                      <td>{item.quotationNo}</td>
-                      <td><span className="approval-project-site">{item.projectName} · {item.site}</span></td>
-                      <td>{quotationTypeLabel(item.quotationType)}</td>
-                      <td>{item.requestedBy}</td>
-                      <td>{money(item.amount)}</td>
-                      <td>{item.requestedAt}</td>
-                      <td>{item.dueDate}</td>
-                      <td>{item.priority}</td>
-                      <td>{item.status}</td>
+                      <td><strong className="approval-quotation-no">{item.quotationNo}</strong><small>{quotationTypeLabel(item.quotationType)}</small></td>
+                      <td><strong className="approval-project-site">{item.projectName}</strong><small>{item.site}</small></td>
+                      <td><strong>{item.requestedBy}</strong><small>{item.requestedAt}</small></td>
+                      <td><strong className="approval-amount">{money(item.amount)}</strong></td>
+                      <td><strong>{item.dueDate}</strong><small className={`approval-priority priority-${item.priority.toLowerCase()}`}>{item.priority}</small></td>
+                      <td><span className={`approval-status ${isWaitingApproval ? "is-pending" : isInternallyApproved ? "is-approved" : "is-closed"}`}>{item.status}</span></td>
                       <td>{isInternallyApproved
                         ? <span className="inline-action approval-action-approved">Approved</span>
                         : <button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={(event) => { event.stopPropagation(); selectApproval(item); }} type="button">Review</button>}
@@ -212,6 +208,37 @@ export function ApprovalsWorkspace({
                 })}
               </tbody>
             </table>
+            <div className="approvals-mobile-list">
+              {filtered.map((item) => {
+                const isWaitingApproval = item.status === "Waiting Approval" || item.status === "Waiting Final Approval";
+                const isInternallyApproved = item.status === "Approved";
+                return (
+                  <article
+                    className={`${isWaitingApproval ? "approval-mobile-pending" : isInternallyApproved ? "approval-mobile-approved" : ""} ${selected?.approvalId === item.approvalId ? "is-selected" : ""}`.trim()}
+                    key={item.approvalId}
+                  >
+                    <button className="approval-mobile-select" onClick={() => selectApproval(item)} type="button">
+                      <span className="approval-mobile-heading">
+                        <span><strong>{item.quotationNo}</strong><small>{quotationTypeLabel(item.quotationType)}</small></span>
+                        <strong className="approval-amount">{money(item.amount)}</strong>
+                      </span>
+                      <span className="approval-mobile-project"><strong>{item.projectName}</strong><small>{item.site}</small></span>
+                      <span className="approval-mobile-meta">
+                        <span><small>Requested by</small><strong>{item.requestedBy}</strong></span>
+                        <span><small>Due date</small><strong>{item.dueDate}</strong></span>
+                      </span>
+                    </button>
+                    <footer>
+                      <span className={`approval-status ${isWaitingApproval ? "is-pending" : isInternallyApproved ? "is-approved" : "is-closed"}`}>{item.status}</span>
+                      <span className={`approval-priority priority-${item.priority.toLowerCase()}`}>{item.priority}</span>
+                      {isInternallyApproved
+                        ? <span className="inline-action approval-action-approved">Approved</span>
+                        : <button className={`inline-action ${isWaitingApproval ? "review-pending" : ""}`} onClick={() => selectApproval(item)} type="button">Review</button>}
+                    </footer>
+                  </article>
+                );
+              })}
+            </div>
             {!filtered.length ? <p className="empty-workspace">No quotation approval rows found.</p> : null}
           </div>
         </section>

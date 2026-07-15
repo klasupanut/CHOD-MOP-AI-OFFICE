@@ -14,7 +14,6 @@ export function ReportsWorkspace({ data }: { data: LiveDashboardData }) {
         <div>
           <span>TEAM PERFORMANCE & OPERATION REVIEW CENTER</span>
           <h1>Reports</h1>
-          <p>Team-focused operation review: workload, overdue work, activity, risk, and recommended reports for Tammasit.</p>
         </div>
       </div>
 
