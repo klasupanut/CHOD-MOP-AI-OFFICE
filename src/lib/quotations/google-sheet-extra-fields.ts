@@ -9,6 +9,7 @@ type QuotationExtraFieldRow = {
   projectType?: unknown;
   mainContractor?: unknown;
   contractorName?: unknown;
+  externalNote?: unknown;
   approvalStatus?: unknown;
   approvalAt?: unknown;
   approvalBy?: unknown;
@@ -28,6 +29,7 @@ let cachedExtraMap: {
   value: Map<string, {
     projectType: string;
     mainContractor: string;
+    externalNote: string;
     approvalStatus: string;
     approvalAt: string;
     approvalBy: string;
@@ -118,6 +120,10 @@ function asString(value: unknown) {
   return String(value || "").trim();
 }
 
+function asExternalNote(value: unknown) {
+  return asString(value).slice(0, 2_000);
+}
+
 function normalizeHeader(value: unknown) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -138,7 +144,7 @@ function asQuotationRow(value: unknown): QuotationExtraFieldRow | null {
 }
 
 async function ensureExtraHeaders() {
-  const range = encodeURIComponent(`${QUOTATIONS_TAB}!AQ1:AW1`);
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!AQ1:AX1`);
   await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
     method: "PUT",
     body: JSON.stringify({
@@ -150,6 +156,7 @@ async function ensureExtraHeaders() {
         "approval_by",
         "approval_note",
         "approval_updated_at",
+        "external_note",
       ]],
     }),
   });
@@ -176,6 +183,7 @@ async function readExtraFieldMap() {
   const signedByEmailIndex = getHeaderIndex(["signed_by_email", "signedByEmail", "signer_email", "client_signed_email"]);
   const signedPdfUrlIndex = getHeaderIndex(["signed_pdf_url", "signedPdfUrl", "client_signed_pdf_url", "signed_pdf", "clientSignedPdfUrl"]);
   const internalVerifiedAtIndex = getHeaderIndex(["internal_verified_at", "internalVerifiedAt"]);
+  const externalNoteIndex = getHeaderIndex(["external_note", "externalNote", "client_note"]);
 
   const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:AZ`);
   const response = await sheetsFetch(`/values/${range}`);
@@ -183,6 +191,7 @@ async function readExtraFieldMap() {
   const map = new Map<string, {
     projectType: string;
     mainContractor: string;
+    externalNote: string;
     approvalStatus: string;
     approvalAt: string;
     approvalBy: string;
@@ -201,6 +210,7 @@ async function readExtraFieldMap() {
     map.set(quotationId, {
       projectType: asString(row[42]),
       mainContractor: asString(row[43]),
+      externalNote: externalNoteIndex >= 0 ? asExternalNote(row[externalNoteIndex]) : "",
       approvalStatus: asString(row[44]),
       approvalAt: asString(row[45]),
       approvalBy: asString(row[46]),
@@ -247,6 +257,11 @@ export async function syncQuotationExtraFields(quotation: unknown) {
     body: JSON.stringify({
       values: [[asString(row?.projectType), asString(row?.mainContractor || row?.contractorName)]],
     }),
+  });
+  const externalNoteRange = encodeURIComponent(`${QUOTATIONS_TAB}!AX${rowNumber}:AX${rowNumber}`);
+  await sheetsFetch(`/values/${externalNoteRange}?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({ values: [[asExternalNote(row?.externalNote)]] }),
   });
   cachedExtraMap = null;
 }
@@ -437,6 +452,9 @@ export async function enrichQuotationExtraFields<T>(data: T): Promise<T> {
         ...value as object,
         projectType: asString(row.projectType) || extra.projectType,
         mainContractor: asString(row.mainContractor) || extra.mainContractor,
+        // AX is the authoritative optional note shown to the customer.
+        // An empty value intentionally removes the block from the quotation.
+        externalNote: extra.externalNote,
         // The dedicated sheet column is written by the internal approval flow
         // and is therefore authoritative over an older Apps Script payload.
         approvalStatus: extra.approvalStatus || asString(row.approvalStatus),
