@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { CustomCursor } from "@/components/cursor/CustomCursor";
+import { AuthenticatedAppShell } from "@/components/layout/AuthenticatedAppShell";
 import { BrowserOriginGuard } from "@/components/system/BrowserOriginGuard";
+import { PresenceHeartbeat } from "@/components/system/PresenceHeartbeat";
+import { getCurrentApprovedUser } from "@/lib/auth/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,7 +31,8 @@ const themeBootScript = `
 })();
 `;
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const user = await getCurrentApprovedUser();
   return (
     <html data-theme="dark" lang="en" suppressHydrationWarning>
       <head>
@@ -36,7 +40,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body>
         <BrowserOriginGuard />
-        {children}
+        {user ? <AuthenticatedAppShell user={user}>{children}</AuthenticatedAppShell> : children}
+        {user ? <PresenceHeartbeat /> : null}
         <CustomCursor />
       </body>
     </html>

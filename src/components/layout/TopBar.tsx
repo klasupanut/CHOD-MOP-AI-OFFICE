@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Bell, Cloud, ExternalLink, ShieldCheck } from "lucide-react";
 import { useThailandTime } from "@/components/office/ThailandTimeController";
 import { ThemeModeToggle } from "@/components/layout/ThemeModeToggle";
-import { PresenceHeartbeat } from "@/components/system/PresenceHeartbeat";
 import { CHOD_LOGO_DATA_URI } from "@/lib/brand/chod-logo";
 import { getApprovalNotificationSnapshot, publishApprovalNotificationSnapshot, subscribeApprovalNotifications } from "@/lib/notifications/approval-notifications";
 import {
@@ -84,7 +83,6 @@ export function TopBar() {
 
   return (
     <header className="topbar">
-      <PresenceHeartbeat />
       <div>
         <h1 aria-label="CHOD MOP OFFICE" className="project-title">
           <img alt="CHOD" className="project-title-logo" decoding="async" src={CHOD_LOGO_DATA_URI} />

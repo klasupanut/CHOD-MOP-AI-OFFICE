@@ -5,6 +5,7 @@ import { canUserApproveQuotation } from "@/lib/approvals/approval-utils";
 import { findApprovalRow, updateApprovalStatus } from "@/lib/approvals/approval-store";
 import { syncQuotationStatusToBackend } from "@/lib/approvals/quotation-approval-source";
 import { requireModule } from "@/lib/auth/session";
+import { invalidateLiveWorkspaceCaches } from "@/lib/cache/live-workspace-cache";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 import type { AgentId } from "@/lib/types";
 
@@ -64,6 +65,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ap
     lastUpdate: new Date().toISOString().slice(0, 16).replace("T", " "),
     remark: body.note ? `${approval.remark} | ${body.note}` : approval.remark,
   };
+  invalidateLiveWorkspaceCaches();
   return NextResponse.json({
     approval: updated,
     mode: syncResult.mode,

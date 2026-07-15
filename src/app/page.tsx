@@ -1,6 +1,5 @@
 import { OfficeStage } from "@/components/office/OfficeStage";
 import { RightPanel } from "@/components/layout/RightPanel";
-import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { listApprovedUsers } from "@/lib/auth/google-sheets-store";
 import { getOnlineCharacterIds } from "@/lib/auth/presence";
@@ -21,8 +20,7 @@ export default async function Home() {
   const onlineCharacterIds = getOnlineCharacterIds(approvedUsers);
 
   return (
-    <main className="hq-shell">
-      <Sidebar user={user} />
+    <>
       <section className="center-deck">
         <TopBar />
         <div className="office-frame">
@@ -30,6 +28,6 @@ export default async function Home() {
         </div>
       </section>
       <RightPanel data={panelData} />
-    </main>
+    </>
   );
 }

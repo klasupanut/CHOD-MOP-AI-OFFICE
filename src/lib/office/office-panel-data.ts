@@ -1,6 +1,8 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { listApprovalRows } from "@/lib/approvals/approval-store";
+import { OFFICE_PANEL_CACHE_TAG } from "@/lib/cache/live-workspace-cache";
 import { listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
 
 export type OfficeSummaryMetric = {
@@ -64,7 +66,7 @@ function timestamp(value?: string) {
   return parseDate(value)?.getTime() || 0;
 }
 
-export async function getOfficePanelData(): Promise<OfficePanelData> {
+async function loadOfficePanelData(): Promise<OfficePanelData> {
   const [taskProjectData, approvalRows] = await Promise.all([
     listTaskProjectData().catch(() => ({ projects: [], tasks: [] })),
     listApprovalRows().catch(() => []),
@@ -120,4 +122,17 @@ export async function getOfficePanelData(): Promise<OfficePanelData> {
       detail: `${tasks.length} tasks · ${projects.length} projects · ${pendingApprovals.length} pending approvals`,
     },
   };
+}
+
+const getCachedOfficePanelData = unstable_cache(
+  loadOfficePanelData,
+  ["chod-office-panel-v2"],
+  {
+    revalidate: 30,
+    tags: [OFFICE_PANEL_CACHE_TAG],
+  },
+);
+
+export async function getOfficePanelData(): Promise<OfficePanelData> {
+  return getCachedOfficePanelData();
 }

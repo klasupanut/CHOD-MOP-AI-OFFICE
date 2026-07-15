@@ -6,7 +6,7 @@ import {
   FolderKanban, Gauge, Hammer, LayoutDashboard, Settings, SunMedium, Wrench, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/app/actions/auth";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { ModulePermission } from "@/lib/auth/permissions";
@@ -41,6 +41,7 @@ const nav: Array<{ label: "Office" | ModulePermission; icon: LucideIcon; href?: 
 
 export function Sidebar({ user }: { user: ApprovedUser }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isHydrated, setIsHydrated] = useState(false);
   const [approvalBadgeCount, setApprovalBadgeCount] = useState(0);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
@@ -126,8 +127,12 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
             <Link
               key={label}
               href={href}
+              prefetch={false}
               className={active ? "active" : ""}
               onClick={() => markMenuNotificationsRead(href)}
+              onFocus={() => router.prefetch(href)}
+              onPointerDown={() => router.prefetch(href)}
+              onPointerEnter={() => router.prefetch(href)}
               title={displayLabel || label}
             >
               {content}

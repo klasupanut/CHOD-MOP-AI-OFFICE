@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { ProjectRecord } from "@/data/projects";
 import { createProjectInSheet, deleteProjectInSheet, updateProjectInSheet } from "@/lib/connectors/google-sheet-task-project";
 import { getApiUser } from "@/lib/auth/api";
+import { invalidateLiveWorkspaceCaches } from "@/lib/cache/live-workspace-cache";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 function canManageProjects(user: { role: string; characterId?: string }) {
@@ -23,6 +24,7 @@ export async function DELETE(request: Request) {
     const body = (await request.json()) as { projectId?: string };
     if (!body.projectId) throw new Error("Project ID is required.");
     const project = await deleteProjectInSheet(body.projectId);
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ project, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(
@@ -46,6 +48,7 @@ export async function POST(request: Request) {
       ...body.project,
       createdBy: body.project.createdBy || user.name,
     });
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ project, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(
@@ -66,6 +69,7 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as { projectId?: string; patch?: Partial<ProjectRecord> };
     if (!body.projectId) throw new Error("Project ID is required.");
     const project = await updateProjectInSheet(body.projectId, body.patch || {});
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ project, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(

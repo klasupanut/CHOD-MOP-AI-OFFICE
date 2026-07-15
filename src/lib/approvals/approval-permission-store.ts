@@ -19,6 +19,11 @@ const APPROVAL_PERMISSION_HEADERS = [
 ] as const;
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
+const APPROVAL_PERMISSION_CACHE_MS = 60_000;
+let approvalPermissionCache: { expiresAt: number; permissions: ApprovalPermission[] } | null = null;
+let approvalPermissionPromise: Promise<ApprovalPermission[]> | null = null;
+let approvalPermissionSheetReady = false;
+let approvalPermissionSheetPromise: Promise<void> | null = null;
 
 function getSheetId() {
   return process.env.GOOGLE_SHEET_ID_USERS || "";
@@ -131,23 +136,41 @@ function permissionToRow(permission: ApprovalPermission) {
 }
 
 async function ensureApprovalPermissionSheet() {
-  const metadataResponse = await sheetsFetch("?fields=sheets.properties.title");
-  const metadata = (await metadataResponse.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
-  const existing = new Set(metadata.sheets?.map((sheet) => sheet.properties?.title).filter(Boolean));
-  if (!existing.has(APPROVAL_PERMISSION_TAB)) {
-    await sheetsFetch(":batchUpdate", {
-      method: "POST",
-      body: JSON.stringify({
-        requests: [{ addSheet: { properties: { title: APPROVAL_PERMISSION_TAB } } }],
-      }),
-    });
-  }
+  if (approvalPermissionSheetReady) return;
+  if (approvalPermissionSheetPromise) return approvalPermissionSheetPromise;
 
-  const headerRange = encodeURIComponent(`${APPROVAL_PERMISSION_TAB}!A1:I1`);
-  await sheetsFetch(`/values/${headerRange}?valueInputOption=RAW`, {
-    method: "PUT",
-    body: JSON.stringify({ values: [[...APPROVAL_PERMISSION_HEADERS]] }),
+  approvalPermissionSheetPromise = (async () => {
+    const metadataResponse = await sheetsFetch("?fields=sheets.properties.title");
+    const metadata = (await metadataResponse.json()) as { sheets?: Array<{ properties?: { title?: string } }> };
+    const existing = new Set(metadata.sheets?.map((sheet) => sheet.properties?.title).filter(Boolean));
+    if (!existing.has(APPROVAL_PERMISSION_TAB)) {
+      await sheetsFetch(":batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({
+          requests: [{ addSheet: { properties: { title: APPROVAL_PERMISSION_TAB } } }],
+        }),
+      });
+    }
+
+    const headerRange = encodeURIComponent(`${APPROVAL_PERMISSION_TAB}!A1:I1`);
+    const headerResponse = await sheetsFetch(`/values/${headerRange}`);
+    const headerPayload = (await headerResponse.json()) as { values?: unknown[][] };
+    const currentHeaders = headerPayload.values?.[0] || [];
+    const headerMatches = APPROVAL_PERMISSION_HEADERS.every(
+      (header, index) => String(currentHeaders[index] || "").trim() === header,
+    );
+    if (!headerMatches) {
+      await sheetsFetch(`/values/${headerRange}?valueInputOption=RAW`, {
+        method: "PUT",
+        body: JSON.stringify({ values: [[...APPROVAL_PERMISSION_HEADERS]] }),
+      });
+    }
+    approvalPermissionSheetReady = true;
+  })().finally(() => {
+    approvalPermissionSheetPromise = null;
   });
+
+  return approvalPermissionSheetPromise;
 }
 
 async function readPermissionRows() {
@@ -157,24 +180,44 @@ async function readPermissionRows() {
   return payload.values || [];
 }
 
+function clonePermissions(permissions: ApprovalPermission[]) {
+  return permissions.map((item) => ({ ...item, approvalScopes: [...item.approvalScopes] }));
+}
+
 export async function listApprovalPermissions() {
-  await ensureApprovalPermissionSheet();
-  const rows = await readPermissionRows();
-  const permissions = rows.map(rowToPermission).filter((item): item is ApprovalPermission => Boolean(item));
-  if (permissions.length) return permissions;
-  await saveApprovalPermissions(defaultApprovalPermissions);
-  return defaultApprovalPermissions.map((item) => ({ ...item, approvalScopes: [...item.approvalScopes] }));
+  if (approvalPermissionCache && approvalPermissionCache.expiresAt > Date.now()) {
+    return clonePermissions(approvalPermissionCache.permissions);
+  }
+  if (approvalPermissionPromise) return clonePermissions(await approvalPermissionPromise);
+
+  approvalPermissionPromise = (async () => {
+    await ensureApprovalPermissionSheet();
+    const rows = await readPermissionRows();
+    const permissions = rows.map(rowToPermission).filter((item): item is ApprovalPermission => Boolean(item));
+    if (permissions.length) return permissions;
+    return saveApprovalPermissions(defaultApprovalPermissions);
+  })().then((permissions) => {
+    approvalPermissionCache = { expiresAt: Date.now() + APPROVAL_PERMISSION_CACHE_MS, permissions };
+    return permissions;
+  }).finally(() => {
+    approvalPermissionPromise = null;
+  });
+
+  return clonePermissions(await approvalPermissionPromise);
 }
 
 export async function saveApprovalPermissions(permissions: ApprovalPermission[]) {
   await ensureApprovalPermissionSheet();
   const clearRange = encodeURIComponent(`${APPROVAL_PERMISSION_TAB}!A2:I`);
   await sheetsFetch(`/values/${clearRange}:clear`, { method: "POST", body: JSON.stringify({}) });
-  if (!permissions.length) return [];
-  const appendRange = encodeURIComponent(`${APPROVAL_PERMISSION_TAB}!A:I`);
-  await sheetsFetch(`/values/${appendRange}:append?valueInputOption=RAW&insertDataOption=OVERWRITE`, {
-    method: "POST",
-    body: JSON.stringify({ values: permissions.map(permissionToRow) }),
-  });
-  return permissions;
+  if (permissions.length) {
+    const appendRange = encodeURIComponent(`${APPROVAL_PERMISSION_TAB}!A:I`);
+    await sheetsFetch(`/values/${appendRange}:append?valueInputOption=RAW&insertDataOption=OVERWRITE`, {
+      method: "POST",
+      body: JSON.stringify({ values: permissions.map(permissionToRow) }),
+    });
+  }
+  const saved = clonePermissions(permissions);
+  approvalPermissionCache = { expiresAt: Date.now() + APPROVAL_PERMISSION_CACHE_MS, permissions: saved };
+  return clonePermissions(saved);
 }

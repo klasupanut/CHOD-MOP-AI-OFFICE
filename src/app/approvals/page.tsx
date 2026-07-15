@@ -1,5 +1,3 @@
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TopBar } from "@/components/layout/TopBar";
 import { ApprovalsWorkspace } from "@/components/approvals/ApprovalsWorkspace";
 import { listApprovalPermissions } from "@/lib/approvals/approval-permission-store";
 import { listApprovalRows } from "@/lib/approvals/approval-store";
@@ -18,16 +16,10 @@ export default async function ApprovalsPage() {
     }),
   ]);
   return (
-    <main className="hq-shell module-shell">
-      <Sidebar user={user} />
-      <section className="module-main">
-        <TopBar />
-        <ApprovalsWorkspace
-          currentUser={user}
-          initialApprovals={approvals}
-          initialApprovalPermissions={approvalPermissions}
-        />
-      </section>
-    </main>
+    <ApprovalsWorkspace
+      currentUser={user}
+      initialApprovals={approvals}
+      initialApprovalPermissions={approvalPermissions}
+    />
   );
 }

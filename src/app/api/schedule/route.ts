@@ -14,6 +14,7 @@ import {
   updateTaskInSheet,
 } from "@/lib/connectors/google-sheet-task-project";
 import { getApiUser } from "@/lib/auth/api";
+import { invalidateLiveWorkspaceCaches } from "@/lib/cache/live-workspace-cache";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 const characterNameMap = {
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       owner: body.event.owner || user.name,
       source: "manual",
     });
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ event, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(
@@ -131,6 +133,7 @@ export async function PATCH(request: Request) {
         },
         user.name,
       );
+      invalidateLiveWorkspaceCaches();
       return NextResponse.json({
         event: {
           ...event,
@@ -161,6 +164,7 @@ export async function PATCH(request: Request) {
         description: body.event?.note ?? project.description,
         progress: nextScheduleStatus === "Done" ? 100 : Math.min(project.progress || 0, 99),
       });
+      invalidateLiveWorkspaceCaches();
       return NextResponse.json({
         event: {
           ...event,
@@ -188,6 +192,7 @@ export async function PATCH(request: Request) {
           source: "manual",
         })
       : await updateScheduleEventStatusInSheet(event.eventId, requestedStatus as ScheduleStatus);
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ event: updatedEvent, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(
@@ -225,6 +230,7 @@ export async function DELETE(request: Request) {
     }
 
     const deletedEvent = await deleteScheduleEventInSheet(event.eventId);
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ event: deletedEvent, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(

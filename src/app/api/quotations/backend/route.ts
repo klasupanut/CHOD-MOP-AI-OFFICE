@@ -11,6 +11,7 @@ import {
 import { callQuotationAppsScript, formatAppsScriptError, getQuotationAppsScriptUrl, isSigningAction } from "@/lib/quotations/apps-script-backend";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 import { invalidateApprovalRows } from "@/lib/approvals/approval-store";
+import { invalidateLiveWorkspaceCaches } from "@/lib/cache/live-workspace-cache";
 
 type BackendRequest = {
   action?: string;
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
     // Do not leave the Approvals page on its short-lived cached state after a
     // cancellation/restore. The next read reloads the authoritative sheet row.
     invalidateApprovalRows();
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({
       ok: true,
       data: {
@@ -187,6 +189,7 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error || "Internal Verify failed." }, { status: 400 });
     }
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({
       ok: true,
       data: {
@@ -233,6 +236,9 @@ export async function POST(request: NextRequest) {
     const safeResult = result.ok
       ? { ...result, data: redactInternalPricing(enrichedData, user) }
       : result;
+    if (result.ok && !["listQuotations", "getQuotation", "getSettings", "listTemplates", "listSignatures"].includes(action)) {
+      invalidateLiveWorkspaceCaches();
+    }
     return NextResponse.json(safeResult, { status: response.ok ? 200 : response.status });
   } catch (error) {
     const detail = formatAppsScriptError(error);

@@ -5,19 +5,27 @@ const globalStore = globalThis as typeof globalThis & {
   chodApprovalRows?: QuotationApprovalWithItems[];
   chodApprovalStoreVersion?: string;
   chodApprovalRowsLoadedAt?: number;
+  chodApprovalRowsPromise?: Promise<QuotationApprovalWithItems[]>;
 };
 
 const APPROVAL_STORE_VERSION = "2026-06-27-internal-approval-vs-client-signing";
-const APPROVAL_STORE_TTL_MS = 5_000;
+const APPROVAL_STORE_TTL_MS = 30_000;
 
 async function rows() {
   const stale = !globalStore.chodApprovalRowsLoadedAt || Date.now() - globalStore.chodApprovalRowsLoadedAt > APPROVAL_STORE_TTL_MS;
-  if (!globalStore.chodApprovalRows || globalStore.chodApprovalStoreVersion !== APPROVAL_STORE_VERSION || stale) {
-    try {
-      globalStore.chodApprovalRows = await listQuotationApprovalsFromBackend();
+  if (globalStore.chodApprovalRows && globalStore.chodApprovalStoreVersion === APPROVAL_STORE_VERSION && !stale) {
+    return globalStore.chodApprovalRows;
+  }
+  if (globalStore.chodApprovalRowsPromise) return globalStore.chodApprovalRowsPromise;
+
+  globalStore.chodApprovalRowsPromise = listQuotationApprovalsFromBackend()
+    .then((approvalRows) => {
+      globalStore.chodApprovalRows = approvalRows;
       globalStore.chodApprovalStoreVersion = APPROVAL_STORE_VERSION;
       globalStore.chodApprovalRowsLoadedAt = Date.now();
-    } catch (error) {
+      return approvalRows;
+    })
+    .catch((error) => {
       if (globalStore.chodApprovalRows && globalStore.chodApprovalStoreVersion === APPROVAL_STORE_VERSION) {
         globalStore.chodApprovalRowsLoadedAt = Date.now();
         return globalStore.chodApprovalRows;
@@ -26,9 +34,13 @@ async function rows() {
       globalStore.chodApprovalRows = [];
       globalStore.chodApprovalStoreVersion = APPROVAL_STORE_VERSION;
       globalStore.chodApprovalRowsLoadedAt = Date.now();
-    }
-  }
-  return globalStore.chodApprovalRows;
+      return globalStore.chodApprovalRows;
+    })
+    .finally(() => {
+      globalStore.chodApprovalRowsPromise = undefined;
+    });
+
+  return globalStore.chodApprovalRowsPromise;
 }
 
 export async function listApprovalRows() {

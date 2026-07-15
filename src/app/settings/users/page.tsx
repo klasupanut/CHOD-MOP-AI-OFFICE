@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 import type { ApprovalPermission } from "@/data/approval-permissions";
-import { Sidebar } from "@/components/layout/Sidebar";
 import { SettingsWorkspace } from "@/components/settings/SettingsWorkspace";
 import { listApprovalPermissions } from "@/lib/approvals/approval-permission-store";
-import { ensureSheetHeaders, getSuperAdminEmail, listApprovedUsers } from "@/lib/auth/google-sheets-store";
+import { getSuperAdminEmail, listApprovedUsers } from "@/lib/auth/google-sheets-store";
 import { requireModule } from "@/lib/auth/session";
 import { getSettingsDataConnectors } from "@/lib/settings/data-connectors";
 import { getSettingsRuntimeStatus } from "@/lib/settings/runtime-status";
@@ -28,7 +27,6 @@ export default async function UsersAndPermissionsPage() {
   let approvalPermissionError = "";
   let approvalPermissions: ApprovalPermission[] = [];
   try {
-    await ensureSheetHeaders();
     users = await listApprovedUsers();
   } catch (error) {
     storageError = describeUserStoreError(error);
@@ -45,22 +43,19 @@ export default async function UsersAndPermissionsPage() {
   const runtimeStatus = getSettingsRuntimeStatus(dataConnectors);
 
   return (
-    <main className="hq-shell admin-shell">
-      <Sidebar user={user} />
-      <section className="admin-main">
-        <header className="admin-heading"><span>SETTINGS</span><h1>Users &amp; Permissions</h1><p>Approve team access and control module-level and quotation permissions.</p></header>
-        <SettingsWorkspace
-          initialUsers={users}
-          actorRole={user.role}
-          storageError={storageError}
-          initialApprovalPermissions={approvalPermissions}
-          approvalPermissionError={approvalPermissionError}
-          protectedSuperAdminEmail={getSuperAdminEmail()}
-          dataConnectors={dataConnectors}
-          generalStatus={runtimeStatus.general}
-          systemStatus={runtimeStatus.system}
-        />
-      </section>
-    </main>
+    <section className="admin-main">
+      <header className="admin-heading"><span>SETTINGS</span><h1>Users &amp; Permissions</h1><p>Approve team access and control module-level and quotation permissions.</p></header>
+      <SettingsWorkspace
+        initialUsers={users}
+        actorRole={user.role}
+        storageError={storageError}
+        initialApprovalPermissions={approvalPermissions}
+        approvalPermissionError={approvalPermissionError}
+        protectedSuperAdminEmail={getSuperAdminEmail()}
+        dataConnectors={dataConnectors}
+        generalStatus={runtimeStatus.general}
+        systemStatus={runtimeStatus.system}
+      />
+    </section>
   );
 }

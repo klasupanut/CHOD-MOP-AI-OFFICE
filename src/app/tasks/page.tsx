@@ -1,5 +1,3 @@
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TopBar } from "@/components/layout/TopBar";
 import { TaskWorkspace } from "@/components/workspace/TaskWorkspace";
 import { listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
 import { requireModule } from "@/lib/auth/session";
@@ -18,17 +16,11 @@ export default async function TasksPage() {
     };
   }
   return (
-    <main className="hq-shell module-shell">
-      <Sidebar user={user} />
-      <section className="module-main">
-        <TopBar />
-        <TaskWorkspace
-          currentUser={user}
-          initialTasks={taskProjectData.tasks}
-          initialProjects={taskProjectData.projects}
-          dataMessage={taskProjectData.message}
-        />
-      </section>
-    </main>
+    <TaskWorkspace
+      currentUser={user}
+      initialTasks={taskProjectData.tasks}
+      initialProjects={taskProjectData.projects}
+      dataMessage={taskProjectData.message}
+    />
   );
 }

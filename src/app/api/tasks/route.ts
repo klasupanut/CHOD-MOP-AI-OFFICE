@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { TaskRecord } from "@/data/tasks";
 import { createTaskInSheet, deleteTaskInSheet, updateTaskInSheet } from "@/lib/connectors/google-sheet-task-project";
 import { getApiUser } from "@/lib/auth/api";
+import { invalidateLiveWorkspaceCaches } from "@/lib/cache/live-workspace-cache";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
 const characterNameMap = {
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
       assignedBy: body.task.assignedBy || user.name,
       updatedBy: user.name,
     });
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ task, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(
@@ -60,6 +62,7 @@ export async function DELETE(request: Request) {
     if (!body.taskId) throw new Error("Task ID is required.");
     const owner = getUserTaskOwner(user);
     const deletedTask = await deleteTaskInSheet(body.taskId, { canManageAll: canManageAllTasks(user), owner });
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ task: deletedTask, mode: "google-sheet" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to delete task.";
@@ -81,6 +84,7 @@ export async function PATCH(request: Request) {
     if (!body.taskId) throw new Error("Task ID is required.");
     const owner = getUserTaskOwner(user);
     const task = await updateTaskInSheet(body.taskId, body.patch || {}, user.name, { canManageAll: canManageAllTasks(user), owner });
+    invalidateLiveWorkspaceCaches();
     return NextResponse.json({ task, mode: "google-sheet" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to update task.";

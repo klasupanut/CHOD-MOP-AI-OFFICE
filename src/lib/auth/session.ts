@@ -1,24 +1,28 @@
 import "server-only";
 
+import { cache } from "react";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { findApprovedUser } from "./google-sheets-store";
 import type { ModulePermission, QuotationPermission } from "./permissions";
 
-export async function getCurrentApprovedUser() {
+const getApprovedSession = cache(async () => {
   const session = await auth();
   const email = session?.user?.email;
-  if (!email) return null;
+  if (!email) return { authenticated: false, user: null };
   const user = await findApprovedUser(email);
-  return user?.active ? user : null;
+  return { authenticated: true, user: user?.active ? user : null };
+});
+
+export async function getCurrentApprovedUser() {
+  return (await getApprovedSession()).user;
 }
 
 export async function requireApprovedUser() {
-  const session = await auth();
-  if (!session?.user?.email) redirect("/login");
-  const user = await findApprovedUser(session.user.email);
-  if (!user || !user.active) redirect("/access-denied");
-  return user;
+  const approvedSession = await getApprovedSession();
+  if (!approvedSession.authenticated) redirect("/login");
+  if (!approvedSession.user) redirect("/access-denied");
+  return approvedSession.user;
 }
 
 export async function requireModule(module: ModulePermission) {
@@ -32,4 +36,3 @@ export async function requireQuotationPermission(permission: QuotationPermission
   if (!user.quotationPermissions.includes(permission)) redirect("/access-denied");
   return user;
 }
-

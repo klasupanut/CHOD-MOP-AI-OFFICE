@@ -1,9 +1,11 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import type { ProjectRecord } from "@/data/projects";
 import type { TaskRecord } from "@/data/tasks";
 import { listApprovalRows } from "@/lib/approvals/approval-store";
 import { getBudgetUtilizeData, type BudgetUtilizeData } from "@/lib/budget-utilize/budget-utilize-data";
+import { LIVE_DASHBOARD_CACHE_TAG } from "@/lib/cache/live-workspace-cache";
 import { listTaskProjectData } from "@/lib/connectors/google-sheet-task-project";
 import { getFitoutWorkspaceData } from "@/lib/fitout/fitout-google-sheet";
 
@@ -560,7 +562,7 @@ function workloadLabel(percent: number) {
   };
 }
 
-export async function getLiveDashboardData(): Promise<LiveDashboardData> {
+async function loadLiveDashboardData(): Promise<LiveDashboardData> {
   const [taskProjectData, approvalRows, fitoutData, budgetUtilizeData] = await Promise.all([
     listTaskProjectData().catch(() => ({ projects: [] as ProjectRecord[], tasks: [] as TaskRecord[] })),
     listApprovalRows().catch(() => []),
@@ -896,4 +898,17 @@ export async function getLiveDashboardData(): Promise<LiveDashboardData> {
       ],
     },
   };
+}
+
+const getCachedLiveDashboardData = unstable_cache(
+  loadLiveDashboardData,
+  ["chod-live-dashboard-v2"],
+  {
+    revalidate: 30,
+    tags: [LIVE_DASHBOARD_CACHE_TAG],
+  },
+);
+
+export async function getLiveDashboardData(): Promise<LiveDashboardData> {
+  return getCachedLiveDashboardData();
 }

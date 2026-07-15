@@ -1,6 +1,4 @@
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { TopBar } from "@/components/layout/TopBar";
 import { ScheduleWorkspace } from "@/components/workspace/ScheduleWorkspace";
 import { requireApprovedUser } from "@/lib/auth/session";
 import { listScheduleData } from "@/lib/connectors/google-sheet-task-project";
@@ -24,16 +22,10 @@ export default async function CalendarSchedulePage() {
   }
 
   return (
-    <main className="hq-shell module-shell">
-      <Sidebar user={user} />
-      <section className="module-main">
-        <TopBar />
-        <ScheduleWorkspace
-          currentUser={user}
-          initialEvents={scheduleData.events}
-          dataMessage={scheduleData.message}
-        />
-      </section>
-    </main>
+    <ScheduleWorkspace
+      currentUser={user}
+      initialEvents={scheduleData.events}
+      dataMessage={scheduleData.message}
+    />
   );
 }
