@@ -236,10 +236,21 @@ export async function syncQuotationExtraFields(quotation: unknown) {
 
   await ensureExtraHeaders();
   const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:A`);
-  const response = await sheetsFetch(`/values/${range}`);
-  const payload = (await response.json()) as { values?: unknown[][] };
-  const index = (payload.values || []).findIndex((entry) => asString(entry[0]) === quotationId);
-  if (index < 0) return;
+  let index = -1;
+  // Apps Script has already returned after its write, but Google Sheets can
+  // occasionally expose the new row to the Sheets API a fraction later.
+  // Retry only on a missing row so normal saves still use a single read.
+  for (let attempt = 0; attempt < 3 && index < 0; attempt += 1) {
+    const response = await sheetsFetch(`/values/${range}`);
+    const payload = (await response.json()) as { values?: unknown[][] };
+    index = (payload.values || []).findIndex((entry) => asString(entry[0]) === quotationId);
+    if (index < 0 && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+    }
+  }
+  if (index < 0) {
+    throw new Error(`Quotation ${quotationId} was saved but its External Note row could not be located.`);
+  }
 
   const rowNumber = index + 2;
   const quotationNo = asString(row?.quotationNo);

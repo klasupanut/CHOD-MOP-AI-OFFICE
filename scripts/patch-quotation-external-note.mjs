@@ -13,6 +13,9 @@ if (!activeAsset) {
 const assetPath = resolve(root, "quotation-app-dist", "assets", activeAsset);
 let source = readFileSync(assetPath, "utf8");
 
+const appsScriptUrl =
+  "https://script.google.com/macros/s/AKfycbye7EhSquAhIxbBCx3BLllv-AYMJHKYBelNI4yhScYxDqqHWtn0q4CzAhzEWnlFl0MB7w/exec";
+
 function replaceOnce(label, before, after) {
   if (source.includes(after)) return;
   const first = source.indexOf(before);
@@ -47,5 +50,15 @@ replaceOnce(
   'i.jsx("td",{"data-testid":"grand-total-value",className:"border-y border-slate-700 px-2 py-2 text-right text-[13px]",children:me(o.grandTotal)})]})]})]}),String(o.externalNote||"").trim()?i.jsxs("section",{"data-testid":"external-note",className:"mt-4 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-[11px] text-slate-700",children:[i.jsx("div",{className:"mb-2 font-bold text-navy",children:"NOTE"}),i.jsx("div",{className:"break-words",style:{whiteSpace:"pre-wrap"},children:String(o.externalNote).trim()})]}):null,i.jsxs("div",{"data-testid":"signature-section"',
 );
 
+// Internal quotation actions must pass through the authenticated CHOD API.
+// That route persists External Note in the dedicated Google Sheet column and
+// enriches list/get responses. The separate customer-signing endpoint remains
+// pointed at Apps Script so token + OTP access continues to work publicly.
+replaceOnce(
+  "authenticated quotation backend",
+  `Zi="${appsScriptUrl}".trim()`,
+  'Zi="/api/quotations/backend"',
+);
+
 writeFileSync(assetPath, source, "utf8");
-console.log(`Patched ${activeAsset} with optional customer-facing External Note support.`);
+console.log(`Patched ${activeAsset} with persistent customer-facing External Note support.`);

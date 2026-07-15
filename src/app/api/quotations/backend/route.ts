@@ -208,9 +208,19 @@ export async function POST(request: NextRequest) {
   try {
     const { response, result } = await callQuotationAppsScript(action, body.payload);
     if (result.ok && action === "saveQuotation") {
-      await syncQuotationExtraFields(body.payload).catch((error) => {
+      try {
+        await syncQuotationExtraFields(body.payload);
+      } catch (error) {
         console.error("Quotation extra field sync failed", error);
-      });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Quotation was saved, but External Note could not be synchronized. Press Save Draft again.",
+            detail: error instanceof Error ? error.message : "Unknown External Note sync error.",
+          },
+          { status: 502 },
+        );
+      }
     }
     const resultData = action === "saveQuotation" ? withRequestedQuotationNo(result.data, body.payload) : result.data;
     const enrichedData = result.ok && (action === "listQuotations" || action === "getQuotation" || action === "saveQuotation")
