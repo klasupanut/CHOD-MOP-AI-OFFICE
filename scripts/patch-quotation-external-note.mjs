@@ -38,6 +38,25 @@ replaceOnce(
   'i.jsxs("label",{className:"mt-4 block",children:[i.jsx("span",{className:"field-label",children:"External Note (shown to client)"}),i.jsx("textarea",{"aria-label":"External Note",className:"field-input min-h-20 resize-y py-2",value:o.externalNote||"",placeholder:"Optional note displayed on the quotation and customer PDF",onChange:J=>x({...o,externalNote:J.target.value})}),i.jsx("span",{className:"mt-1 block text-[10px] text-slate-400",children:"Leave blank to hide this section from the quotation."})]}),i.jsxs("label",{className:"mt-4 block",children:[i.jsx("span",{className:"field-label",children:"Internal Notes (never shown on PDF)"}),i.jsx("textarea",{className:"field-input min-h-20 resize-y py-2",value:o.notesInternal,onChange:J=>x({...o,notesInternal:J.target.value})})]}),i.jsx(fp,{quotation:o})',
 );
 
+// Some historical bundles already contained the source-built editor before
+// this patch ran. Remove only the older no-maxLength copy so the form exposes
+// one canonical input and cannot submit two competing External Note values.
+const legacyDuplicateEditor =
+  ',i.jsxs("label",{className:"mt-4 block",children:[i.jsx("span",{className:"field-label",children:"External Note (shown to client)"}),i.jsx("textarea",{"aria-label":"External Note",className:"field-input min-h-20 resize-y py-2",value:o.externalNote||"",placeholder:"Optional note displayed on the quotation and customer PDF",onChange:J=>x({...o,externalNote:J.target.value})}),i.jsx("span",{className:"mt-1 block text-[10px] text-slate-400",children:"Leave blank to hide this section from the quotation."})]})';
+
+const externalNoteLabel = "External Note (shown to client)";
+let editorCount = source.split(externalNoteLabel).length - 1;
+if (editorCount > 1) {
+  if (!source.includes(legacyDuplicateEditor)) {
+    throw new Error(`Unable to identify the duplicate External Note editor in ${activeAsset}.`);
+  }
+  source = source.replace(legacyDuplicateEditor, "");
+  editorCount = source.split(externalNoteLabel).length - 1;
+}
+if (editorCount !== 1) {
+  throw new Error(`Expected one External Note editor in ${activeAsset}; found ${editorCount}.`);
+}
+
 replaceOnce(
   "external note length guard",
   '"aria-label":"External Note",className:"field-input min-h-20 resize-y py-2",value:o.externalNote||""',
