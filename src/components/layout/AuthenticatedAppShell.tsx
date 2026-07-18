@@ -12,6 +12,7 @@ function isStandaloneRoute(pathname: string) {
   return pathname === "/login"
     || pathname === "/access-denied"
     || pathname === "/local-quotation"
+    || pathname === "/planner/workspace"
     || (pathname.startsWith("/approvals/") && pathname !== "/approvals");
 }
 

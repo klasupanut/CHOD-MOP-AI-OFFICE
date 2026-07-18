@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   BarChart3, BriefcaseBusiness, Building2, CalendarDays, CheckCheck, ClipboardList, LogOut,
-  FolderKanban, Gauge, Hammer, LayoutDashboard, Settings, SunMedium, Wrench, type LucideIcon,
+  FolderKanban, Gauge, Hammer, LayoutDashboard, Settings, SunMedium, Workflow, Wrench, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -23,12 +23,13 @@ import {
 } from "@/lib/notifications/workspace-notifications";
 import type { WorkspaceNotification } from "@/lib/notifications/types";
 
-const nav: Array<{ label: "Office" | ModulePermission; icon: LucideIcon; href?: string; pendingConnector?: boolean; displayLabel?: string }> = [
+const nav: Array<{ label: "Office" | "Planner" | ModulePermission; icon: LucideIcon; href?: string; pendingConnector?: boolean; displayLabel?: string }> = [
   { label: "Office", icon: Building2, href: "/" },
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { label: "Tasks", icon: ClipboardList, href: "/tasks" },
   { label: "Projects", icon: FolderKanban, href: "/projects", displayLabel: "Projects & Budgets" },
   { label: "Calendar / Schedule", icon: CalendarDays, href: "/calendar-schedule" },
+  { label: "Planner", icon: Workflow, href: "/planner" },
   { label: "PM Loop", icon: Gauge, pendingConnector: true },
   { label: "Renovation", icon: Wrench, pendingConnector: true },
   { label: "Fit-out Project", icon: Hammer, href: "/fit-out-project" },
@@ -52,6 +53,12 @@ export function Sidebar({ user }: { user: ApprovedUser }) {
     if (item.label === "Quotations") return user.modulePermissions.includes("Quotations") && user.quotationPermissions.includes("quotation.view");
     if (item.label === "Calendar / Schedule") {
       return user.modulePermissions.includes("Calendar / Schedule") || user.modulePermissions.includes("Tasks") || user.modulePermissions.includes("Projects");
+    }
+    if (item.label === "Planner") {
+      return user.modulePermissions.includes("Projects")
+        || user.modulePermissions.includes("Calendar / Schedule")
+        || user.modulePermissions.includes("Tasks")
+        || user.modulePermissions.includes("Fit-out Project");
     }
     return user.modulePermissions.includes(item.label);
   });

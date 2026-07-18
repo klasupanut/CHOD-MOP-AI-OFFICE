@@ -9,6 +9,8 @@ const checks = [
   { path: "/projects", status: 307, location: "/login" },
   { path: "/fit-out-project", status: 307, location: "/login" },
   { path: "/calendar-schedule", status: 307, location: "/login" },
+  { path: "/planner", status: 307, location: "/login" },
+  { path: "/planner/workspace", status: 307, location: "/login" },
   { path: "/quotations", status: 307, location: "/login" },
   { path: "/approvals", status: 307, location: "/login" },
   { path: "/reports", status: 307, location: "/login" },

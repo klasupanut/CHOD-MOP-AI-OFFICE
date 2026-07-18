@@ -36,6 +36,7 @@ export const config = {
     "/projects",
     "/fit-out-project",
     "/calendar-schedule",
+    "/planner/:path*",
     "/quotations",
     "/approvals/:path*",
     "/reports",
