@@ -9,7 +9,11 @@ import {
   isTenantPlanEnvelope,
   tenantStorageKey,
 } from "@/lib/planner/tenancy";
-import type { UsageLevel } from "@/lib/planner/usage-guard";
+import {
+  DEFAULT_INTERNAL_PLAN_LIMITS,
+  buildWorkspaceUsageSummary,
+  type UsageLevel,
+} from "@/lib/planner/usage-guard";
 import {
   DAY_MS,
   distributedProgressRatio,
@@ -69,6 +73,7 @@ const STORAGE_KEY = tenantStorageKey(
 );
 const PROJECT_INDEX_KEY = `timeline-plan-creator-project-index:${CHOD_ORGANIZATION.id}`;
 const ACTIVE_PROJECT_KEY = `timeline-plan-creator-active-project:${CHOD_ORGANIZATION.id}`;
+const LOCAL_PLANNER_STORAGE_LIMIT_BYTES = 5_000_000;
 
 const initialProject: ProjectMeta = {
   name: "",
@@ -195,6 +200,37 @@ function listLocalProjects(storage: Storage): TenantProjectSummary[] {
       updatedAt: record.savedAt || new Date().toISOString(),
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function plannerLocalStorageBytes(storage: Storage) {
+  let bytes = 0;
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (!key?.startsWith("timeline-plan-creator")) continue;
+    const value = storage.getItem(key) || "";
+    // localStorage is typically accounted as UTF-16, so use two bytes per code unit.
+    bytes += (key.length + value.length) * 2;
+  }
+  return bytes;
+}
+
+function buildLocalWorkspaceUsage(storage: Storage): WorkspaceUsagePayload {
+  return buildWorkspaceUsageSummary(
+    {
+      projects: listLocalProjects(storage).length,
+      members: 1,
+      storageBytes: plannerLocalStorageBytes(storage),
+    },
+    {
+      ...DEFAULT_INTERNAL_PLAN_LIMITS,
+      storageBytes: LOCAL_PLANNER_STORAGE_LIMIT_BYTES,
+    },
+    {
+      planCode: "browser_local",
+      planLabel: "Browser Local",
+      source: "browser-local-storage",
+    },
+  );
 }
 
 function ProjectLibrary({
@@ -819,6 +855,7 @@ export default function TimelinePlannerWorkspace() {
           setProjectLibrary(listLocalProjects(window.localStorage));
           setProjectLibraryState("ready");
         }
+        if (activePage === "usage") setUsageRefreshToken((value) => value + 1);
         setSavedLabel(`Saved locally ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
       } catch {
         setSavedLabel("Local save failed — reduce the imported logo size or download a JSON backup");
@@ -921,8 +958,13 @@ export default function TimelinePlannerWorkspace() {
 
   useEffect(() => {
     if (!hydrated) return;
-    setWorkspaceUsage(null);
-    setUsageState("local");
+    try {
+      setWorkspaceUsage(buildLocalWorkspaceUsage(window.localStorage));
+      setUsageState("ready");
+    } catch {
+      setWorkspaceUsage(null);
+      setUsageState("error");
+    }
   }, [hydrated, usageRefreshToken]);
 
   const groups = useMemo(() => activities.filter((activity) => activity.kind === "group"), [activities]);
@@ -1049,6 +1091,7 @@ export default function TimelinePlannerWorkspace() {
     window.history.replaceState(null, "", nextUrl);
     window.scrollTo({ top: 0, behavior: "smooth" });
     if (page === "projects") void loadProjectLibrary();
+    if (page === "usage") setUsageRefreshToken((value) => value + 1);
   };
 
   const openPlanSection = (sectionId: string) => {
