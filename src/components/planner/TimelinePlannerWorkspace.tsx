@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   CHOD_ORGANIZATION,
   DEFAULT_LOCAL_PROJECT_ID,
@@ -9,66 +9,37 @@ import {
   isTenantPlanEnvelope,
   tenantStorageKey,
 } from "@/lib/planner/tenancy";
+import type { UsageLevel } from "@/lib/planner/usage-guard";
+import {
+  DAY_MS,
+  distributedProgressRatio,
+  peakIndexFromCumulative,
+} from "@/lib/planner/s-curve-calculations";
+import {
+  WorkspaceUsageDashboard,
+  type UsageLoadState,
+  type WorkspaceUsagePayload,
+} from "./WorkspaceUsageDashboard";
 import type {
-  UsageLevel,
-  WorkspaceUsageSummary,
-} from "@/lib/planner/usage-guard";
-import type {
-  CloudflareFreeMetric,
-  CloudflareFreeTierTelemetry,
-} from "@/lib/planner/cloudflare-telemetry";
+  Activity,
+  ActualSnapshot,
+  CalendarMode,
+  CompanyProfile,
+  CurveView,
+  EarningMethod,
+  PdfOrientation,
+  PlanningModel,
+  ProjectMeta,
+  SavedPlan,
+  TenantCompanyLogoRecord,
+  TenantCompanyProfileRecord,
+  TenantPlanRecord,
+  TenantProjectSummary,
+} from "@/lib/planner/plan-contract";
 
-type CalendarMode = "calendar" | "working";
-type PlanningModel = "normal" | "intensive";
-type CurveView = "compare" | "plan" | "actual";
-type UsageLoadState = "loading" | "ready" | "local" | "error";
-type WorkspaceUsagePayload = WorkspaceUsageSummary & {
-  cloudflare?: CloudflareFreeTierTelemetry;
-};
-
-type ProjectMeta = {
-  name: string;
-  code: string;
-  client: string;
-  location: string;
-  projectManager: string;
-  contractNo: string;
-  baselineDate: string;
-  statusDate: string;
-  issueDate: string;
-  revision: string;
-  preparedBy: string;
-  approvedBy: string;
-};
-
-type CompanyProfile = {
-  name: string;
-  location: string;
-  logoDataUrl: string;
-};
-
-type Activity = {
-  id: string;
-  parentId: string | null;
-  kind: "group" | "task";
-  description: string;
-  start: string;
-  duration: number;
-  progress: number;
-  weight: number;
-  owner: string;
-  dependency: string;
-  actualStart?: string;
-  actualEnd?: string;
-  budget?: number;
-};
-
-type ActualSnapshot = {
-  id: string;
-  activityId: string;
-  date: string;
-  earnedValue: number;
-};
+type PlanStorageMode = "loading" | "cloud" | "local" | "error";
+type ActiveWorkspacePage = "plan" | "projects" | "usage";
+type ProjectLibraryState = "idle" | "loading" | "ready" | "error";
 
 type TimelineChartRow = {
   id: string;
@@ -82,74 +53,196 @@ type TimelineChartRow = {
   actualEnd: string;
   actualProgress: number;
   weight: number;
+  owner: string;
+  dependency: string;
   kind: "group" | "task";
 };
 
-type SavedPlan = {
-  project: ProjectMeta;
-  company?: CompanyProfile;
-  activities: Activity[];
-  actualSnapshots?: ActualSnapshot[];
-  calendarMode: CalendarMode;
-  planningModel?: PlanningModel;
-  curveView?: CurveView;
-  showCurve: boolean;
-  includeCurvePdf: boolean;
-};
-
 const LEGACY_STORAGE_KEY = "timeline-plan-creator-v3";
+const OBSOLETE_STORAGE_KEYS = [
+  LEGACY_STORAGE_KEY,
+  "timeline-plan-creator-v4:org-chod-ai-office:project-local-primary",
+];
 const STORAGE_KEY = tenantStorageKey(
   CHOD_ORGANIZATION.id,
   DEFAULT_LOCAL_PROJECT_ID,
 );
+const PROJECT_INDEX_KEY = `timeline-plan-creator-project-index:${CHOD_ORGANIZATION.id}`;
+const ACTIVE_PROJECT_KEY = `timeline-plan-creator-active-project:${CHOD_ORGANIZATION.id}`;
 
 const initialProject: ProjectMeta = {
-  name: "Central Embassy Retail Fit-out",
-  code: "CE-RTL-2607",
-  client: "Northstar Retail Co., Ltd.",
-  location: "Central Embassy, Level 4, Bangkok",
-  projectManager: "Narin Chantarasorn",
-  contractNo: "NSR/FO/2026-041",
-  baselineDate: "2026-07-13",
-  statusDate: "2026-08-07",
-  issueDate: "2026-07-14",
-  revision: "Rev 01 / Tender Plan",
-  preparedBy: "CHOD MOP Team",
-  approvedBy: "Client Project Director",
+  name: "",
+  code: "",
+  client: "",
+  location: "",
+  projectManager: "",
+  contractNo: "",
+  baselineDate: "",
+  statusDate: "",
+  issueDate: "",
+  revision: "Rev 00",
+  preparedBy: "",
+  approvedBy: "",
 };
+
+const DEFAULT_COMPANY_NAME = "Chodthanawat Co., Ltd.";
+const DEFAULT_COMPANY_LOCATION = "เลขที่ 80 อาคารสำนักงาน ชั้น 11 ถนนสุรวงศ์ แขวงสี่พระยา เขตบางรัก กรุงเทพมหานคร 10500";
+const DEFAULT_COMPANY_LOGO_URL = "/brand/logo.png";
 
 const initialCompany: CompanyProfile = {
-  name: "CHODTHANAWAT CO., LTD.",
-  location: "Bangkok, Thailand",
-  logoDataUrl: "",
+  name: DEFAULT_COMPANY_NAME,
+  location: DEFAULT_COMPANY_LOCATION,
+  logoDataUrl: DEFAULT_COMPANY_LOGO_URL,
 };
 
-const initialActivities: Activity[] = [
-  { id: "g1", parentId: null, kind: "group", description: "Pre-construction & approvals", start: "2026-07-15", duration: 1, progress: 0, weight: 0, owner: "PM", dependency: "-" },
-  { id: "t1", parentId: "g1", kind: "task", description: "Site survey & existing condition verification", start: "2026-07-15", duration: 4, progress: 100, weight: 3, owner: "Site / QS", dependency: "-" },
-  { id: "t2", parentId: "g1", kind: "task", description: "Shop drawings and coordination set", start: "2026-07-18", duration: 12, progress: 72, weight: 6, owner: "Design", dependency: "1.1" },
-  { id: "t3", parentId: "g1", kind: "task", description: "Material samples and client approval", start: "2026-07-23", duration: 14, progress: 42, weight: 5, owner: "Procurement", dependency: "1.2" },
-  { id: "g2", parentId: null, kind: "group", description: "Mobilization & site protection", start: "2026-08-01", duration: 1, progress: 0, weight: 0, owner: "Site", dependency: "1" },
-  { id: "t4", parentId: "g2", kind: "task", description: "Mobilization, permits and temporary utilities", start: "2026-08-01", duration: 5, progress: 60, weight: 4, owner: "Site", dependency: "1.1" },
-  { id: "t5", parentId: "g2", kind: "task", description: "Hoarding, dust control and common-area protection", start: "2026-08-03", duration: 5, progress: 35, weight: 4, owner: "Site", dependency: "2.1" },
-  { id: "t6", parentId: "g2", kind: "task", description: "Setting out and benchmark confirmation", start: "2026-08-06", duration: 3, progress: 0, weight: 3, owner: "Site / QA", dependency: "2.1" },
-  { id: "g3", parentId: null, kind: "group", description: "MEP first fix", start: "2026-08-09", duration: 1, progress: 0, weight: 0, owner: "MEP", dependency: "2" },
-  { id: "t7", parentId: "g3", kind: "task", description: "Electrical containment and cable pulling", start: "2026-08-09", duration: 15, progress: 0, weight: 8, owner: "Electrical", dependency: "2.3" },
-  { id: "t8", parentId: "g3", kind: "task", description: "HVAC ductwork, piping and controls", start: "2026-08-11", duration: 16, progress: 0, weight: 8, owner: "HVAC", dependency: "2.3" },
-  { id: "t9", parentId: "g3", kind: "task", description: "Fire alarm and sprinkler modification", start: "2026-08-13", duration: 12, progress: 0, weight: 6, owner: "Fire", dependency: "2.3" },
-  { id: "g4", parentId: null, kind: "group", description: "Architectural & joinery works", start: "2026-08-18", duration: 1, progress: 0, weight: 0, owner: "Arch", dependency: "2" },
-  { id: "t10", parentId: "g4", kind: "task", description: "Partitions, backing and ceiling framing", start: "2026-08-18", duration: 18, progress: 0, weight: 6, owner: "Architectural", dependency: "2.3" },
-  { id: "t11", parentId: "g4", kind: "task", description: "Bespoke joinery fabrication off-site", start: "2026-08-05", duration: 35, progress: 12, weight: 10, owner: "Joinery", dependency: "1.3" },
-  { id: "t12", parentId: "g4", kind: "task", description: "Joinery delivery and installation", start: "2026-09-09", duration: 16, progress: 0, weight: 9, owner: "Joinery", dependency: "4.2" },
-  { id: "t13", parentId: "g4", kind: "task", description: "Feature metalwork and glazing", start: "2026-09-13", duration: 12, progress: 0, weight: 5, owner: "Specialist", dependency: "4.1" },
-  { id: "g5", parentId: null, kind: "group", description: "Finishes, fixtures & commissioning", start: "2026-09-04", duration: 1, progress: 0, weight: 0, owner: "Arch / MEP", dependency: "3,4" },
-  { id: "t14", parentId: "g5", kind: "task", description: "Floor, wall and ceiling finishes", start: "2026-09-04", duration: 24, progress: 0, weight: 7, owner: "Architectural", dependency: "4.1" },
-  { id: "t15", parentId: "g5", kind: "task", description: "Lighting, devices, fixtures and final connections", start: "2026-09-22", duration: 14, progress: 0, weight: 6, owner: "MEP", dependency: "3" },
-  { id: "t16", parentId: "g5", kind: "task", description: "Testing, balancing and system commissioning", start: "2026-10-02", duration: 7, progress: 0, weight: 4, owner: "MEP / QA", dependency: "5.2" },
-  { id: "g6", parentId: null, kind: "group", description: "Close-out & handover", start: "2026-10-07", duration: 1, progress: 0, weight: 0, owner: "PM / QA", dependency: "5" },
-  { id: "t17", parentId: "g6", kind: "task", description: "Inspection, snagging and rectification", start: "2026-10-07", duration: 6, progress: 0, weight: 4, owner: "QA / Site", dependency: "5.3" },
-  { id: "t18", parentId: "g6", kind: "task", description: "As-built documents, training and handover", start: "2026-10-11", duration: 4, progress: 0, weight: 2, owner: "PM", dependency: "6.1" },
-];
+const initialActivities: Activity[] = [];
+
+function createFreshProject(): ProjectMeta {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    ...initialProject,
+    baselineDate: today,
+    statusDate: today,
+    issueDate: today,
+  };
+}
+
+function isEmptyPlan(plan: SavedPlan) {
+  const project = plan.project;
+  return plan.activities.length === 0 &&
+    !project.name &&
+    !project.code &&
+    !project.client &&
+    !project.location &&
+    !project.projectManager &&
+    !project.contractNo &&
+    !project.preparedBy &&
+    !project.approvedBy;
+}
+
+function companyProfileSignature(company: Pick<CompanyProfile, "name" | "location">) {
+  return JSON.stringify([company.name.trim(), company.location.trim()]);
+}
+
+function createLocalProjectId() {
+  const suffix = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `project-local-${suffix}`;
+}
+
+function localProjectIds(storage: Storage) {
+  let ids: string[] = [];
+  try {
+    const parsed = JSON.parse(storage.getItem(PROJECT_INDEX_KEY) || "[]") as unknown;
+    if (Array.isArray(parsed)) ids = parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
+  } catch {
+    ids = [];
+  }
+  if (storage.getItem(STORAGE_KEY) && !ids.includes(DEFAULT_LOCAL_PROJECT_ID)) ids.push(DEFAULT_LOCAL_PROJECT_ID);
+  return [...new Set(ids)];
+}
+
+function readLocalProject(storage: Storage, projectId: string): TenantPlanRecord | null {
+  const raw = storage.getItem(tenantStorageKey(CHOD_ORGANIZATION.id, projectId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const candidate = isTenantPlanEnvelope<SavedPlan>(parsed)
+      ? parsed.data
+      : parsed && typeof parsed === "object" && "data" in parsed
+        ? (parsed as { data: SavedPlan }).data
+        : parsed as SavedPlan;
+    if (!candidate || typeof candidate !== "object" || !candidate.project || !Array.isArray(candidate.activities)) return null;
+    const savedAt = parsed && typeof parsed === "object" && "savedAt" in parsed && typeof (parsed as { savedAt?: unknown }).savedAt === "string"
+      ? (parsed as { savedAt: string }).savedAt
+      : new Date().toISOString();
+    return { projectId, savedAt, data: candidate };
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalProject(storage: Storage, projectId: string, plan: SavedPlan) {
+  const envelope = createTenantPlanEnvelope(CHOD_ORGANIZATION, projectId, plan);
+  storage.setItem(tenantStorageKey(CHOD_ORGANIZATION.id, projectId), JSON.stringify(envelope));
+  const ids = localProjectIds(storage);
+  if (!ids.includes(projectId)) ids.push(projectId);
+  storage.setItem(PROJECT_INDEX_KEY, JSON.stringify(ids));
+  storage.setItem(ACTIVE_PROJECT_KEY, projectId);
+  return envelope;
+}
+
+function removeLocalProject(storage: Storage, projectId: string) {
+  storage.removeItem(tenantStorageKey(CHOD_ORGANIZATION.id, projectId));
+  storage.setItem(PROJECT_INDEX_KEY, JSON.stringify(localProjectIds(storage).filter((id) => id !== projectId)));
+  if (storage.getItem(ACTIVE_PROJECT_KEY) === projectId) storage.removeItem(ACTIVE_PROJECT_KEY);
+}
+
+function listLocalProjects(storage: Storage): TenantProjectSummary[] {
+  return localProjectIds(storage)
+    .map((id) => readLocalProject(storage, id))
+    .filter((record): record is TenantPlanRecord & { projectId: string; data: SavedPlan } => Boolean(record?.projectId && record.data))
+    .map((record) => ({
+      id: record.projectId,
+      name: record.data.project.name,
+      client: record.data.project.client,
+      location: record.data.project.location,
+      status: record.data.activities.length > 0 ? "active" as const : "draft" as const,
+      activityCount: record.data.activities.filter((activity) => activity.kind === "task").length,
+      baselineDate: record.data.project.baselineDate,
+      statusDate: record.data.project.statusDate,
+      updatedAt: record.savedAt || new Date().toISOString(),
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function ProjectLibrary({
+  projects,
+  state,
+  currentProjectId,
+  onNew,
+  onOpen,
+  onRefresh,
+}: {
+  projects: TenantProjectSummary[];
+  state: ProjectLibraryState;
+  currentProjectId: string | null;
+  onNew: () => void;
+  onOpen: (projectId: string) => void;
+  onRefresh: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const filtered = projects.filter((project) =>
+    [project.name, project.client, project.location]
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(query.trim().toLocaleLowerCase()),
+  );
+
+  return <section className="project-library" aria-labelledby="project-library-title">
+    <div className="project-library-intro">
+      <div>
+        <h2 id="project-library-title">Project library</h2>
+        <p>Create a separate timeline for each fit-out project, then reopen any saved plan from this workspace.</p>
+      </div>
+      <button type="button" className="button primary" onClick={onNew}>+ New project</button>
+    </div>
+    <div className="project-library-tools">
+      <label><span className="sr-only">Search projects</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search project, client or location" /></label>
+      <button type="button" className="button quiet" onClick={onRefresh} disabled={state === "loading"}>Refresh</button>
+    </div>
+    {state === "loading" ? <div className="project-library-state" role="status">Loading projects...</div> : state === "error" ? <div className="project-library-state" role="alert">Could not load the project library. <button type="button" onClick={onRefresh}>Try again</button></div> : filtered.length === 0 ? <div className="project-library-empty"><strong>{projects.length ? "No matching projects" : "No saved projects yet"}</strong><p>{projects.length ? "Try another project name, client or location." : "Create your first project. It will autosave to this workspace."}</p><button type="button" className="button primary" onClick={onNew}>Create project</button></div> : <div className="project-library-table" role="list">
+      {filtered.map((item) => <article className={`project-library-row ${item.id === currentProjectId ? "current" : ""}`} role="listitem" key={item.id}>
+        <div className="project-library-name"><strong>{item.name || "Untitled fit-out project"}</strong><span>{item.client || "No client"}{item.location ? ` · ${item.location}` : ""}</span></div>
+        <div><small>Baseline</small><strong>{displayDate(item.baselineDate)}</strong></div>
+        <div><small>Activities</small><strong>{item.activityCount}</strong></div>
+        <div><small>Last saved</small><strong>{new Date(item.updatedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</strong></div>
+        <div className="project-library-action">{item.id === currentProjectId && <span>Open now</span>}<button type="button" className="button quiet" onClick={() => onOpen(item.id)}>{item.id === currentProjectId ? "Return to plan" : "Open"}</button></div>
+      </article>)}
+    </div>}
+  </section>;
+}
 
 const usageLevelLabel: Record<UsageLevel, string> = {
   healthy: "Safe",
@@ -159,13 +252,6 @@ const usageLevelLabel: Record<UsageLevel, string> = {
   blocked: "Limit reached",
 };
 
-function formatUsageValue(metric: Pick<CloudflareFreeMetric, "used" | "limit" | "unit">) {
-  if (metric.unit === "count") {
-    return `${metric.used.toLocaleString("en-US")} / ${metric.limit.toLocaleString("en-US")}`;
-  }
-  return `${formatBytes(metric.used)} / ${formatBytes(metric.limit)}`;
-}
-
 const usageLevelRank: Record<UsageLevel, number> = {
   healthy: 0,
   notice: 1,
@@ -174,22 +260,10 @@ const usageLevelRank: Record<UsageLevel, number> = {
   blocked: 4,
 };
 
-function platformPeriodLabel(period: CloudflareFreeMetric["period"]) {
-  if (period === "daily") return "today";
-  if (period === "monthly") return "this month";
-  return "current";
-}
-
-function formatBytes(bytes: number) {
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
-  if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`;
-  return `${Math.max(0, Math.round(bytes))} B`;
-}
-
 const pad = (value: number) => String(value).padStart(2, "0");
 
 function parseDate(value: string) {
+  if (!value) return new Date(0);
   const [year, month, day] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
@@ -235,10 +309,12 @@ function durationBetween(start: string, end: string, mode: CalendarMode) {
 }
 
 function displayDate(value: string) {
+  if (!value) return "—";
   return parseDate(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 function displayShortDate(value: string) {
+  if (!value) return "—";
   return parseDate(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
 }
 
@@ -319,7 +395,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-const DAY_MS = 86_400_000;
 const LEGACY_BUDGET_UNIT = 100_000;
 
 function taskBudget(task: Activity) {
@@ -335,6 +410,7 @@ function migrateActivities(source: Activity[], mode: CalendarMode) {
       actualStart: activity.actualStart ?? (legacyProgress > 0 ? activity.start : ""),
       actualEnd: activity.actualEnd ?? (legacyProgress >= 100 ? addDuration(activity.start, activity.duration, mode) : ""),
       budget: taskBudget(activity),
+      earningMethod: activity.earningMethod ?? "certified",
     };
   });
 }
@@ -363,10 +439,68 @@ function earnedValueAt(activityId: string, snapshots: ActualSnapshot[], date: st
   return eligible.at(-1)?.earnedValue ?? 0;
 }
 
-function taskActualProgress(task: Activity, planningModel: PlanningModel, statusDate: string, snapshots: ActualSnapshot[]) {
+function taskEarningMethod(task: Activity): EarningMethod {
+  return task.earningMethod ?? "certified";
+}
+
+function taskEarnedValueAt(task: Activity, snapshots: ActualSnapshot[], date: string, mode: CalendarMode) {
+  const budget = taskBudget(task);
+  if (budget <= 0) return 0;
+
+  const currentMs = parseDate(date).getTime();
+  const actualStartMs = task.actualStart ? parseDate(task.actualStart).getTime() : 0;
+  const actualEndMs = task.actualEnd ? parseDate(task.actualEnd).getTime() : 0;
+  const method = taskEarningMethod(task);
+
+  if (method === "certified") return clamp(earnedValueAt(task.id, snapshots, date), 0, budget);
+  if (method === "zero-hundred") return actualEndMs > 0 && actualEndMs <= currentMs ? budget : 0;
+  if (method === "fifty-fifty") {
+    const started = actualStartMs > 0 && actualStartMs <= currentMs ? budget * 0.5 : 0;
+    const finished = actualEndMs > 0 && actualEndMs <= currentMs ? budget * 0.5 : 0;
+    return started + finished;
+  }
+
+  if (actualStartMs <= 0 || actualStartMs > currentMs) return 0;
+  const levelOfEffortEnd = actualEndMs > 0
+    ? actualEndMs
+    : parseDate(addDuration(task.actualStart || task.start, task.duration, mode)).getTime();
+  const levelOfEffortDuration = durationBetween(task.actualStart || task.start, toISO(new Date(levelOfEffortEnd)), mode);
+  return budget * distributedProgressRatio(actualStartMs, levelOfEffortEnd, levelOfEffortDuration, currentMs, mode);
+}
+
+function earnedValueBoundsAt(activityId: string, snapshots: ActualSnapshot[], date: string, budget: number) {
+  const previousEarned = snapshots
+    .filter((snapshot) => snapshot.activityId === activityId && snapshot.date < date)
+    .reduce((highest, snapshot) => Math.max(highest, snapshot.earnedValue), 0);
+  const futureEarned = snapshots
+    .filter((snapshot) => snapshot.activityId === activityId && snapshot.date > date)
+    .reduce<number | null>((lowest, snapshot) => lowest === null ? snapshot.earnedValue : Math.min(lowest, snapshot.earnedValue), null);
+
+  const min = Math.min(previousEarned, budget);
+  return {
+    min,
+    max: Math.max(min, Math.min(budget, futureEarned ?? budget)),
+  };
+}
+
+function hasInvalidEarnedHistory(task: Activity, snapshots: ActualSnapshot[]) {
+  if (taskEarningMethod(task) !== "certified") return false;
+  const budget = taskBudget(task);
+  let previousEarned = 0;
+  return snapshots
+    .filter((snapshot) => snapshot.activityId === task.id)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .some((snapshot) => {
+      const invalid = snapshot.earnedValue < previousEarned || snapshot.earnedValue > budget;
+      previousEarned = Math.max(previousEarned, snapshot.earnedValue);
+      return invalid;
+    });
+}
+
+function taskActualProgress(task: Activity, planningModel: PlanningModel, statusDate: string, snapshots: ActualSnapshot[], mode: CalendarMode) {
   if (planningModel === "normal") return task.actualEnd && task.actualEnd <= statusDate ? 100 : 0;
   const budget = taskBudget(task);
-  return budget > 0 ? clamp(earnedValueAt(task.id, snapshots, statusDate) / budget * 100, 0, 100) : 0;
+  return budget > 0 ? clamp(taskEarnedValueAt(task, snapshots, statusDate, mode) / budget * 100, 0, 100) : 0;
 }
 
 function actualBarEnd(task: Activity, statusDate: string) {
@@ -387,8 +521,7 @@ function timelineBounds(tasks: Activity[], mode: CalendarMode, statusDate: strin
 function plannedRatioAt(task: Activity, current: number, mode: CalendarMode) {
   const taskStart = parseDate(task.start).getTime();
   const taskEnd = parseDate(addDuration(task.start, task.duration, mode)).getTime();
-  const inclusiveSpan = Math.max(DAY_MS, taskEnd - taskStart + DAY_MS);
-  return clamp((current - taskStart + DAY_MS) / inclusiveSpan, 0, 1);
+  return distributedProgressRatio(taskStart, taskEnd, task.duration, current, mode);
 }
 
 function plannedPeak(tasks: Activity[], mode: CalendarMode, planningModel: PlanningModel) {
@@ -397,20 +530,9 @@ function plannedPeak(tasks: Activity[], mode: CalendarMode, planningModel: Plann
   const endMs = Math.max(...tasks.map((task) => parseDate(addDuration(task.start, task.duration, mode)).getTime()));
   const span = Math.max(1, Math.round((endMs - startMs) / DAY_MS));
   const weights = taskWeightMap(tasks, planningModel);
-  let peakIndex = 1;
-  let peakIncrement = -1;
-
   const cumulativeAt = (current: number) => tasks.reduce((sum, task) => sum + plannedRatioAt(task, current, mode) * (weights.get(task.id) ?? 0), 0);
-
-  for (let day = 1; day <= span; day += 1) {
-    const previous = cumulativeAt(startMs + (day - 1) * DAY_MS);
-    const current = cumulativeAt(startMs + day * DAY_MS);
-    const increment = current - previous;
-    if (increment > peakIncrement) {
-      peakIncrement = increment;
-      peakIndex = day;
-    }
-  }
+  const cumulativeValues = Array.from({ length: span + 1 }, (_, day) => cumulativeAt(startMs + day * DAY_MS));
+  const peakIndex = peakIndexFromCumulative(cumulativeValues);
 
   return {
     index: peakIndex,
@@ -419,7 +541,7 @@ function plannedPeak(tasks: Activity[], mode: CalendarMode, planningModel: Plann
   };
 }
 
-function Scurve({ tasks, mode, planningModel, statusDate, snapshots, curveView }: { tasks: Activity[]; mode: CalendarMode; planningModel: PlanningModel; statusDate: string; snapshots: ActualSnapshot[]; curveView: CurveView }) {
+function Scurve({ tasks, mode, planningModel, statusDate, snapshots, curveView, showStatusDate }: { tasks: Activity[]; mode: CalendarMode; planningModel: PlanningModel; statusDate: string; snapshots: ActualSnapshot[]; curveView: CurveView; showStatusDate: boolean }) {
   if (tasks.length === 0) return null;
   const { startMs, endMs } = timelineBounds(tasks, mode, statusDate);
   const span = Math.max(1, Math.round((endMs - startMs) / DAY_MS));
@@ -427,6 +549,7 @@ function Scurve({ tasks, mode, planningModel, statusDate, snapshots, curveView }
   const weights = taskWeightMap(tasks, planningModel);
   const inset = 24;
   const plotSize = 1000 - inset * 2;
+  const measuredCurveLabel = planningModel === "intensive" ? "Earned progress" : "Completed progress";
 
   const plannedPoints = Array.from({ length: span + 1 }, (_, day) => {
     const current = startMs + day * DAY_MS;
@@ -439,7 +562,7 @@ function Scurve({ tasks, mode, planningModel, statusDate, snapshots, curveView }
     const cumulative = tasks.reduce((sum, task) => {
       const actualRatio = planningModel === "normal"
         ? (task.actualEnd && task.actualEnd <= currentDate ? 1 : 0)
-        : (taskBudget(task) > 0 ? clamp(earnedValueAt(task.id, snapshots, currentDate) / taskBudget(task), 0, 1) : 0);
+        : (taskBudget(task) > 0 ? clamp(taskEarnedValueAt(task, snapshots, currentDate, mode) / taskBudget(task), 0, 1) : 0);
       return sum + actualRatio * (weights.get(task.id) ?? 0);
     }, 0);
     return { x: (day / span) * 1000, y: inset + plotSize - (cumulative / 100) * plotSize };
@@ -454,28 +577,26 @@ function Scurve({ tasks, mode, planningModel, statusDate, snapshots, curveView }
   const statusX = (statusDay / span) * 1000;
 
   return (
-    <svg className="timeline-curve-canvas" viewBox="0 0 1000 1000" preserveAspectRatio="none" role="img" aria-label="Planned and actual cumulative progress S-curve overlaid directly on the timeline, with the peak planned slope marked">
-      <title>Planned and actual cumulative progress S-curve</title>
-      <line className="curve-status-line" x1={statusX} x2={statusX} y1={inset} y2={1000 - inset} />
-      {curveView !== "actual" && <>
-        <line className="curve-peak-line" x1={peakPoint.x} x2={peakPoint.x} y1={inset} y2={1000 - inset} />
-        <path className="curve-underlay" d={plannedPath} />
-        <path className="curve-planned-path" d={plannedPath} />
-        <g className="curve-peak-marker" aria-hidden="true">
-          <ellipse className="curve-peak-halo" cx={peakPoint.x} cy={peakPoint.y} rx="12" ry="40" />
-          <ellipse className="curve-peak-ring" cx={peakPoint.x} cy={peakPoint.y} rx="7.5" ry="25" />
-          <ellipse className="curve-peak-dot" cx={peakPoint.x} cy={peakPoint.y} rx="3.5" ry="12" />
-        </g>
-      </>}
-      {curveView !== "plan" && <>
-        <path className="curve-underlay curve-underlay-actual" d={actualPath} />
-        <path className="curve-actual-path" d={actualPath} />
-      </>}
-    </svg>
+    <>
+      <svg className="timeline-curve-canvas" viewBox="0 0 1000 1000" preserveAspectRatio="none" role="img" aria-label={`Baseline and ${measuredCurveLabel.toLowerCase()} cumulative S-curve overlaid directly on the timeline, with the peak planned slope marked`}>
+        <title>Baseline and {measuredCurveLabel.toLowerCase()} cumulative S-curve</title>
+        {showStatusDate && <line className="curve-status-line" x1={statusX} x2={statusX} y1={inset} y2={1000 - inset} />}
+        {curveView !== "actual" && <>
+          <line className="curve-peak-line" x1={peakPoint.x} x2={peakPoint.x} y1={inset} y2={1000 - inset} />
+          <path className="curve-underlay" d={plannedPath} />
+          <path className="curve-planned-path" d={plannedPath} />
+        </>}
+        {curveView !== "plan" && <>
+          <path className="curve-underlay curve-underlay-actual" d={actualPath} />
+          <path className="curve-actual-path" d={actualPath} />
+        </>}
+      </svg>
+      {curveView !== "actual" && <span className="curve-peak-marker" style={{ left: `${peakPoint.x / 10}%`, top: `${peakPoint.y / 10}%` }} aria-hidden="true" />}
+    </>
   );
 }
 
-function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, planningModel, statusDate, snapshots, curveView }: { rows: TimelineChartRow[]; tasks: Activity[]; mode: CalendarMode; showCurve: boolean; includeCurvePdf: boolean; planningModel: PlanningModel; statusDate: string; snapshots: ActualSnapshot[]; curveView: CurveView }) {
+function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, showStatusDate, planningModel, statusDate, snapshots, curveView, reportMode = false }: { rows: TimelineChartRow[]; tasks: Activity[]; mode: CalendarMode; showCurve: boolean; includeCurvePdf: boolean; showStatusDate: boolean; planningModel: PlanningModel; statusDate: string; snapshots: ActualSnapshot[]; curveView: CurveView; reportMode?: boolean }) {
   if (tasks.length === 0) {
     return <div className="timeline-empty"><strong>No work packages yet</strong><span>Add a work package and its sub-plans to generate the timeline and S-curve.</span></div>;
   }
@@ -488,9 +609,10 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, pla
   const peakRatio = clamp((peak.dateMs - startMs) / spanMs, 0, 1);
   const peakAnchor = peakRatio < 0.18 ? "anchor-start" : peakRatio > 0.82 ? "anchor-end" : "anchor-center";
   const statusRatio = clamp((parseDate(statusDate).getTime() - startMs) / spanMs, 0, 1);
+  const progressMetric = planningModel === "intensive" ? "earned" : "completed";
 
   return (
-    <div className={`combined-chart chart-view-${curveView}`}>
+    <div className={`combined-chart chart-view-${curveView} ${showStatusDate ? "show-status-date" : "hide-status-date"} ${reportMode ? "report-table-frame" : ""}`} style={{ "--timeline-row-count": Math.max(1, rows.length) } as CSSProperties}>
       <div className="timeline-axis-row">
         <div className="timeline-axis-label"><strong>Work package</strong><span>Month / ISO week</span></div>
         <div className="timeline-axis-track" aria-label="Shared project date axis grouped by month and ISO week">
@@ -506,9 +628,9 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, pla
           </div>
           <div className="timeline-axis-events">
             {curveView !== "actual" && <span className={`peak-axis-chip ${peakAnchor} ${showCurve ? "" : "curve-hidden-screen"} ${includeCurvePdf ? "" : "exclude-curve-print"}`} style={{ left: `${clamp(peakRatio * 100, 1, 99)}%` }} aria-label={`Peak planned workload ${peak.label}`}>
-              <svg className="peak-axis-icon" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
-                <path d="M2.5 13.5 6.4 8.8l2.2 2.4L12.2 5l3.3 8.5" />
-                <circle cx="12.2" cy="5" r="1.45" />
+              <svg className="peak-axis-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M3 12.5V8.25M8 12.5v-9M13 12.5V8.25" />
+                <circle cx="8" cy="3.5" r="1.15" />
               </svg>
               <span className="peak-axis-copy"><strong>Peak load</strong><time>{peak.label}</time></span>
             </span>}
@@ -530,27 +652,33 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, pla
           const actualWidth = row.actualStart && row.actualEnd ? Math.max(1.2, ((actualEndMs - actualStartMs + DAY_MS) / (spanMs + DAY_MS)) * 100) : 0;
           const boundedActualWidth = Math.min(actualWidth, 100 - actualLeft);
           const keepProgressInside = actualLeft + boundedActualWidth > 92;
+          const owner = row.owner.trim();
+          const reportOwner = owner && !/^(?:owner\s+)?tbc$/i.test(owner) ? owner : "";
+          const rowDetails = reportMode
+            ? [displayDate(row.start) + " - " + displayDate(row.end), `${row.duration} days`, reportOwner].filter(Boolean).join(" · ")
+            : `${displayDate(row.start)} - ${displayDate(row.end)} · ${row.duration} days · ${owner || "Owner TBC"}${row.dependency && row.dependency !== "-" ? ` · Depends ${row.dependency}` : ""}`;
           return (
             <div className={`timeline-chart-row ${row.kind}`} key={row.id}>
               <div className="timeline-row-label">
                 <span>{row.code}</span>
-                <div><strong>{row.label}</strong><small>{displayDate(row.start)} - {displayDate(row.end)} / {row.duration} days</small></div>
+                <div><strong>{row.label}</strong><small>{rowDetails}</small></div>
               </div>
               <div className="timeline-row-track">
                 <div className="timeline-guides" aria-hidden="true">
                   {weekSegments.slice(1).map((segment) => <i className="week-guide" key={segment.key} style={{ left: `${segment.left}%` }} />)}
                   {monthSegments.slice(1).map((segment) => <i className="month-guide" key={segment.key} style={{ left: `${segment.left}%` }} />)}
                 </div>
-                <i className="timeline-status-guide" style={{ left: `${statusRatio * 100}%` }} aria-hidden="true" />
-                {curveView !== "actual" && <div className="timeline-bar planned-timeline-bar" style={{ left: `${left}%`, width: `${boundedWidth}%` }} title={`Plan: ${displayDate(row.start)} - ${displayDate(row.end)} / ${row.weight.toFixed(1)}% weight`}><b>PLAN</b></div>}
-                {curveView !== "plan" && row.actualStart && row.actualEnd && <div className={`timeline-bar actual-timeline-bar ${keepProgressInside ? "progress-label-inside" : ""}`} style={{ left: `${actualLeft}%`, width: `${boundedActualWidth}%` }} title={`Actual: ${displayDate(row.actualStart)} - ${displayDate(row.actualEnd)} / ${Math.round(row.actualProgress)}% earned`}><b>{row.actualProgress > 0 ? `${Math.round(row.actualProgress)}%` : "START"}</b></div>}
+                {showStatusDate && <i className="timeline-status-guide" style={{ left: `${statusRatio * 100}%` }} aria-hidden="true" />}
+                {curveView !== "actual" && <div className="timeline-bar planned-timeline-bar" style={{ left: `${left}%`, width: `${boundedWidth}%` }} title={`${displayDate(row.start)} - ${displayDate(row.end)} / ${row.weight.toFixed(1)}% weight`} />}
+                {curveView !== "plan" && row.actualStart && row.actualEnd && <div className={`timeline-bar actual-timeline-bar ${keepProgressInside ? "progress-label-inside" : ""}`} style={{ left: `${actualLeft}%`, width: `${boundedActualWidth}%` }} title={`Actual: ${displayDate(row.actualStart)} - ${displayDate(row.actualEnd)} / ${Math.round(row.actualProgress)}% ${progressMetric}`}><b>{row.actualProgress > 0 ? `${Math.round(row.actualProgress)}%` : "START"}</b></div>}
               </div>
             </div>
           );
         })}
+        {reportMode && <div className="report-table-bottom-rule" aria-hidden="true" />}
         <div className={`timeline-curve-overlay ${showCurve ? "" : "curve-hidden-screen"} ${includeCurvePdf ? "" : "exclude-curve-print"}`}>
           <div className="curve-overlay-scale" aria-hidden="true"><span>100%</span><span>75%</span><span>50%</span><span>25%</span><span>0%</span></div>
-          <Scurve tasks={tasks} mode={mode} planningModel={planningModel} statusDate={statusDate} snapshots={snapshots} curveView={curveView} />
+          <Scurve tasks={tasks} mode={mode} planningModel={planningModel} statusDate={statusDate} snapshots={snapshots} curveView={curveView} showStatusDate={showStatusDate} />
         </div>
       </div>
     </div>
@@ -569,91 +697,218 @@ export default function TimelinePlannerWorkspace() {
   const [curveView, setCurveView] = useState<CurveView>("compare");
   const [showCurve, setShowCurve] = useState(true);
   const [includeCurvePdf, setIncludeCurvePdf] = useState(true);
+  const [showStatusDate, setShowStatusDate] = useState(true);
+  const [pdfOrientation, setPdfOrientation] = useState<PdfOrientation>("landscape");
   const [showTimelineSubplans, setShowTimelineSubplans] = useState(false);
   const [pdfPreview, setPdfPreview] = useState(false);
+  const [printingPdf, setPrintingPdf] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [companyOpen, setCompanyOpen] = useState(false);
   const [logoMessage, setLogoMessage] = useState("PNG, JPG or WebP up to 1.5 MB");
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<Activity | null>(null);
-  const [savedLabel, setSavedLabel] = useState(
-    `Autosaved for ${CHOD_ORGANIZATION.name}`,
-  );
+  const [savedLabel, setSavedLabel] = useState("Opening planner workspace...");
   const [hydrated, setHydrated] = useState(false);
+  const [planStorageMode, setPlanStorageMode] = useState<PlanStorageMode>("loading");
+  const [cloudProjectId, setCloudProjectId] = useState<string | null>(null);
+  const [savedCompanySignature, setSavedCompanySignature] = useState("");
   const [workspaceUsage, setWorkspaceUsage] = useState<WorkspaceUsagePayload | null>(null);
   const [usageState, setUsageState] = useState<UsageLoadState>("loading");
   const [usageRefreshToken, setUsageRefreshToken] = useState(0);
+  const [activePage, setActivePage] = useState<ActiveWorkspacePage>("plan");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [projectLibrary, setProjectLibrary] = useState<TenantProjectSummary[]>([]);
+  const [projectLibraryState, setProjectLibraryState] = useState<ProjectLibraryState>("idle");
 
   useEffect(() => {
-    const hydration = window.setTimeout(() => {
-      const tenantStored = window.localStorage.getItem(STORAGE_KEY);
-      const legacyStored = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-      const stored = tenantStored ?? legacyStored;
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored) as unknown;
-          const saved = isTenantPlanEnvelope<SavedPlan>(parsed)
-            ? parsed.data
-            : (parsed as SavedPlan);
-          const mergedProject = { ...initialProject, ...saved.project };
-          const savedCalendar = saved.calendarMode || "calendar";
-          const migrated = Array.isArray(saved.activities) ? migrateActivities(saved.activities, savedCalendar) : migrateActivities(initialActivities, savedCalendar);
-          setProject(mergedProject);
-          setCompany({ ...initialCompany, ...saved.company });
-          setActivities(migrated);
-          setActualSnapshots(Array.isArray(saved.actualSnapshots) ? saved.actualSnapshots : legacySnapshots(migrated, mergedProject.statusDate, savedCalendar));
-          setCalendarMode(savedCalendar);
-          setPlanningModel(saved.planningModel || "normal");
-          setCurveView(saved.curveView || "compare");
-          if (typeof saved.showCurve === "boolean") setShowCurve(saved.showCurve);
-          if (typeof saved.includeCurvePdf === "boolean") setIncludeCurvePdf(saved.includeCurvePdf);
-
-          if (!tenantStored && legacyStored) {
-            window.localStorage.setItem(
-              STORAGE_KEY,
-              JSON.stringify(
-                createTenantPlanEnvelope(
-                  CHOD_ORGANIZATION,
-                  DEFAULT_LOCAL_PROJECT_ID,
-                  saved,
-                ),
-              ),
-            );
-          }
-        } catch {
-          if (tenantStored) window.localStorage.removeItem(STORAGE_KEY);
-        }
+    const syncPageFromHash = () => {
+      const page = window.location.hash === "#workspace-usage" ? "usage" : window.location.hash === "#projects" ? "projects" : "plan";
+      setActivePage(page);
+      if (page === "projects") {
+        setProjectLibrary(listLocalProjects(window.localStorage));
+        setProjectLibraryState("ready");
       }
-      setHydrated(true);
-    }, 0);
-    return () => window.clearTimeout(hydration);
+    };
+    const frame = window.requestAnimationFrame(syncPageFromHash);
+    window.addEventListener("hashchange", syncPageFromHash);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("hashchange", syncPageFromHash);
+    };
   }, []);
 
   useEffect(() => {
-    if (!hydrated) return;
-    const saving = window.setTimeout(() => setSavedLabel("Saving..."), 0);
-    const timeout = window.setTimeout(() => {
-      const payload: SavedPlan = { project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf };
-      try {
-        window.localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(
-            createTenantPlanEnvelope(
-              CHOD_ORGANIZATION,
-              DEFAULT_LOCAL_PROJECT_ID,
-              payload,
-            ),
-          ),
-        );
-        setSavedLabel(`Saved ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
-      } catch {
-        setSavedLabel("Logo is too large for local storage");
+    if (!mobileMenuOpen) return;
+    const closeMenu = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileMenuOpen(false);
+    };
+    window.addEventListener("keydown", closeMenu);
+    return () => window.removeEventListener("keydown", closeMenu);
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    const applyPlan = (saved: SavedPlan) => {
+      const mergedProject = { ...initialProject, ...saved.project };
+      const savedCalendar = saved.calendarMode || "calendar";
+      setProject(mergedProject);
+      setCompany({
+        ...initialCompany,
+        ...saved.company,
+        logoDataUrl: saved.company?.logoDataUrl || initialCompany.logoDataUrl,
+      });
+      setActivities(Array.isArray(saved.activities) ? migrateActivities(saved.activities, savedCalendar) : []);
+      setActualSnapshots(Array.isArray(saved.actualSnapshots) ? saved.actualSnapshots : []);
+      setCalendarMode(savedCalendar);
+      setPlanningModel(saved.planningModel || "normal");
+      setCurveView(saved.curveView || "compare");
+      setShowCurve(saved.showCurve !== false);
+      setIncludeCurvePdf(saved.includeCurvePdf !== false);
+      setShowStatusDate(saved.showStatusDate !== false);
+      setPdfOrientation(saved.pdfOrientation === "portrait" ? "portrait" : "landscape");
+    };
+
+    const storage = window.localStorage;
+    let projectId = storage.getItem(ACTIVE_PROJECT_KEY) || DEFAULT_LOCAL_PROJECT_ID;
+    let record = readLocalProject(storage, projectId);
+    if (!record && projectId !== DEFAULT_LOCAL_PROJECT_ID) {
+      projectId = DEFAULT_LOCAL_PROJECT_ID;
+      record = readLocalProject(storage, projectId);
+    }
+
+    if (!record) {
+      for (const legacyKey of OBSOLETE_STORAGE_KEYS) {
+        const raw = storage.getItem(legacyKey);
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw) as SavedPlan | { data?: SavedPlan };
+          const legacyPlan = parsed && typeof parsed === "object" && "data" in parsed ? parsed.data : parsed as SavedPlan;
+          if (legacyPlan?.project && Array.isArray(legacyPlan.activities)) {
+            record = { projectId: DEFAULT_LOCAL_PROJECT_ID, savedAt: new Date().toISOString(), data: legacyPlan };
+            projectId = DEFAULT_LOCAL_PROJECT_ID;
+            break;
+          }
+        } catch {
+          // Keep a malformed legacy value untouched so the user can recover it manually.
+        }
       }
-    }, 350);
+    }
+
+    if (record?.data) {
+      applyPlan(record.data);
+      setSavedCompanySignature(companyProfileSignature({ ...initialCompany, ...record.data.company }));
+      setSavedLabel("Local project loaded");
+    } else {
+      setProject(createFreshProject());
+      setSavedLabel("Local workspace ready");
+    }
+
+    setCloudProjectId(projectId);
+    storage.setItem(ACTIVE_PROJECT_KEY, projectId);
+    setPlanStorageMode("local");
+    setUsageState("local");
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || planStorageMode === "loading") return;
+    const cachedPayload: SavedPlan = { project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation };
+    const projectId = cloudProjectId ?? DEFAULT_LOCAL_PROJECT_ID;
+    const saved = window.setTimeout(() => {
+      try {
+        saveLocalProject(window.localStorage, projectId, cachedPayload);
+        if (activePage === "projects") {
+          setProjectLibrary(listLocalProjects(window.localStorage));
+          setProjectLibraryState("ready");
+        }
+        setSavedLabel(`Saved locally ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+      } catch {
+        setSavedLabel("Local save failed — reduce the imported logo size or download a JSON backup");
+      }
+    }, 180);
+    return () => window.clearTimeout(saved);
+  }, [project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation, hydrated, planStorageMode, cloudProjectId, activePage]);
+
+  useEffect(() => {
+    if (!hydrated || planStorageMode !== "cloud") return;
+    const planPayload: SavedPlan = { project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation };
+    if (!cloudProjectId && isEmptyPlan(planPayload)) return;
+
+    const saving = window.setTimeout(
+      () => setSavedLabel("Syncing plan to Cloudflare..."),
+      0,
+    );
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/tenant/plan", {
+          method: "PUT",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ projectId: cloudProjectId, data: planPayload }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Cloud sync failed.");
+        const record = (await response.json()) as TenantPlanRecord;
+        setCloudProjectId(record.projectId);
+        setSavedLabel(`Cloud synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+        setUsageRefreshToken((value) => value + 1);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSavedLabel("Cloud sync unavailable — local cache saved");
+      }
+    }, 650);
     return () => {
       window.clearTimeout(saving);
       window.clearTimeout(timeout);
+      controller.abort();
     };
-  }, [project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, hydrated]);
+  }, [project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation, hydrated, planStorageMode, cloudProjectId]);
+
+  useEffect(() => {
+    if (!hydrated || planStorageMode !== "cloud") return;
+    const signature = companyProfileSignature({
+      name: company.name,
+      location: company.location,
+    });
+    if (signature === savedCompanySignature) return;
+
+    const controller = new AbortController();
+    const saving = window.setTimeout(
+      () => setSavedLabel("Saving company profile to Cloudflare..."),
+      0,
+    );
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/tenant/company-profile", {
+          method: "PUT",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: company.name, location: company.location }),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Company profile sync failed.");
+        const record = (await response.json()) as TenantCompanyProfileRecord;
+        setCompany((current) => ({
+          ...current,
+          name: record.company.name,
+          location: record.company.location,
+          logoDataUrl: record.company.logoDataUrl || current.logoDataUrl,
+        }));
+        setSavedCompanySignature(companyProfileSignature(record.company));
+        setSavedLabel(`Company profile synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setSavedLabel("Company profile sync unavailable — local cache saved");
+      }
+    }, 650);
+
+    return () => {
+      window.clearTimeout(saving);
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [company.name, company.location, hydrated, planStorageMode, savedCompanySignature]);
 
   useEffect(() => {
     if (!pdfPreview) return;
@@ -666,9 +921,6 @@ export default function TimelinePlannerWorkspace() {
 
   useEffect(() => {
     if (!hydrated) return;
-    // CHOD MOP OFFICE currently keeps Planner drafts inside the authenticated
-    // browser. The original D1/R2 persistence foundation remains isolated
-    // until a production tenant database is explicitly approved and wired.
     setWorkspaceUsage(null);
     setUsageState("local");
   }, [hydrated, usageRefreshToken]);
@@ -676,7 +928,8 @@ export default function TimelinePlannerWorkspace() {
   const groups = useMemo(() => activities.filter((activity) => activity.kind === "group"), [activities]);
   const tasks = useMemo(() => activities.filter((activity) => activity.kind === "task"), [activities]);
   const taskWeights = useMemo(() => taskWeightMap(tasks, planningModel), [tasks, planningModel]);
-  const actualProgressMap = useMemo(() => new Map(tasks.map((task) => [task.id, taskActualProgress(task, planningModel, project.statusDate, actualSnapshots)])), [tasks, planningModel, project.statusDate, actualSnapshots]);
+  const actualProgressMap = useMemo(() => new Map(tasks.map((task) => [task.id, taskActualProgress(task, planningModel, project.statusDate, actualSnapshots, calendarMode)])), [tasks, planningModel, project.statusDate, actualSnapshots, calendarMode]);
+  const invalidEarnedHistoryCount = useMemo(() => tasks.filter((task) => hasInvalidEarnedHistory(task, actualSnapshots)).length, [tasks, actualSnapshots]);
   const storageBlocked = workspaceUsage?.blockedActions.includes("upload_file") ?? false;
   const cloudflareUsage = workspaceUsage?.cloudflare;
   const platformLevel = cloudflareUsage?.state === "ready" ? cloudflareUsage.overallLevel : "healthy";
@@ -698,13 +951,13 @@ export default function TimelinePlannerWorkspace() {
     const actualStart = actualChildren.length ? toISO(new Date(Math.min(...actualChildren.map((task) => parseDate(task.actualStart || task.start).getTime())))) : "";
     const actualEnd = actualChildren.length ? toISO(new Date(Math.max(...actualChildren.map((task) => parseDate(actualBarEnd(task, project.statusDate)).getTime())))) : "";
     const budget = children.reduce((sum, task) => sum + taskBudget(task), 0);
-    const earned = children.reduce((sum, task) => sum + earnedValueAt(task.id, actualSnapshots, project.statusDate), 0);
+    const earned = children.reduce((sum, task) => sum + taskEarnedValueAt(task, actualSnapshots, project.statusDate, calendarMode), 0);
     return { start, end, duration: durationBetween(start, end, calendarMode), progress, weight, budget, earned, actualStart, actualEnd };
   };
 
   const projectSummary = useMemo(() => {
     if (tasks.length === 0) {
-      return { start: project.baselineDate, end: project.baselineDate, duration: 0, totalWeight: 0, totalBudget: 0, progress: 0, plannedAtStatus: 0, variance: 0 };
+      return { start: project.baselineDate, end: project.baselineDate, duration: 0, totalWeight: 0, totalBudget: 0, totalEarned: 0, progress: 0, plannedAtStatus: 0, variance: 0 };
     }
     const start = toISO(new Date(Math.min(...tasks.map((task) => parseDate(task.start).getTime()))));
     const end = toISO(new Date(Math.max(...tasks.map((task) => parseDate(addDuration(task.start, task.duration, calendarMode)).getTime()))));
@@ -713,10 +966,100 @@ export default function TimelinePlannerWorkspace() {
     const statusMs = parseDate(project.statusDate).getTime();
     const plannedAtStatus = tasks.reduce((sum, task) => sum + plannedRatioAt(task, statusMs, calendarMode) * (taskWeights.get(task.id) ?? 0), 0);
     const totalBudget = tasks.reduce((sum, task) => sum + taskBudget(task), 0);
-    return { start, end, duration: durationBetween(start, end, calendarMode), totalWeight, totalBudget, progress: Math.round(progress), plannedAtStatus: Math.round(plannedAtStatus), variance: Math.round(progress - plannedAtStatus) };
-  }, [tasks, calendarMode, project.baselineDate, project.statusDate, taskWeights, actualProgressMap]);
+    const totalEarned = tasks.reduce((sum, task) => sum + taskEarnedValueAt(task, actualSnapshots, project.statusDate, calendarMode), 0);
+    return { start, end, duration: durationBetween(start, end, calendarMode), totalWeight, totalBudget, totalEarned, progress: Math.round(progress), plannedAtStatus: Math.round(plannedAtStatus), variance: Math.round(progress - plannedAtStatus) };
+  }, [tasks, calendarMode, project.baselineDate, project.statusDate, taskWeights, actualProgressMap, actualSnapshots]);
 
   const updateProject = (field: keyof ProjectMeta, value: string) => setProject((current) => ({ ...current, [field]: value }));
+
+  const applyProjectRecord = (record: TenantPlanRecord) => {
+    if (!record.data) return false;
+    const saved = record.data;
+    const savedCalendar = saved.calendarMode || "calendar";
+    setProject({ ...initialProject, ...saved.project });
+    setActivities(migrateActivities(saved.activities || [], savedCalendar));
+    setActualSnapshots(saved.actualSnapshots || []);
+    setCalendarMode(savedCalendar);
+    setPlanningModel(saved.planningModel || "normal");
+    setCurveView(saved.curveView || "compare");
+    setShowCurve(saved.showCurve !== false);
+    setIncludeCurvePdf(saved.includeCurvePdf !== false);
+    setShowStatusDate(saved.showStatusDate !== false);
+    setPdfOrientation(saved.pdfOrientation === "portrait" ? "portrait" : "landscape");
+    if (saved.company) setCompany((current) => ({ ...current, ...saved.company, logoDataUrl: saved.company?.logoDataUrl || current.logoDataUrl }));
+    setCloudProjectId(record.projectId);
+    return true;
+  };
+
+  const loadProjectLibrary = async () => {
+    setProjectLibraryState("loading");
+    try {
+      setProjectLibrary(listLocalProjects(window.localStorage));
+      setProjectLibraryState("ready");
+    } catch {
+      setProjectLibraryState("error");
+    }
+  };
+
+  const createNewProject = () => {
+    setProject(createFreshProject());
+    setActivities([]);
+    setActualSnapshots([]);
+    setCalendarMode("calendar");
+    setPlanningModel("normal");
+    setCurveView("compare");
+    setShowCurve(true);
+    setIncludeCurvePdf(true);
+    setShowStatusDate(true);
+    setPdfOrientation("landscape");
+    const projectId = createLocalProjectId();
+    window.localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+    setCloudProjectId(projectId);
+    setSavedLabel("New project ready — enter a project name to save");
+    openWorkspacePage("plan");
+  };
+
+  const openSavedProject = async (projectId: string) => {
+    if (projectId === cloudProjectId) {
+      openWorkspacePage("plan");
+      return;
+    }
+    setSavedLabel("Opening local project...");
+    try {
+      const record = readLocalProject(window.localStorage, projectId);
+      if (!record) throw new Error("Could not open this project");
+      if (!applyProjectRecord(record)) throw new Error("Project has no plan data");
+      window.localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+      setSavedLabel("Local project loaded");
+      openWorkspacePage("plan");
+    } catch (error) {
+      setSavedLabel(error instanceof Error ? error.message : "Could not open this project");
+    }
+  };
+
+  const openWorkspacePage = (page: ActiveWorkspacePage) => {
+    setActivePage(page);
+    setPdfPreview(false);
+    setMobileMenuOpen(false);
+    const nextUrl = page === "usage"
+      ? `${window.location.pathname}${window.location.search}#workspace-usage`
+      : page === "projects"
+        ? `${window.location.pathname}${window.location.search}#projects`
+        : `${window.location.pathname}${window.location.search}`;
+    window.history.replaceState(null, "", nextUrl);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (page === "projects") void loadProjectLibrary();
+  };
+
+  const openPlanSection = (sectionId: string) => {
+    openWorkspacePage("plan");
+    window.setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
+
+  const refreshWorkspaceUsage = () => {
+    setUsageState("loading");
+    setUsageRefreshToken((value) => value + 1);
+  };
 
   const updateCompany = (field: "name" | "location", value: string) => setCompany((current) => ({ ...current, [field]: value }));
 
@@ -740,20 +1083,72 @@ export default function TimelinePlannerWorkspace() {
       input.value = "";
       return;
     }
+    const previousLogo = company.logoDataUrl;
     const reader = new FileReader();
-    reader.addEventListener("load", () => {
+    reader.addEventListener("load", async () => {
       if (typeof reader.result !== "string") return;
-      setCompany((current) => ({ ...current, logoDataUrl: reader.result as string }));
-      setLogoMessage(`${file.name} imported`);
+      const preview = reader.result;
+      setCompany((current) => ({ ...current, logoDataUrl: preview }));
       input.value = "";
+
+      if (planStorageMode !== "cloud") {
+        setLogoMessage(`${file.name} imported and saved locally`);
+        return;
+      }
+
+      setLogoMessage(`Uploading ${file.name} to Cloudflare...`);
+      try {
+        const response = await fetch("/api/tenant/company-logo", {
+          method: "PUT",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: {
+            "content-type": file.type,
+            "x-file-name": encodeURIComponent(file.name),
+          },
+          body: file,
+        });
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(detail?.error || "Logo upload failed.");
+        }
+        const record = (await response.json()) as TenantCompanyLogoRecord;
+        setCompany((current) => ({ ...current, logoDataUrl: record.logoDataUrl }));
+        setLogoMessage(`${file.name} uploaded and saved`);
+        setSavedLabel("Company logo synced to Cloudflare");
+        setUsageRefreshToken((value) => value + 1);
+      } catch (error) {
+        setCompany((current) => ({ ...current, logoDataUrl: previousLogo }));
+        setLogoMessage(error instanceof Error ? error.message : "Could not upload this logo");
+      }
     });
     reader.addEventListener("error", () => setLogoMessage("Could not read this logo file"));
     reader.readAsDataURL(file);
   };
 
-  const removeCompanyLogo = () => {
-    setCompany((current) => ({ ...current, logoDataUrl: "" }));
-    setLogoMessage("Logo removed - the CHOD monogram will be used");
+  const removeCompanyLogo = async () => {
+    const previousLogo = company.logoDataUrl;
+    setCompany((current) => ({ ...current, logoDataUrl: initialCompany.logoDataUrl }));
+    if (planStorageMode !== "cloud") {
+      setLogoMessage("Custom logo removed - default logo restored");
+      return;
+    }
+
+    setLogoMessage("Removing logo from Cloudflare...");
+    try {
+      const response = await fetch("/api/tenant/company-logo", {
+        method: "DELETE",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!response.ok) throw new Error("Could not remove the cloud logo.");
+      setLogoMessage("Custom logo removed - default logo restored");
+      setSavedLabel("Company logo reset to default");
+      setUsageRefreshToken((value) => value + 1);
+    } catch (error) {
+      setCompany((current) => ({ ...current, logoDataUrl: previousLogo }));
+      setLogoMessage(error instanceof Error ? error.message : "Could not remove this logo");
+    }
   };
 
   const updateActivity = (id: string, field: keyof Activity, value: string | number | null) => {
@@ -761,11 +1156,28 @@ export default function TimelinePlannerWorkspace() {
   };
 
   const updateEarnedValue = (task: Activity, rawValue: number) => {
-    const earnedValue = clamp(Number(rawValue) || 0, 0, taskBudget(task));
+    const requestedValue = Number(rawValue) || 0;
+    const bounds = earnedValueBoundsAt(task.id, actualSnapshots, project.statusDate, taskBudget(task));
+    const earnedValue = clamp(requestedValue, bounds.min, bounds.max);
+    if (earnedValue !== requestedValue) {
+      setSavedLabel(`EV must stay between THB ${Math.round(bounds.min).toLocaleString("en-US")} and ${Math.round(bounds.max).toLocaleString("en-US")} at this status date`);
+    }
     setActualSnapshots((current) => [
       ...current.filter((snapshot) => !(snapshot.activityId === task.id && snapshot.date === project.statusDate)),
       { id: `${task.id}-${project.statusDate}`, activityId: task.id, date: project.statusDate, earnedValue },
     ]);
+  };
+
+  const updateTaskBudget = (task: Activity, rawValue: number) => {
+    const highestEarned = actualSnapshots
+      .filter((snapshot) => snapshot.activityId === task.id)
+      .reduce((highest, snapshot) => Math.max(highest, snapshot.earnedValue), 0);
+    const requestedValue = Math.max(0, Number(rawValue) || 0);
+    const budget = Math.max(requestedValue, highestEarned);
+    if (budget !== requestedValue) {
+      setSavedLabel(`Budget cannot be lower than recorded EV of THB ${Math.round(highestEarned).toLocaleString("en-US")}`);
+    }
+    updateActivity(task.id, "budget", budget);
   };
 
   const updateEndDate = (task: Activity, end: string) => updateActivity(task.id, "duration", durationBetween(task.start, end, calendarMode));
@@ -790,6 +1202,7 @@ export default function TimelinePlannerWorkspace() {
       actualStart: "",
       actualEnd: "",
       budget: 0,
+      earningMethod: "certified",
     };
     setActivities((current) => [...current.slice(0, insertAfter + 1), newTask, ...current.slice(insertAfter + 1)]);
   };
@@ -811,38 +1224,51 @@ export default function TimelinePlannerWorkspace() {
     setPendingDeleteGroup(null);
   };
 
-  const resetDemo = () => {
-    if (!window.confirm("Replace the current plan with the fit-out demo plan?")) return;
-    setProject(initialProject);
-    setActivities(migrateActivities(initialActivities, "calendar"));
-    setActualSnapshots(legacySnapshots(initialActivities, initialProject.statusDate, "calendar"));
+  const clearPlan = async () => {
+    if (!window.confirm("Clear this plan and remove its timeline data? This cannot be undone.")) return;
+    removeLocalProject(window.localStorage, cloudProjectId ?? DEFAULT_LOCAL_PROJECT_ID);
+    const nextProjectId = createLocalProjectId();
+    window.localStorage.setItem(ACTIVE_PROJECT_KEY, nextProjectId);
+    setProject(createFreshProject());
+    setActivities([]);
+    setActualSnapshots([]);
     setCalendarMode("calendar");
     setPlanningModel("normal");
     setCurveView("compare");
     setShowCurve(true);
     setIncludeCurvePdf(true);
+    setShowStatusDate(true);
+    setPdfOrientation("landscape");
+    setCloudProjectId(nextProjectId);
+    setProjectLibrary(listLocalProjects(window.localStorage));
+    setSavedLabel("Local workspace cleared");
+    setUsageRefreshToken((value) => value + 1);
   };
 
   const exportBackup = () => {
-    const payload: SavedPlan = { project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf };
+    const payload: SavedPlan = { project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation };
     const tenantBackup = createTenantPlanEnvelope(
       CHOD_ORGANIZATION,
-      DEFAULT_LOCAL_PROJECT_ID,
+      cloudProjectId ?? DEFAULT_LOCAL_PROJECT_ID,
       payload,
     );
     const blob = new Blob([JSON.stringify(tenantBackup, null, 2)], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${project.code || "timeline-plan"}.json`;
+    link.download = `${project.name || "timeline-plan"}.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
 
   const printPlan = () => {
     const previousTitle = document.title;
-    document.title = `${project.code || "Project"} - Timeline Plan - ${project.revision}`;
-    window.addEventListener("afterprint", () => { document.title = previousTitle; }, { once: true });
-    window.print();
+    document.title = `${project.name || "Project"} - Timeline Plan - ${project.revision}`;
+    setPrintingPdf(true);
+    window.addEventListener("afterprint", () => {
+      document.title = previousTitle;
+      setPrintingPdf(false);
+    }, { once: true });
+    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
   };
 
   const groupSequence = new Map<string, number>();
@@ -862,10 +1288,12 @@ export default function TimelinePlannerWorkspace() {
       actualEnd: summary.actualEnd,
       actualProgress: summary.progress,
       weight: summary.weight,
+      owner: group.owner,
+      dependency: group.dependency,
       kind: "group",
     };
 
-    if (!showTimelineSubplans) return [groupRow];
+    if (!(showTimelineSubplans || pdfPreview || printingPdf)) return [groupRow];
 
     const childRows: TimelineChartRow[] = tasks
       .filter((task) => task.parentId === group.id)
@@ -881,31 +1309,94 @@ export default function TimelinePlannerWorkspace() {
         actualEnd: actualBarEnd(task, project.statusDate),
         actualProgress: actualProgressMap.get(task.id) ?? 0,
         weight: taskWeights.get(task.id) ?? 0,
+        owner: task.owner,
+        dependency: task.dependency,
         kind: "task",
       }));
 
     return [groupRow, ...childRows];
   });
 
+  // Paginate by visible rows, not only activities. Package headings therefore
+  // consume real space and the chart no longer needs vertical distortion.
+  const isPortraitPdf = pdfOrientation === "portrait";
+  const firstPrintPageRowCapacity = isPortraitPdf ? 34 : 24;
+  const continuationPrintPageRowCapacity = isPortraitPdf ? 40 : 30;
+  const singlePrintPageRowCapacity = isPortraitPdf ? 38 : 28;
+  const printTimelinePages: TimelineChartRow[][] = [];
+  let printPageRows: TimelineChartRow[] = [];
+  let activePrintGroup: TimelineChartRow | null = null;
+
+  const currentPrintPageRowCapacity = () => printTimelinePages.length === 0
+    ? firstPrintPageRowCapacity
+    : continuationPrintPageRowCapacity;
+
+  const commitPrintPage = () => {
+    if (printPageRows.length === 0) return;
+    printTimelinePages.push(printPageRows);
+    printPageRows = [];
+  };
+
+  timelineRows.forEach((row) => {
+    if (row.kind === "group") {
+      // Keep room for the first activity so a package heading is not orphaned.
+      if (printPageRows.length >= currentPrintPageRowCapacity() - 1) commitPrintPage();
+      activePrintGroup = row;
+      printPageRows.push(row);
+      return;
+    }
+
+    if (printPageRows.length >= currentPrintPageRowCapacity()) {
+      commitPrintPage();
+      if (activePrintGroup) printPageRows.push(activePrintGroup);
+    }
+
+    printPageRows.push(row);
+  });
+
+  commitPrintPage();
+
+  // Avoid a nearly empty second page. A short continuation can still fit on
+  // page 1 at a readable row height, so merge it back and remove the repeated
+  // package heading that pagination inserted at the page boundary.
+  if (printTimelinePages.length === 2) {
+    const firstPageRows = printTimelinePages[0];
+    const firstPageIds = new Set(firstPageRows.map((row) => row.id));
+    const continuationRows = printTimelinePages[1].filter((row, index) => !(
+      index === 0 && row.kind === "group" && firstPageIds.has(row.id)
+    ));
+    const mergedRows = [...firstPageRows, ...continuationRows];
+    if (mergedRows.length <= singlePrintPageRowCapacity) printTimelinePages.splice(0, 2, mergedRows);
+  }
+
+  if (printTimelinePages.length === 0) printTimelinePages.push([]);
+
+  const measuredCurveLabel = planningModel === "intensive" ? "Earned progress" : "Completed progress";
+  const measuredMetricLabel = planningModel === "intensive" ? "Earned" : "Completed";
+  const reportOutputActive = pdfPreview || printingPdf;
+
   return (
-    <main className={`app-shell ${pdfPreview ? "pdf-preview-mode" : ""}`}>
-      <aside className="sidebar no-print">
+    <main className={`app-shell pdf-orientation-${pdfOrientation} ${pdfPreview ? "pdf-preview-mode" : ""} ${activePage !== "plan" ? "utility-page-active" : ""} ${mobileMenuOpen ? "mobile-menu-open" : ""}`}>
+      <style media="print">{`@page { size: A4 ${pdfOrientation}; margin: 7mm 8mm 9mm; }`}</style>
+      <aside className={`sidebar no-print ${mobileMenuOpen ? "mobile-open" : ""}`} id="project-navigation" aria-label="Project controls and workspace navigation">
         <div className="brand-lockup">
           <span className={`brand-mark ${company.logoDataUrl ? "has-logo" : ""}`}>
-            {company.logoDataUrl ? <Image src={company.logoDataUrl} width={52} height={46} unoptimized alt="" /> : "CHOD"}
+            {company.logoDataUrl ? <Image src={company.logoDataUrl} width={52} height={46} unoptimized alt="" /> : "TP"}
           </span>
           <span>
             <strong>Timeline Plan</strong>
             <small>{CHOD_ORGANIZATION.name} workspace</small>
           </span>
+          <button type="button" className="mobile-menu-close" aria-label="Close project menu" onClick={() => setMobileMenuOpen(false)}>×</button>
         </div>
 
         <nav className="rail-nav" aria-label="Workspace sections">
-          <button type="button" className="rail-link active"><span>01</span> Plan workspace</button>
-          <button type="button" className="rail-link" onClick={() => setDetailsOpen((value) => !value)}><span>02</span> Project information</button>
-          <button type="button" className="rail-link" onClick={() => document.getElementById("curve-section")?.scrollIntoView({ behavior: "smooth" })}><span>03</span> Timeline &amp; S-curve</button>
-          <button type="button" className="rail-link" aria-expanded={companyOpen} aria-controls="company-profile" onClick={() => setCompanyOpen((value) => !value)}><span>04</span> Company profile</button>
-          <button type="button" className="rail-link" onClick={() => document.getElementById("workspace-usage")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span>05</span> Workspace usage</button>
+          <button type="button" className={`rail-link ${activePage === "projects" ? "active" : ""}`} aria-current={activePage === "projects" ? "page" : undefined} onClick={() => openWorkspacePage("projects")}><span>01</span> Projects</button>
+          <button type="button" className={`rail-link ${activePage === "plan" ? "active" : ""}`} aria-current={activePage === "plan" ? "page" : undefined} onClick={() => openWorkspacePage("plan")}><span>02</span> Plan workspace</button>
+          <button type="button" className="rail-link" onClick={() => { openWorkspacePage("plan"); setDetailsOpen(true); }}><span>03</span> Project information</button>
+          <button type="button" className="rail-link" onClick={() => openPlanSection("curve-section")}><span>04</span> Timeline &amp; S-curve</button>
+          <button type="button" className="rail-link" aria-expanded={companyOpen} aria-controls="company-profile" onClick={() => { openWorkspacePage("plan"); setCompanyOpen(true); }}><span>05</span> Company profile</button>
+          <button type="button" className={`rail-link ${activePage === "usage" ? "active" : ""}`} aria-current={activePage === "usage" ? "page" : undefined} onClick={() => openWorkspacePage("usage")}><span>06</span> Workspace usage</button>
         </nav>
 
         <section className="rail-project">
@@ -913,18 +1404,16 @@ export default function TimelinePlannerWorkspace() {
             <span>Project file</span>
             <button type="button" className="icon-button" title="Toggle project information" aria-label="Toggle project information" onClick={() => setDetailsOpen((value) => !value)}>{detailsOpen ? "−" : "+"}</button>
           </div>
-          <label>Project code<input value={project.code} onChange={(event) => updateProject("code", event.target.value)} /></label>
+          <label>Project name<input value={project.name} onChange={(event) => updateProject("name", event.target.value)} /></label>
           <label>Client<input value={project.client} onChange={(event) => updateProject("client", event.target.value)} /></label>
           <label>Location<textarea rows={2} value={project.location} onChange={(event) => updateProject("location", event.target.value)} /></label>
           <label>Project manager<input value={project.projectManager} onChange={(event) => updateProject("projectManager", event.target.value)} /></label>
           {detailsOpen && <>
-            <label>Contract no.<input value={project.contractNo} onChange={(event) => updateProject("contractNo", event.target.value)} /></label>
             <label>Baseline date<input type="date" value={project.baselineDate} onChange={(event) => updateProject("baselineDate", event.target.value)} /></label>
             <label>Status date<input type="date" value={project.statusDate} onChange={(event) => updateProject("statusDate", event.target.value)} /></label>
             <label>Issue date<input type="date" value={project.issueDate} onChange={(event) => updateProject("issueDate", event.target.value)} /></label>
             <label>Revision<input value={project.revision} onChange={(event) => updateProject("revision", event.target.value)} /></label>
             <label>Prepared by<input value={project.preparedBy} onChange={(event) => updateProject("preparedBy", event.target.value)} /></label>
-            <label>Approved by<input value={project.approvedBy} onChange={(event) => updateProject("approvedBy", event.target.value)} /></label>
           </>}
         </section>
 
@@ -935,57 +1424,14 @@ export default function TimelinePlannerWorkspace() {
           </div>
           {companyOpen && <>
             <div className="rail-logo-preview" aria-label="Company logo preview">
-              {company.logoDataUrl ? <Image src={company.logoDataUrl} width={72} height={52} unoptimized alt={`${company.name || "Company"} logo`} /> : <span>CHOD</span>}
+              {company.logoDataUrl ? <Image src={company.logoDataUrl} width={72} height={52} unoptimized alt={`${company.name || "Company"} logo`} /> : <span>TP</span>}
               <div><strong>{company.name || "Company name"}</strong><small>PDF identity preview</small></div>
             </div>
             <label>Company name<input value={company.name} onChange={(event) => updateCompany("name", event.target.value)} /></label>
             <label>Company location<textarea rows={2} value={company.location} onChange={(event) => updateCompany("location", event.target.value)} /></label>
             <label className="logo-file-label">Company logo<input className="logo-file-input" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" disabled={storageBlocked} onChange={importCompanyLogo} /></label>
-            <div className="logo-import-status" role="status"><span>{logoMessage}</span>{company.logoDataUrl && <button type="button" onClick={removeCompanyLogo}>Remove logo</button>}</div>
+            <div className="logo-import-status" role="status"><span>{logoMessage}</span>{company.logoDataUrl !== initialCompany.logoDataUrl && <button type="button" onClick={removeCompanyLogo}>Reset to default</button>}</div>
             <p className="company-note">Scoped to {CHOD_ORGANIZATION.name} and applied to PDF headers. The profile stays when the demo plan is reset.</p>
-          </>}
-        </section>
-
-        <section className={`rail-usage ${workspaceUsage ? `usage-${workspaceUsage.overallLevel}` : ""}`} id="workspace-usage" aria-labelledby="workspace-usage-title">
-          <div className="section-heading">
-            <span id="workspace-usage-title">Workspace usage</span>
-            <button type="button" className="icon-button usage-refresh" title="Refresh workspace usage" aria-label="Refresh workspace usage" disabled={usageState === "loading"} onClick={() => { setUsageState("loading"); setUsageRefreshToken((value) => value + 1); }}>↻</button>
-          </div>
-
-          {usageState === "loading" && <div className="usage-loading" role="status"><span /><span /><span className="sr-only">Loading workspace usage</span></div>}
-
-          {usageState === "local" && <div className="usage-connection-state" role="status"><strong>Local draft mode</strong><p>Cloud quota monitoring activates after Cloudflare Access and D1 are connected. This browser draft is not using R2 storage.</p></div>}
-
-          {usageState === "error" && <div className="usage-connection-state usage-error" role="status"><strong>Usage unavailable</strong><p>The plan stays editable. Refresh after checking the Cloudflare connection.</p></div>}
-
-          {usageState === "ready" && workspaceUsage && <>
-            <div className="usage-plan-row"><span>{workspaceUsage.plan.label}</span><strong>{usageLevelLabel[workspaceUsage.overallLevel]}</strong></div>
-            <div className="usage-metrics">
-              {workspaceUsage.metrics.map((metric) => <div className={`usage-metric level-${metric.level}`} key={metric.key}>
-                <div><span>{metric.label}</span><strong>{formatUsageValue(metric)}</strong></div>
-                <div className="usage-track" role="progressbar" aria-label={`${metric.label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(metric.percent))}><i style={{ width: `${metric.barPercent}%` }} /></div>
-                <small>{metric.percent.toFixed(metric.percent % 1 === 0 ? 0 : 1)}% used</small>
-              </div>)}
-            </div>
-            <p className="usage-message" role={workspaceUsage.overallLevel === "critical" || workspaceUsage.overallLevel === "blocked" ? "alert" : "status"}>{workspaceUsage.message}</p>
-            <small className="usage-source">D1 counts + active R2 file ledger · updated {new Date(workspaceUsage.measuredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
-
-            <details className={`platform-usage ${cloudflareUsage?.state === "ready" ? `usage-${cloudflareUsage.overallLevel}` : ""}`}>
-              <summary><span>Cloudflare Free limits</span><strong>{cloudflareUsage?.state === "ready" ? usageLevelLabel[cloudflareUsage.overallLevel] : cloudflareUsage?.state === "unavailable" ? "Unavailable" : "Setup required"}</strong></summary>
-              <div className="platform-usage-body">
-                {cloudflareUsage?.state === "ready" ? <>
-                  <div className="usage-metrics platform-metrics">
-                    {cloudflareUsage.metrics.map((metric) => <div className={`usage-metric level-${metric.level}`} key={metric.key}>
-                      <div><span>{metric.label}</span><strong>{formatUsageValue(metric)}</strong></div>
-                      <div className="usage-track" role="progressbar" aria-label={`${metric.label} estimated usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(metric.percent))}><i style={{ width: `${metric.barPercent}%` }} /></div>
-                      <small>{metric.percent.toFixed(metric.percent % 1 === 0 ? 0 : 1)}% · {platformPeriodLabel(metric.period)} · est.</small>
-                    </div>)}
-                  </div>
-                  <p className="platform-note" role={cloudflareUsage.overallLevel === "critical" || cloudflareUsage.overallLevel === "blocked" ? "alert" : "status"}>{cloudflareUsage.message}</p>
-                  <small className="usage-source">{cloudflareUsage.disclaimer}</small>
-                </> : <div className="usage-connection-state" role="status"><strong>{cloudflareUsage?.state === "unavailable" ? "Analytics unavailable" : "Optional setup"}</strong><p>{cloudflareUsage?.message ?? "Add read-only Account Analytics credentials to display platform usage."}</p></div>}
-              </div>
-            </details>
           </>}
         </section>
 
@@ -995,58 +1441,59 @@ export default function TimelinePlannerWorkspace() {
         </div>
       </aside>
 
-      <section className="workspace" id="pdf-preview-sheet">
+      <button type="button" className="mobile-nav-backdrop no-print" aria-label="Close project menu" tabIndex={mobileMenuOpen ? 0 : -1} onClick={() => setMobileMenuOpen(false)} />
+
+      <section className={`workspace ${activePage === "usage" ? "workspace-usage-view" : ""} ${activePage === "projects" ? "workspace-project-library-view" : ""}`} id="pdf-preview-sheet">
         <header className={`topbar ${pdfPreview ? "pdf-preview-toolbar" : ""}`}>
-          {pdfPreview ? <div className="preview-toolbar-copy" role="status"><strong>PDF preview</strong><span>A4 landscape / executive timeline + detailed schedule / press Esc to exit</span></div> : <div>
-            <div className="breadcrumb">Projects / Active plan / <strong>{project.code}</strong></div>
-            <input className="project-title-input" value={project.name} onChange={(event) => updateProject("name", event.target.value)} aria-label="Project name" />
-          </div>}
+          <div className="topbar-context">
+            {!pdfPreview && <button type="button" className="mobile-menu-trigger no-print" aria-expanded={mobileMenuOpen} aria-controls="project-navigation" onClick={() => setMobileMenuOpen(true)}>
+              <span className="mobile-menu-icon" aria-hidden="true"><i /><i /><i /></span>
+              <span className="sr-only">Open project menu</span>
+            </button>}
+            {activePage === "usage" ? <div>
+              <div className="breadcrumb">Workspace / Capacity &amp; limits</div>
+              <h1 className="usage-page-title">Workspace usage</h1>
+            </div> : activePage === "projects" ? <div>
+              <div className="breadcrumb">Workspace / Saved timelines</div>
+              <h1 className="usage-page-title">Projects</h1>
+            </div> : pdfPreview ? <div className="preview-toolbar-copy" role="status"><strong>PDF preview</strong><span>A4 {pdfOrientation} / executive timeline / press Esc to exit</span></div> : <div>
+              <div className="breadcrumb">Projects / Active plan / <strong>{project.name}</strong></div>
+              <input className="project-title-input" value={project.name} placeholder="Untitled fit-out project" onChange={(event) => updateProject("name", event.target.value)} aria-label="Project name" />
+            </div>}
+          </div>
           <div className="topbar-actions no-print">
-            {!pdfPreview && <button type="button" className="button quiet" onClick={exportBackup}>Backup JSON</button>}
-            {!pdfPreview && <button type="button" className="button quiet" onClick={resetDemo}>Reset demo</button>}
-            <button type="button" className="button quiet preview-toggle" aria-pressed={pdfPreview} aria-controls="pdf-preview-sheet" onClick={() => setPdfPreview((value) => !value)}>{pdfPreview ? "Exit preview" : "Preview PDF"}</button>
-            <button type="button" className="button primary" onClick={printPlan}><span aria-hidden="true">⇩</span> Export PDF</button>
+            {activePage === "usage" ? <button type="button" className="button quiet" onClick={() => openWorkspacePage("plan")}>Back to plan</button> : activePage === "projects" ? <button type="button" className="button primary" onClick={createNewProject}>+ New project</button> : <>
+              {!pdfPreview && <button type="button" className="button quiet" onClick={exportBackup}>Backup JSON</button>}
+              {!pdfPreview && cloudProjectId && <button type="button" className="button quiet danger-button" onClick={() => void clearPlan()}>Delete project</button>}
+              <button type="button" className="button quiet preview-toggle" aria-pressed={pdfPreview} aria-controls="pdf-preview-sheet" onClick={() => setPdfPreview((value) => !value)}>{pdfPreview ? "Exit preview" : "Preview PDF"}</button>
+              <button type="button" className="button primary" onClick={printPlan}><span aria-hidden="true">⇩</span> Export PDF</button>
+            </>}
           </div>
         </header>
+
+        {activePage === "usage" ? <WorkspaceUsageDashboard usageState={usageState} workspaceUsage={workspaceUsage} combinedLevel={combinedUsageLevel} combinedMessage={combinedUsageMessage} onRefresh={refreshWorkspaceUsage} /> : activePage === "projects" ? <ProjectLibrary projects={projectLibrary} state={projectLibraryState} currentProjectId={cloudProjectId} onNew={createNewProject} onOpen={(projectId) => void openSavedProject(projectId)} onRefresh={() => void loadProjectLibrary()} /> : <>
 
         {usageState === "ready" && workspaceUsage && combinedUsageLevel !== "healthy" && <div className={`usage-banner no-print usage-${combinedUsageLevel}`} role={combinedUsageLevel === "critical" || combinedUsageLevel === "blocked" ? "alert" : "status"}>
           <span className="usage-banner-mark" aria-hidden="true">!</span>
           <div><strong>{usageLevelLabel[combinedUsageLevel]}</strong><span>{combinedUsageMessage}</span></div>
-          <a href="#workspace-usage">Review usage</a>
+          <button type="button" onClick={() => openWorkspacePage("usage")}>Review usage</button>
         </div>}
 
         <section className="print-title" aria-label="PDF document header">
           <div className="print-document-bar">
             <div className="print-company">
-              {company.logoDataUrl ? <Image src={company.logoDataUrl} width={150} height={60} unoptimized alt={`${company.name || "Company"} logo`} /> : <span className="print-company-mark">CHOD</span>}
+              {company.logoDataUrl ? <Image src={company.logoDataUrl} width={150} height={60} unoptimized alt={`${company.name || "Company"} logo`} /> : <span className="print-company-mark">TP</span>}
               <div><strong>{company.name || "Company name"}</strong><small>{company.location || "Company location"}</small></div>
             </div>
-            <div className="print-document-id"><span>CONTROLLED DOCUMENT</span><strong>TIMELINE PLAN</strong><small>{project.code} / {project.revision}</small></div>
+            <div className="print-document-id"><span>PROJECT TIMELINE &amp; S-CURVE</span><strong>{project.name || "Untitled project"}</strong><small>{project.revision} · Issued {displayDate(project.issueDate)}</small></div>
           </div>
-          <div className="print-project-heading">
-            <span>FIT-OUT DELIVERY PROGRAMME</span>
-            <h1>{project.name}</h1>
-            <p>{project.client} / {project.location}</p>
-          </div>
-          <dl>
-            <div><dt>Project code</dt><dd>{project.code}</dd></div>
-            <div><dt>Project manager</dt><dd>{project.projectManager}</dd></div>
-            <div><dt>Contract no.</dt><dd>{project.contractNo}</dd></div>
-            <div><dt>Baseline</dt><dd>{displayDate(project.baselineDate)}</dd></div>
-            <div><dt>Status date</dt><dd>{displayDate(project.statusDate)}</dd></div>
-            <div><dt>Issue date</dt><dd>{displayDate(project.issueDate)}</dd></div>
-            <div><dt>Calendar</dt><dd>{calendarMode === "calendar" ? "Calendar days" : "Monday-Friday"}</dd></div>
-            <div><dt>Weight basis</dt><dd>{planningModel === "normal" ? "Planned duration" : "Task budget"}</dd></div>
-            <div><dt>Prepared by</dt><dd>{project.preparedBy}</dd></div>
-            <div><dt>Approved by</dt><dd>{project.approvedBy}</dd></div>
-          </dl>
         </section>
 
         <section className="method-bar no-print" aria-label="Calculation model">
           <div className="method-copy">
             <span>Calculation model</span>
             <strong>{planningModel === "normal" ? "Normal timeline" : "Cost-loaded intensive"}</strong>
-            <p>{planningModel === "normal" ? "Weights are calculated from planned duration; actual progress is recognized only from actual completion dates." : "Weights are calculated from task budgets; actual progress comes from certified earned value saved at each status date."}</p>
+            <p>{planningModel === "normal" ? "Weights are calculated from planned duration; completed progress is recognized only from actual completion dates." : "Weights are calculated from task budgets; earned progress follows each activity's selected earning rule at the status date."}</p>
           </div>
           <div className="segmented model-switch" role="group" aria-label="Timeline calculation model">
             <button type="button" className={planningModel === "normal" ? "active" : ""} onClick={() => setPlanningModel("normal")}><strong>Normal timeline</strong></button>
@@ -1054,15 +1501,16 @@ export default function TimelinePlannerWorkspace() {
           </div>
         </section>
 
-        <section className="summary-strip" aria-label="Project summary">
+        <section className={`summary-strip ${reportOutputActive ? "report-summary-strip" : ""} ${reportOutputActive && !showStatusDate ? "report-status-hidden" : ""}`} aria-label="Project summary">
           <div className="summary-main">
             <span>Overall period</span>
             <strong>{projectSummary.duration}<small>{calendarMode === "calendar" ? "calendar days" : "working days"}</small></strong>
             <p>{displayDate(projectSummary.start)} — {displayDate(projectSummary.end)}</p>
           </div>
-          <div><span>Work packages</span><strong>{groups.length}</strong><p>roll-up automatically</p></div>
-          <div><span>Activities</span><strong>{tasks.length}</strong><p>{planningModel === "intensive" ? `THB ${projectSummary.totalBudget.toLocaleString("en-US")}` : "duration-weighted automatically"}</p></div>
-          <div><span>Auto actual progress</span><strong>{projectSummary.progress}%</strong><div className="summary-progress"><i style={{ width: `${projectSummary.progress}%` }} /></div></div>
+          {!reportOutputActive && <div><span>Work packages</span><strong>{groups.length}</strong><p>{tasks.length} detailed activities</p></div>}
+          {(!reportOutputActive || showStatusDate) && <div className="summary-status-metric"><span>Planned at data date</span><strong>{projectSummary.plannedAtStatus}%</strong><p>baseline programme</p></div>}
+          {(!reportOutputActive || showStatusDate) && <div className="summary-status-metric"><span>{measuredMetricLabel} at data date</span><strong>{projectSummary.progress}%</strong><p>{projectSummary.variance > 0 ? "+" : ""}{projectSummary.variance} pt variance</p></div>}
+          <div className="summary-client"><span>Client</span><strong>{project.client || "Not specified"}</strong><p>{project.location || "Project location not specified"}</p></div>
           <div className="calendar-control no-print">
             <span>Schedule calendar</span>
             <div className="segmented" role="group" aria-label="Schedule calendar mode">
@@ -1073,16 +1521,68 @@ export default function TimelinePlannerWorkspace() {
           </div>
         </section>
 
-        <section className="curve-panel" id="curve-section">
+        <section className="print-timeline-pages" aria-label="Paginated PDF timeline">
+          {printTimelinePages.map((pageRows, pageIndex) => {
+            const reportFrameGutterMm = 1.5;
+            const reportFrameSafetyInsetMm = 0.8;
+            const baseRowsHeightBudgetMm = isPortraitPdf
+              ? pageIndex === 0 ? 182 : 234
+              : pageIndex === 0 ? 112 : 148;
+            const rowsHeightBudgetMm = baseRowsHeightBudgetMm - reportFrameGutterMm - reportFrameSafetyInsetMm;
+            const minimumRowHeightMm = isPortraitPdf ? 4.8 : pageIndex === 0 ? 4.25 : 4.8;
+            const maximumRowHeightMm = isPortraitPdf ? 7.4 : pageIndex === 0 ? 6.4 : 7.4;
+            const printRowHeightMm = clamp(rowsHeightBudgetMm / Math.max(1, pageRows.length), minimumRowHeightMm, maximumRowHeightMm);
+
+            return (
+            <section className={`print-timeline-page ${pageIndex === 0 ? "first" : "continuation"}`} key={`print-timeline-page-${pageIndex + 1}`}>
+              {pageIndex > 0 && <header className="print-continuation-header">
+                <div className="print-continuation-company">
+                  {company.logoDataUrl ? <Image src={company.logoDataUrl} width={90} height={36} unoptimized alt={`${company.name || "Company"} logo`} /> : <span className="print-continuation-mark">TP</span>}
+                  <div><strong>{company.name || "Company name"}</strong><span>Timeline continuation</span></div>
+                </div>
+                <div className="print-continuation-project"><span>{project.revision} · Issued {displayDate(project.issueDate)}</span><strong>{project.name || "Untitled project"}</strong><span>Page {pageIndex + 1} of {printTimelinePages.length}</span></div>
+              </header>}
+              <section className="curve-panel print-page-chart" style={{ "--print-row-height": `${printRowHeightMm.toFixed(2)}mm` } as CSSProperties}>
+                <div className="panel-heading curve-heading">
+                  <div><h2>Timeline with S-curve overlay</h2><p>Baseline and {measuredCurveLabel.toLowerCase()} use one shared project date axis.</p></div>
+                  <span className="print-page-count">Page {pageIndex + 1} / {printTimelinePages.length}</span>
+                </div>
+                <div className="chart-legend">
+                  {curveView !== "actual" && <span><i className="legend-bar planned-bar" /> Planned period</span>}
+                  {curveView !== "plan" && <span><i className="legend-bar actual-bar" /> Actual period</span>}
+                  {curveView !== "actual" && includeCurvePdf && <span><i className="legend-line planned" /> Planned S-curve</span>}
+                  {curveView !== "plan" && includeCurvePdf && <span><i className="legend-line actual" /> {measuredCurveLabel} S-curve</span>}
+                  {showStatusDate && <span><i className="legend-status" /> Status date</span>}
+                </div>
+                <div className="combined-chart-scroll">
+                  <IntegratedTimeline rows={pageRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} showStatusDate={showStatusDate} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} reportMode />
+                </div>
+              </section>
+              <footer className="print-page-footer">
+                <span>{company.name || "Company name"} · Project controls</span>
+                <span>{project.name || "Untitled project"} · {project.revision}</span>
+                <span>Page {pageIndex + 1} of {printTimelinePages.length}</span>
+              </footer>
+            </section>
+            );
+          })}
+        </section>
+
+        <section className="curve-panel screen-timeline-panel" id="curve-section">
           <div className="panel-heading curve-heading">
-            <div><h2>Timeline with S-curve overlay</h2><p>Plan and Actual use separate bars and curves on one date axis; the Actual curve stops at the status date.</p></div>
+            <div><h2>Timeline with S-curve overlay</h2><p>Baseline and {measuredCurveLabel.toLowerCase()} share one date axis; measured progress stops at the status date.</p></div>
             <div className="chart-controls no-print">
               <div className="segmented curve-view-switch" role="group" aria-label="Timeline chart view">
                 <button type="button" className={curveView === "compare" ? "active" : ""} onClick={() => setCurveView("compare")}>Compare</button>
                 <button type="button" className={curveView === "plan" ? "active" : ""} onClick={() => setCurveView("plan")}>Plan</button>
-                <button type="button" className={curveView === "actual" ? "active" : ""} onClick={() => setCurveView("actual")}>Actual</button>
+                <button type="button" className={curveView === "actual" ? "active" : ""} onClick={() => setCurveView("actual")}>{measuredMetricLabel}</button>
+              </div>
+              <div className="segmented pdf-orientation-switch" role="group" aria-label="PDF page orientation">
+                <button type="button" className={pdfOrientation === "landscape" ? "active" : ""} aria-pressed={pdfOrientation === "landscape"} onClick={() => setPdfOrientation("landscape")}>Landscape</button>
+                <button type="button" className={pdfOrientation === "portrait" ? "active" : ""} aria-pressed={pdfOrientation === "portrait"} onClick={() => setPdfOrientation("portrait")}>Portrait</button>
               </div>
               <button type="button" className="button quiet" aria-pressed={showCurve} onClick={() => setShowCurve((value) => !value)}>{showCurve ? "Hide S-curve" : "Show S-curve"}</button>
+              <button type="button" className="button quiet" aria-pressed={showStatusDate} onClick={() => setShowStatusDate((value) => !value)}>{showStatusDate ? "Hide status date" : "Show status date"}</button>
               <button type="button" className="button quiet" onClick={() => setShowTimelineSubplans((value) => !value)}>{showTimelineSubplans ? "Show packages only" : "Expand sub-plans"}</button>
               <label className="print-toggle"><input type="checkbox" checked={includeCurvePdf} onChange={(event) => setIncludeCurvePdf(event.target.checked)} /><span>Include S-curve in PDF</span></label>
             </div>
@@ -1091,23 +1591,24 @@ export default function TimelinePlannerWorkspace() {
             {curveView !== "actual" && <span><i className="legend-bar planned-bar" /> Planned period</span>}
             {curveView !== "plan" && <span><i className="legend-bar actual-bar" /> Actual period</span>}
             {curveView !== "actual" && <span className={`${showCurve ? "" : "curve-hidden-screen"} ${includeCurvePdf ? "" : "exclude-curve-print"}`}><i className="legend-line planned" /> Planned S-curve</span>}
-            {curveView !== "plan" && <span className={`${showCurve ? "" : "curve-hidden-screen"} ${includeCurvePdf ? "" : "exclude-curve-print"}`}><i className="legend-line actual" /> Actual S-curve</span>}
-            <span><i className="legend-status" /> Status date</span>
+            {curveView !== "plan" && <span className={`${showCurve ? "" : "curve-hidden-screen"} ${includeCurvePdf ? "" : "exclude-curve-print"}`}><i className="legend-line actual" /> {measuredCurveLabel} S-curve</span>}
+            {showStatusDate && <span><i className="legend-status" /> Status date</span>}
           </div>
           <div className="combined-chart-scroll">
-            <IntegratedTimeline rows={timelineRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} />
+            <IntegratedTimeline rows={timelineRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} showStatusDate={showStatusDate} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} />
           </div>
           <div className="timeline-facts">
-            <div><span>Actual at status</span><strong>{projectSummary.progress}%</strong></div>
-            <div><span>Planned at status</span><strong>{projectSummary.plannedAtStatus}%</strong></div>
+            <div><span>{measuredMetricLabel} at data date</span><strong>{projectSummary.progress}%</strong></div>
+            <div><span>Planned at data date</span><strong>{projectSummary.plannedAtStatus}%</strong></div>
             <div><span>Schedule variance</span><strong className={projectSummary.variance < 0 ? "negative" : "positive"}>{projectSummary.variance > 0 ? "+" : ""}{projectSummary.variance} pt</strong></div>
             <div><span>Weight basis</span><strong>{planningModel === "normal" ? "Duration" : "Budget"}</strong></div>
           </div>
           {planningModel === "intensive" && tasks.some((task) => taskBudget(task) <= 0) && <div className="weight-warning">Cost-loaded mode requires a budget for every activity. Zero-budget rows receive 0% weight.</div>}
+          {planningModel === "intensive" && invalidEarnedHistoryCount > 0 && <div className="weight-warning">{invalidEarnedHistoryCount} activit{invalidEarnedHistoryCount === 1 ? "y has" : "ies have"} non-monotonic EV history or EV above budget. Review the affected status-date records before issue.</div>}
           {tasks.some((task) => task.actualEnd && task.actualEnd > project.statusDate) && <div className="weight-warning">An actual finish is later than the status date. Review actual dates before issue.</div>}
         </section>
 
-        <section className="schedule-panel">
+        <section className="schedule-panel no-print screen-only">
           <div className="panel-heading">
             <div><h2>Work breakdown & timeline</h2><p>Enter planned and actual dates. Weight and progress are calculated automatically from the selected model.</p></div>
             <div className="panel-actions no-print">
@@ -1164,7 +1665,7 @@ export default function TimelinePlannerWorkspace() {
                       <td data-label="Days"><input type="number" min="1" value={activity.duration} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "duration", Math.max(1, Number(event.target.value)))} aria-label={`Activity ${parentIndex}.${childIndex} duration`} /></td>
                       <td data-label="Owner"><input value={activity.owner} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "owner", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} owner`} /></td>
                       <td data-label="Depends"><input value={activity.dependency} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "dependency", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} dependency`} /></td>
-                      {planningModel === "intensive" && <td className="cost-cell" data-label="Budget / earned"><div className="money-editor"><label><span>Budget</span><input type="number" min="0" step="1000" value={taskBudget(activity)} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "budget", Math.max(0, Number(event.target.value)))} aria-label={`Activity ${parentIndex}.${childIndex} task budget`} /></label><label><span>EV @ {displayShortDate(project.statusDate)}</span><input type="number" min="0" max={taskBudget(activity)} step="1000" value={earnedValueAt(activity.id, actualSnapshots, project.statusDate)} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateEarnedValue(activity, Number(event.target.value))} aria-label={`Activity ${parentIndex}.${childIndex} certified earned value`} /></label></div></td>}
+                      {planningModel === "intensive" && <td className="cost-cell" data-label="Budget / earned"><div className="money-editor"><label className="earning-method-row"><span>Earn</span><select value={taskEarningMethod(activity)} disabled={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "earningMethod", event.target.value as EarningMethod)} aria-label={`Activity ${parentIndex}.${childIndex} earning method`}><option value="certified">Certified EV</option><option value="zero-hundred">0 / 100</option><option value="fifty-fifty">50 / 50</option><option value="level-of-effort">LOE linear</option></select></label><label><span>Budget</span><input type="number" min="0" step="1000" value={taskBudget(activity)} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateTaskBudget(activity, Number(event.target.value))} aria-label={`Activity ${parentIndex}.${childIndex} task budget`} /></label><label><span>EV @ {displayShortDate(project.statusDate)}</span><input type="number" min={taskEarningMethod(activity) === "certified" ? earnedValueBoundsAt(activity.id, actualSnapshots, project.statusDate, taskBudget(activity)).min : 0} max={taskEarningMethod(activity) === "certified" ? earnedValueBoundsAt(activity.id, actualSnapshots, project.statusDate, taskBudget(activity)).max : taskBudget(activity)} step="1000" value={taskEarnedValueAt(activity, actualSnapshots, project.statusDate, calendarMode)} readOnly={pdfPreview || taskEarningMethod(activity) !== "certified"} tabIndex={pdfPreview || taskEarningMethod(activity) !== "certified" ? -1 : undefined} onChange={(event) => updateEarnedValue(activity, Number(event.target.value))} aria-label={`Activity ${parentIndex}.${childIndex} ${taskEarningMethod(activity) === "certified" ? "certified" : "calculated"} earned value`} /></label></div></td>}
                       <td className="metric-cell" data-label="Auto weight / actual"><div className="auto-metrics"><span>W {(taskWeights.get(activity.id) ?? 0).toFixed(1)}%</span><strong>{Math.round(actualProgressMap.get(activity.id) ?? 0)}%</strong><i className="progress-track"><b style={{ width: `${actualProgressMap.get(activity.id) ?? 0}%` }} /></i></div></td>
                       <td className="no-print action-cell" data-label="Actions"><button type="button" className="row-action remove" title="Remove activity" aria-label={`Remove ${activity.description}`} onClick={() => removeActivity(activity.id)}>×</button></td>
                     </tr>
@@ -1180,10 +1681,11 @@ export default function TimelinePlannerWorkspace() {
           <span>End-date calculation is inclusive of the start date.</span>
         </footer>
         <footer className="print-footer" aria-label="PDF document footer">
-          <span>{company.name || "Company name"} / Controlled schedule</span>
-          <span>{project.code} / {project.revision}</span>
+          <span>{company.name || "Company name"} · Project controls</span>
+          <span>{project.name || "Untitled project"} • {project.revision}</span>
           <span>Issued {displayDate(project.issueDate)}</span>
         </footer>
+        </>}
       </section>
 
       {pendingDeleteGroup && <div className="confirm-backdrop no-print" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingDeleteGroup(null); }}>
