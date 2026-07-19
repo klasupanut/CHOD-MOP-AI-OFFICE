@@ -117,7 +117,7 @@ function scheduleNotifications(events: ScheduleEvent[], currentUser: Awaited<Ret
       detail: `${event.eventType} / ${event.location || "Related Site"} / ${dueWord(event.startAt)}`,
       href: "/calendar-schedule",
       tone: dueTone(event.startAt, event.status === "Delayed"),
-      meta: "Calendar / Schedule",
+      meta: "Calendar",
     }));
 }
 

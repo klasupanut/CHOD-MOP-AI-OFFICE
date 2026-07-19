@@ -389,9 +389,9 @@ export function ScheduleWorkspace({
       <div className="workspace-hero schedule-hero">
         <div>
           <span>TEAM OPERATION SCHEDULE</span>
-          <h1>Calendar / Schedule</h1>
+          <h1>Calendar</h1>
         </div>
-        <div className="schedule-live-pill"><CalendarClock size={18} /> Live Tasks / Projects + Schedule events</div>
+        <div className="schedule-live-pill"><CalendarClock size={18} /> Live Tasks / Projects + Calendar events</div>
       </div>
 
       <section className="schedule-kpi-row">

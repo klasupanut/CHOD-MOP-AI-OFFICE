@@ -28,7 +28,7 @@ const nav: Array<{ label: "Office" | "Planner" | ModulePermission; icon: LucideI
   { label: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { label: "Tasks", icon: ClipboardList, href: "/tasks" },
   { label: "Projects", icon: FolderKanban, href: "/projects", displayLabel: "Projects & Budgets" },
-  { label: "Calendar / Schedule", icon: CalendarDays, href: "/calendar-schedule" },
+  { label: "Calendar / Schedule", icon: CalendarDays, href: "/calendar-schedule", displayLabel: "Calendar" },
   { label: "Planner", icon: Workflow, href: "/planner" },
   { label: "PM Loop", icon: Gauge, pendingConnector: true },
   { label: "Renovation", icon: Wrench, pendingConnector: true },

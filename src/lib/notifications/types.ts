@@ -4,6 +4,6 @@ export type WorkspaceNotification = {
   detail: string;
   href: string;
   tone: "critical" | "warning" | "info";
-  meta: "Tasks" | "Projects" | "Calendar / Schedule" | "Approvals" | "Quotations";
+  meta: "Tasks" | "Projects" | "Calendar" | "Approvals" | "Quotations";
   badgeValue?: number;
 };

@@ -18,7 +18,7 @@ export const projectConnectors: ProjectConnector[] = [
   },
   {
     id: "calendar-schedule",
-    name: "Calendar / Schedule",
+    name: "Calendar",
     description: "Team calendar, site appointments, meetings, due dates, delay risk and upcoming milestones",
     type: "google-sheet",
     connectionReady: ["google-sheet", "api"],
