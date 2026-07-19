@@ -15,6 +15,9 @@ test("Planner runtime is cloud-only and contains no production mock project", as
   assert.match(source, /Connection error — Timeline cloud data was not loaded/);
   assert.match(source, /signature === savedPlanSignature/);
   assert.match(source, /if \(!cloudProjectId && isEmptyPlan\(planPayload\)\) return/);
+  assert.match(source, /function normalizeSavedPlan\(saved: SavedPlan\)/);
+  assert.match(source, /setSavedPlanSignature\(planSignature\(normalized\)\)/);
+  assert.doesNotMatch(source, /activePage !== "projects" \|\| projectLibraryState !== "idle"/);
 });
 
 test("Planner organization is fixed to Timeline production tenant", async () => {

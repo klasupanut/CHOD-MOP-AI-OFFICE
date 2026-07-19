@@ -131,6 +131,23 @@ function planSignature(plan: SavedPlan) {
   });
 }
 
+function normalizeSavedPlan(saved: SavedPlan): SavedPlan {
+  const calendarMode = saved.calendarMode || "calendar";
+  return {
+    project: { ...initialProject, ...saved.project },
+    company: saved.company,
+    activities: Array.isArray(saved.activities) ? migrateActivities(saved.activities, calendarMode) : [],
+    actualSnapshots: Array.isArray(saved.actualSnapshots) ? saved.actualSnapshots : [],
+    calendarMode,
+    planningModel: saved.planningModel || "normal",
+    curveView: saved.curveView || "compare",
+    showCurve: saved.showCurve !== false,
+    includeCurvePdf: saved.includeCurvePdf !== false,
+    showStatusDate: saved.showStatusDate !== false,
+    pdfOrientation: saved.pdfOrientation === "portrait" ? "portrait" : "landscape",
+  };
+}
+
 function ProjectLibrary({
   projects,
   state,
@@ -680,17 +697,18 @@ export default function TimelinePlannerWorkspace() {
     let cancelled = false;
 
     const applyCloudPlan = (saved: SavedPlan) => {
-      const savedCalendar = saved.calendarMode || "calendar";
-      setProject({ ...initialProject, ...saved.project });
-      setActivities(Array.isArray(saved.activities) ? migrateActivities(saved.activities, savedCalendar) : []);
-      setActualSnapshots(Array.isArray(saved.actualSnapshots) ? saved.actualSnapshots : []);
-      setCalendarMode(savedCalendar);
-      setPlanningModel(saved.planningModel || "normal");
-      setCurveView(saved.curveView || "compare");
-      setShowCurve(saved.showCurve !== false);
-      setIncludeCurvePdf(saved.includeCurvePdf !== false);
-      setShowStatusDate(saved.showStatusDate !== false);
-      setPdfOrientation(saved.pdfOrientation === "portrait" ? "portrait" : "landscape");
+      const normalized = normalizeSavedPlan(saved);
+      setProject(normalized.project);
+      setActivities(normalized.activities);
+      setActualSnapshots(normalized.actualSnapshots ?? []);
+      setCalendarMode(normalized.calendarMode);
+      setPlanningModel(normalized.planningModel || "normal");
+      setCurveView(normalized.curveView || "compare");
+      setShowCurve(normalized.showCurve);
+      setIncludeCurvePdf(normalized.includeCurvePdf);
+      setShowStatusDate(normalized.showStatusDate !== false);
+      setPdfOrientation(normalized.pdfOrientation === "portrait" ? "portrait" : "landscape");
+      return normalized;
     };
 
     const hydrate = async () => {
@@ -710,8 +728,10 @@ export default function TimelinePlannerWorkspace() {
         if (cancelled) return;
 
         if (record.data) {
-          applyCloudPlan(record.data);
-          setSavedPlanSignature(planSignature(record.data));
+          const normalized = applyCloudPlan(record.data);
+          // Match the signature to the exact normalized state applied above so
+          // initial hydration never writes a schema-normalized copy back to cloud.
+          setSavedPlanSignature(planSignature(normalized));
         } else {
           setProject(createFreshProject());
           setActivities([]);
@@ -878,7 +898,7 @@ export default function TimelinePlannerWorkspace() {
   }, [hydrated, planStorageMode, usageRefreshToken]);
 
   useEffect(() => {
-    if (!hydrated || planStorageMode !== "cloud" || activePage !== "projects" || projectLibraryState !== "idle") return;
+    if (!hydrated || planStorageMode !== "cloud" || activePage !== "projects") return;
     const controller = new AbortController();
     setProjectLibraryState("loading");
     fetch("/api/planner/projects", {
@@ -897,7 +917,7 @@ export default function TimelinePlannerWorkspace() {
         setProjectLibraryState("error");
       });
     return () => controller.abort();
-  }, [activePage, hydrated, planStorageMode, projectLibraryState]);
+  }, [activePage, hydrated, planStorageMode]);
 
   const groups = useMemo(() => activities.filter((activity) => activity.kind === "group"), [activities]);
   const tasks = useMemo(() => activities.filter((activity) => activity.kind === "task"), [activities]);
@@ -948,16 +968,15 @@ export default function TimelinePlannerWorkspace() {
 
   const applyProjectRecord = (record: TenantPlanRecord) => {
     if (!record.data) return false;
-    const saved = record.data;
-    const savedCalendar = saved.calendarMode || "calendar";
-    setProject({ ...initialProject, ...saved.project });
-    setActivities(migrateActivities(saved.activities || [], savedCalendar));
+    const saved = normalizeSavedPlan(record.data);
+    setProject(saved.project);
+    setActivities(saved.activities);
     setActualSnapshots(saved.actualSnapshots || []);
-    setCalendarMode(savedCalendar);
+    setCalendarMode(saved.calendarMode);
     setPlanningModel(saved.planningModel || "normal");
     setCurveView(saved.curveView || "compare");
-    setShowCurve(saved.showCurve !== false);
-    setIncludeCurvePdf(saved.includeCurvePdf !== false);
+    setShowCurve(saved.showCurve);
+    setIncludeCurvePdf(saved.includeCurvePdf);
     setShowStatusDate(saved.showStatusDate !== false);
     setPdfOrientation(saved.pdfOrientation === "portrait" ? "portrait" : "landscape");
     setCloudProjectId(record.projectId);
