@@ -1,7 +1,7 @@
 import type { CloudflareFreeMetric, CloudflareFreeTierTelemetry } from "@/lib/planner/cloudflare-telemetry";
 import type { UsageLevel, WorkspaceUsageMetric, WorkspaceUsageSummary } from "@/lib/planner/usage-guard";
 
-export type UsageLoadState = "loading" | "ready" | "local" | "error";
+export type UsageLoadState = "loading" | "ready" | "error";
 export type WorkspaceUsagePayload = WorkspaceUsageSummary & { cloudflare?: CloudflareFreeTierTelemetry };
 
 type Props = {
@@ -64,20 +64,13 @@ function UsageProgress({ label, percent, level }: { label: string; percent: numb
   return <div className={`usage-page-progress level-${level}`} role="progressbar" aria-label={`${label} usage`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.round(percent))}><i style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} /></div>;
 }
 
-function WorkspaceMetricCard({ metric, local }: { metric: WorkspaceUsageMetric; local: boolean }) {
-  const detail = local
-    ? metric.key === "projects"
-      ? "Saved timeline projects in this browser"
-      : metric.key === "members"
-        ? "Current signed-in browser profile"
-        : "Planner records and imported logo data"
-    : workspaceMetricDetail[metric.key];
+function WorkspaceMetricCard({ metric }: { metric: WorkspaceUsageMetric }) {
   return <article className={`usage-overview-item level-${metric.level}`}>
     <div className="usage-overview-index" aria-hidden="true">{metric.key === "projects" ? "01" : metric.key === "members" ? "02" : "03"}</div>
     <div className="usage-overview-copy">
       <span>{metric.label}</span>
       <strong>{formatMetricValue(metric)}</strong>
-      <small>{detail}</small>
+      <small>{workspaceMetricDetail[metric.key]}</small>
       <UsageProgress label={metric.label} percent={metric.percent} level={metric.level} />
       <div className="usage-overview-foot"><b>{percentLabel(metric.percent)} used</b><span>{metric.unit === "bytes" ? formatBytes(metric.remaining) : metric.remaining.toLocaleString("en-US")} remaining</span></div>
     </div>
@@ -96,9 +89,7 @@ function PlatformMetricRow({ metric }: { metric: CloudflareFreeMetric }) {
 function UsageConnectionState({ state }: { state: Exclude<UsageLoadState, "ready"> }) {
   const content = state === "loading"
     ? { title: "Loading workspace usage", message: "Reading D1, R2 and Cloudflare Analytics data." }
-    : state === "local"
-      ? { title: "Local draft mode", message: "Cloud quota monitoring activates after Cloudflare Access and D1 are connected." }
-      : { title: "Usage unavailable", message: "The plan stays editable. Refresh after checking the Cloudflare connection." };
+    : { title: "Usage unavailable", message: "Refresh after checking the secure Timeline cloud connection." };
   return <section className={`usage-page-empty usage-page-empty-${state}`} role="status"><span className="usage-page-empty-mark" aria-hidden="true" /><div><h2>{content.title}</h2><p>{content.message}</p></div></section>;
 }
 
@@ -108,7 +99,6 @@ export function WorkspaceUsageDashboard({ usageState, workspaceUsage, combinedLe
   }
 
   const cloudflareUsage = workspaceUsage.cloudflare;
-  const local = workspaceUsage.source === "browser-local-storage";
   const updatedAt = new Date(workspaceUsage.measuredAt).toLocaleString([], { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   return <div className="workspace-usage-page">
@@ -118,18 +108,15 @@ export function WorkspaceUsageDashboard({ usageState, workspaceUsage, combinedLe
     </section>
 
     <section className="usage-page-section" aria-labelledby="workspace-capacity-title">
-      <header className="usage-page-section-heading"><div><h2 id="workspace-capacity-title">Workspace capacity</h2><p>{local ? "Current Planner records stored safely in this browser." : "Current tenant records and active file storage against the internal free plan."}</p></div></header>
-      <div className="usage-overview-grid">{workspaceUsage.metrics.map((metric) => <WorkspaceMetricCard metric={metric} local={local} key={metric.key} />)}</div>
+      <header className="usage-page-section-heading"><div><h2 id="workspace-capacity-title">Workspace capacity</h2><p>Current tenant records and active file storage against the internal free plan.</p></div></header>
+      <div className="usage-overview-grid">{workspaceUsage.metrics.map((metric) => <WorkspaceMetricCard metric={metric} key={metric.key} />)}</div>
       <p className={`usage-page-callout usage-${workspaceUsage.overallLevel}`} role={workspaceUsage.overallLevel === "critical" || workspaceUsage.overallLevel === "blocked" ? "alert" : "status"}>{workspaceUsage.message}</p>
     </section>
 
-    {local ? <section className="usage-page-section" aria-labelledby="platform-limits-title">
-      <header className="usage-page-section-heading"><div><h2 id="platform-limits-title">Cloud workspace</h2><p>Storage mode used by this embedded Planner.</p></div></header>
-      <div className="usage-page-inline-state" role="status"><strong>Browser storage active</strong><p>Plans autosave on this device. Use Backup JSON before changing device or clearing browser data; Cloudflare D1/R2 is not used by this Planner module.</p></div>
-    </section> : <section className="usage-page-section" aria-labelledby="platform-limits-title">
+    <section className="usage-page-section" aria-labelledby="platform-limits-title">
       <header className="usage-page-section-heading"><div><h2 id="platform-limits-title">Cloudflare Free limits</h2><p>Detailed platform estimates for Workers, D1 and R2.</p></div>{cloudflareUsage?.state === "ready" ? <strong className={`usage-section-status level-${cloudflareUsage.overallLevel}`}>{levelLabel[cloudflareUsage.overallLevel]}</strong> : null}</header>
       {cloudflareUsage?.state === "ready" ? <><div className="usage-platform-grid">{cloudflareUsage.metrics.map((metric) => <PlatformMetricRow metric={metric} key={metric.key} />)}</div><p className={`usage-page-callout usage-${cloudflareUsage.overallLevel}`} role={cloudflareUsage.overallLevel === "critical" || cloudflareUsage.overallLevel === "blocked" ? "alert" : "status"}>{cloudflareUsage.message}</p></> : <div className="usage-page-inline-state" role="status"><strong>{cloudflareUsage?.state === "unavailable" ? "Analytics unavailable" : "Optional setup"}</strong><p>{cloudflareUsage?.message ?? "Add read-only Account Analytics credentials to display platform usage."}</p></div>}
-    </section>}
+    </section>
 
     <div className="usage-page-reference-grid">
       <section className="usage-page-section usage-thresholds" aria-labelledby="usage-thresholds-title">
@@ -138,7 +125,7 @@ export function WorkspaceUsageDashboard({ usageState, workspaceUsage, combinedLe
       </section>
       <section className="usage-page-section usage-data-sources" aria-labelledby="usage-data-title">
         <header className="usage-page-section-heading"><div><h2 id="usage-data-title">Data sources</h2><p>How each usage figure is measured.</p></div></header>
-        {local ? <ul><li><strong>Project index</strong><span>Counts valid Planner projects saved by this browser.</span></li><li><strong>Local storage</strong><span>Measures Planner records, settings and imported logo data only.</span></li><li><strong>Signed-in profile</strong><span>Represents the current authenticated browser workspace.</span></li></ul> : <ul><li><strong>D1 counts</strong><span>Projects, members, rows and database storage from the tenant account.</span></li><li><strong>R2 ledger</strong><span>Active file records and current object storage usage.</span></li><li><strong>Cloudflare Analytics</strong><span>Platform values are estimates and may lag behind the dashboard.</span></li></ul>}
+        <ul><li><strong>D1 counts</strong><span>Projects, members, rows and database storage from the tenant account.</span></li><li><strong>R2 ledger</strong><span>Active file records and current object storage usage.</span></li><li><strong>Cloudflare Analytics</strong><span>Platform values are estimates and may lag behind the dashboard.</span></li></ul>
         {cloudflareUsage?.state === "ready" ? <small className="usage-page-disclaimer">{cloudflareUsage.disclaimer}</small> : null}
       </section>
     </div>

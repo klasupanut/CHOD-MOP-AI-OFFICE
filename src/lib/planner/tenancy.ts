@@ -1,4 +1,4 @@
-export const TENANT_STATE_VERSION = 4;
+export const TENANT_STATE_VERSION = 5;
 
 export type TenantReference = {
   id: string;
@@ -15,9 +15,9 @@ export type TenantPlanEnvelope<T> = {
 };
 
 export const CHOD_ORGANIZATION: TenantReference = {
-  id: "org-chod-mop-office",
-  slug: "chod-mop-office",
-  name: "CHOD MOP OFFICE",
+  id: "org-chod-ai-office",
+  slug: "chod-ai-office",
+  name: "CHOD AI OFFICE",
 };
 
 export const DEFAULT_LOCAL_PROJECT_ID = "project-local-primary";

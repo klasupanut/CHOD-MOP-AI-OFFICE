@@ -6,14 +6,9 @@ import {
   CHOD_ORGANIZATION,
   DEFAULT_LOCAL_PROJECT_ID,
   createTenantPlanEnvelope,
-  isTenantPlanEnvelope,
   tenantStorageKey,
 } from "@/lib/planner/tenancy";
-import {
-  DEFAULT_INTERNAL_PLAN_LIMITS,
-  buildWorkspaceUsageSummary,
-  type UsageLevel,
-} from "@/lib/planner/usage-guard";
+import type { UsageLevel } from "@/lib/planner/usage-guard";
 import {
   DAY_MS,
   distributedProgressRatio,
@@ -41,7 +36,7 @@ import type {
   TenantProjectSummary,
 } from "@/lib/planner/plan-contract";
 
-type PlanStorageMode = "loading" | "cloud" | "local" | "error";
+type PlanStorageMode = "loading" | "cloud" | "error";
 type ActiveWorkspacePage = "plan" | "projects" | "usage";
 type ProjectLibraryState = "idle" | "loading" | "ready" | "error";
 
@@ -62,18 +57,10 @@ type TimelineChartRow = {
   kind: "group" | "task";
 };
 
-const LEGACY_STORAGE_KEY = "timeline-plan-creator-v3";
-const OBSOLETE_STORAGE_KEYS = [
-  LEGACY_STORAGE_KEY,
-  "timeline-plan-creator-v4:org-chod-ai-office:project-local-primary",
-];
 const STORAGE_KEY = tenantStorageKey(
   CHOD_ORGANIZATION.id,
   DEFAULT_LOCAL_PROJECT_ID,
 );
-const PROJECT_INDEX_KEY = `timeline-plan-creator-project-index:${CHOD_ORGANIZATION.id}`;
-const ACTIVE_PROJECT_KEY = `timeline-plan-creator-active-project:${CHOD_ORGANIZATION.id}`;
-const LOCAL_PLANNER_STORAGE_LIMIT_BYTES = 5_000_000;
 
 const initialProject: ProjectMeta = {
   name: "",
@@ -129,108 +116,19 @@ function companyProfileSignature(company: Pick<CompanyProfile, "name" | "locatio
   return JSON.stringify([company.name.trim(), company.location.trim()]);
 }
 
-function createLocalProjectId() {
-  const suffix = typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  return `project-local-${suffix}`;
-}
-
-function localProjectIds(storage: Storage) {
-  let ids: string[] = [];
-  try {
-    const parsed = JSON.parse(storage.getItem(PROJECT_INDEX_KEY) || "[]") as unknown;
-    if (Array.isArray(parsed)) ids = parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
-  } catch {
-    ids = [];
-  }
-  if (storage.getItem(STORAGE_KEY) && !ids.includes(DEFAULT_LOCAL_PROJECT_ID)) ids.push(DEFAULT_LOCAL_PROJECT_ID);
-  return [...new Set(ids)];
-}
-
-function readLocalProject(storage: Storage, projectId: string): TenantPlanRecord | null {
-  const raw = storage.getItem(tenantStorageKey(CHOD_ORGANIZATION.id, projectId));
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const candidate = isTenantPlanEnvelope<SavedPlan>(parsed)
-      ? parsed.data
-      : parsed && typeof parsed === "object" && "data" in parsed
-        ? (parsed as { data: SavedPlan }).data
-        : parsed as SavedPlan;
-    if (!candidate || typeof candidate !== "object" || !candidate.project || !Array.isArray(candidate.activities)) return null;
-    const savedAt = parsed && typeof parsed === "object" && "savedAt" in parsed && typeof (parsed as { savedAt?: unknown }).savedAt === "string"
-      ? (parsed as { savedAt: string }).savedAt
-      : new Date().toISOString();
-    return { projectId, savedAt, data: candidate };
-  } catch {
-    return null;
-  }
-}
-
-function saveLocalProject(storage: Storage, projectId: string, plan: SavedPlan) {
-  const envelope = createTenantPlanEnvelope(CHOD_ORGANIZATION, projectId, plan);
-  storage.setItem(tenantStorageKey(CHOD_ORGANIZATION.id, projectId), JSON.stringify(envelope));
-  const ids = localProjectIds(storage);
-  if (!ids.includes(projectId)) ids.push(projectId);
-  storage.setItem(PROJECT_INDEX_KEY, JSON.stringify(ids));
-  storage.setItem(ACTIVE_PROJECT_KEY, projectId);
-  return envelope;
-}
-
-function removeLocalProject(storage: Storage, projectId: string) {
-  storage.removeItem(tenantStorageKey(CHOD_ORGANIZATION.id, projectId));
-  storage.setItem(PROJECT_INDEX_KEY, JSON.stringify(localProjectIds(storage).filter((id) => id !== projectId)));
-  if (storage.getItem(ACTIVE_PROJECT_KEY) === projectId) storage.removeItem(ACTIVE_PROJECT_KEY);
-}
-
-function listLocalProjects(storage: Storage): TenantProjectSummary[] {
-  return localProjectIds(storage)
-    .map((id) => readLocalProject(storage, id))
-    .filter((record): record is TenantPlanRecord & { projectId: string; data: SavedPlan } => Boolean(record?.projectId && record.data))
-    .map((record) => ({
-      id: record.projectId,
-      name: record.data.project.name,
-      client: record.data.project.client,
-      location: record.data.project.location,
-      status: record.data.activities.length > 0 ? "active" as const : "draft" as const,
-      activityCount: record.data.activities.filter((activity) => activity.kind === "task").length,
-      baselineDate: record.data.project.baselineDate,
-      statusDate: record.data.project.statusDate,
-      updatedAt: record.savedAt || new Date().toISOString(),
-    }))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-}
-
-function plannerLocalStorageBytes(storage: Storage) {
-  let bytes = 0;
-  for (let index = 0; index < storage.length; index += 1) {
-    const key = storage.key(index);
-    if (!key?.startsWith("timeline-plan-creator")) continue;
-    const value = storage.getItem(key) || "";
-    // localStorage is typically accounted as UTF-16, so use two bytes per code unit.
-    bytes += (key.length + value.length) * 2;
-  }
-  return bytes;
-}
-
-function buildLocalWorkspaceUsage(storage: Storage): WorkspaceUsagePayload {
-  return buildWorkspaceUsageSummary(
-    {
-      projects: listLocalProjects(storage).length,
-      members: 1,
-      storageBytes: plannerLocalStorageBytes(storage),
-    },
-    {
-      ...DEFAULT_INTERNAL_PLAN_LIMITS,
-      storageBytes: LOCAL_PLANNER_STORAGE_LIMIT_BYTES,
-    },
-    {
-      planCode: "browser_local",
-      planLabel: "Browser Local",
-      source: "browser-local-storage",
-    },
-  );
+function planSignature(plan: SavedPlan) {
+  return JSON.stringify({
+    project: plan.project,
+    activities: plan.activities ?? [],
+    actualSnapshots: plan.actualSnapshots ?? [],
+    calendarMode: plan.calendarMode || "calendar",
+    planningModel: plan.planningModel || "normal",
+    curveView: plan.curveView || "compare",
+    showCurve: plan.showCurve !== false,
+    includeCurvePdf: plan.includeCurvePdf !== false,
+    showStatusDate: plan.showStatusDate !== false,
+    pdfOrientation: plan.pdfOrientation === "portrait" ? "portrait" : "landscape",
+  });
 }
 
 function ProjectLibrary({
@@ -746,6 +644,7 @@ export default function TimelinePlannerWorkspace() {
   const [hydrated, setHydrated] = useState(false);
   const [planStorageMode, setPlanStorageMode] = useState<PlanStorageMode>("loading");
   const [cloudProjectId, setCloudProjectId] = useState<string | null>(null);
+  const [savedPlanSignature, setSavedPlanSignature] = useState("");
   const [savedCompanySignature, setSavedCompanySignature] = useState("");
   const [workspaceUsage, setWorkspaceUsage] = useState<WorkspaceUsagePayload | null>(null);
   const [usageState, setUsageState] = useState<UsageLoadState>("loading");
@@ -759,10 +658,6 @@ export default function TimelinePlannerWorkspace() {
     const syncPageFromHash = () => {
       const page = window.location.hash === "#workspace-usage" ? "usage" : window.location.hash === "#projects" ? "projects" : "plan";
       setActivePage(page);
-      if (page === "projects") {
-        setProjectLibrary(listLocalProjects(window.localStorage));
-        setProjectLibraryState("ready");
-      }
     };
     const frame = window.requestAnimationFrame(syncPageFromHash);
     window.addEventListener("hashchange", syncPageFromHash);
@@ -782,15 +677,11 @@ export default function TimelinePlannerWorkspace() {
   }, [mobileMenuOpen]);
 
   useEffect(() => {
-    const applyPlan = (saved: SavedPlan) => {
-      const mergedProject = { ...initialProject, ...saved.project };
+    let cancelled = false;
+
+    const applyCloudPlan = (saved: SavedPlan) => {
       const savedCalendar = saved.calendarMode || "calendar";
-      setProject(mergedProject);
-      setCompany({
-        ...initialCompany,
-        ...saved.company,
-        logoDataUrl: saved.company?.logoDataUrl || initialCompany.logoDataUrl,
-      });
+      setProject({ ...initialProject, ...saved.project });
       setActivities(Array.isArray(saved.activities) ? migrateActivities(saved.activities, savedCalendar) : []);
       setActualSnapshots(Array.isArray(saved.actualSnapshots) ? saved.actualSnapshots : []);
       setCalendarMode(savedCalendar);
@@ -802,72 +693,78 @@ export default function TimelinePlannerWorkspace() {
       setPdfOrientation(saved.pdfOrientation === "portrait" ? "portrait" : "landscape");
     };
 
-    const storage = window.localStorage;
-    let projectId = storage.getItem(ACTIVE_PROJECT_KEY) || DEFAULT_LOCAL_PROJECT_ID;
-    let record = readLocalProject(storage, projectId);
-    if (!record && projectId !== DEFAULT_LOCAL_PROJECT_ID) {
-      projectId = DEFAULT_LOCAL_PROJECT_ID;
-      record = readLocalProject(storage, projectId);
-    }
-
-    if (!record) {
-      for (const legacyKey of OBSOLETE_STORAGE_KEYS) {
-        const raw = storage.getItem(legacyKey);
-        if (!raw) continue;
-        try {
-          const parsed = JSON.parse(raw) as SavedPlan | { data?: SavedPlan };
-          const legacyPlan = parsed && typeof parsed === "object" && "data" in parsed ? parsed.data : parsed as SavedPlan;
-          if (legacyPlan?.project && Array.isArray(legacyPlan.activities)) {
-            record = { projectId: DEFAULT_LOCAL_PROJECT_ID, savedAt: new Date().toISOString(), data: legacyPlan };
-            projectId = DEFAULT_LOCAL_PROJECT_ID;
-            break;
-          }
-        } catch {
-          // Keep a malformed legacy value untouched so the user can recover it manually.
+    const hydrate = async () => {
+      try {
+        const [planResponse, companyResponse] = await Promise.all([
+          fetch("/api/planner/plan", { cache: "no-store", credentials: "same-origin" }),
+          fetch("/api/planner/company-profile", { cache: "no-store", credentials: "same-origin" }),
+        ]);
+        if (!planResponse.ok || !companyResponse.ok) {
+          throw new Error("Timeline cloud workspace is unavailable.");
         }
+
+        const [record, companyRecord] = await Promise.all([
+          planResponse.json() as Promise<TenantPlanRecord>,
+          companyResponse.json() as Promise<TenantCompanyProfileRecord>,
+        ]);
+        if (cancelled) return;
+
+        if (record.data) {
+          applyCloudPlan(record.data);
+          setSavedPlanSignature(planSignature(record.data));
+        } else {
+          setProject(createFreshProject());
+          setActivities([]);
+          setActualSnapshots([]);
+          setSavedPlanSignature("");
+        }
+
+        const cloudCompany = {
+          ...initialCompany,
+          ...companyRecord.company,
+          logoDataUrl: companyRecord.company.logoDataUrl || initialCompany.logoDataUrl,
+        };
+        setCompany(cloudCompany);
+        setSavedCompanySignature(companyProfileSignature(cloudCompany));
+        setCloudProjectId(record.projectId);
+        setPlanStorageMode("cloud");
+        setSavedLabel(record.projectId ? "Cloud plan loaded" : "Cloud workspace ready");
+        setHydrated(true);
+      } catch {
+        if (cancelled) return;
+        setPlanStorageMode("error");
+        setSavedLabel("Connection error — Timeline cloud data was not loaded");
+        setHydrated(true);
       }
-    }
+    };
 
-    if (record?.data) {
-      applyPlan(record.data);
-      setSavedCompanySignature(companyProfileSignature({ ...initialCompany, ...record.data.company }));
-      setSavedLabel("Local project loaded");
-    } else {
-      setProject(createFreshProject());
-      setSavedLabel("Local workspace ready");
-    }
-
-    setCloudProjectId(projectId);
-    storage.setItem(ACTIVE_PROJECT_KEY, projectId);
-    setPlanStorageMode("local");
-    setUsageState("local");
-    setHydrated(true);
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (!hydrated || planStorageMode === "loading") return;
+    if (!hydrated || planStorageMode !== "cloud") return;
     const cachedPayload: SavedPlan = { project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation };
-    const projectId = cloudProjectId ?? DEFAULT_LOCAL_PROJECT_ID;
-    const saved = window.setTimeout(() => {
-      try {
-        saveLocalProject(window.localStorage, projectId, cachedPayload);
-        if (activePage === "projects") {
-          setProjectLibrary(listLocalProjects(window.localStorage));
-          setProjectLibraryState("ready");
-        }
-        if (activePage === "usage") setUsageRefreshToken((value) => value + 1);
-        setSavedLabel(`Saved locally ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
-      } catch {
-        setSavedLabel("Local save failed — reduce the imported logo size or download a JSON backup");
-      }
-    }, 180);
-    return () => window.clearTimeout(saved);
-  }, [project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation, hydrated, planStorageMode, cloudProjectId, activePage]);
+    const envelope = createTenantPlanEnvelope(
+      CHOD_ORGANIZATION,
+      cloudProjectId ?? DEFAULT_LOCAL_PROJECT_ID,
+      cachedPayload,
+    );
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+    } catch {
+      // Offline cache is best-effort only. Cloud remains the source of truth.
+    }
+  }, [project, company, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation, hydrated, planStorageMode, cloudProjectId]);
 
   useEffect(() => {
     if (!hydrated || planStorageMode !== "cloud") return;
     const planPayload: SavedPlan = { project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation };
     if (!cloudProjectId && isEmptyPlan(planPayload)) return;
+    const signature = planSignature(planPayload);
+    if (signature === savedPlanSignature) return;
 
     const saving = window.setTimeout(
       () => setSavedLabel("Syncing plan to Cloudflare..."),
@@ -876,7 +773,7 @@ export default function TimelinePlannerWorkspace() {
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       try {
-        const response = await fetch("/api/tenant/plan", {
+        const response = await fetch("/api/planner/plan", {
           method: "PUT",
           cache: "no-store",
           credentials: "same-origin",
@@ -887,11 +784,12 @@ export default function TimelinePlannerWorkspace() {
         if (!response.ok) throw new Error("Cloud sync failed.");
         const record = (await response.json()) as TenantPlanRecord;
         setCloudProjectId(record.projectId);
+        setSavedPlanSignature(signature);
         setSavedLabel(`Cloud synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
         setUsageRefreshToken((value) => value + 1);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setSavedLabel("Cloud sync unavailable — local cache saved");
+        setSavedLabel("Connection error — cloud save failed; offline cache was updated");
       }
     }, 650);
     return () => {
@@ -899,7 +797,7 @@ export default function TimelinePlannerWorkspace() {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation, hydrated, planStorageMode, cloudProjectId]);
+  }, [project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation, hydrated, planStorageMode, cloudProjectId, savedPlanSignature]);
 
   useEffect(() => {
     if (!hydrated || planStorageMode !== "cloud") return;
@@ -916,7 +814,7 @@ export default function TimelinePlannerWorkspace() {
     );
     const timeout = window.setTimeout(async () => {
       try {
-        const response = await fetch("/api/tenant/company-profile", {
+        const response = await fetch("/api/planner/company-profile", {
           method: "PUT",
           cache: "no-store",
           credentials: "same-origin",
@@ -936,7 +834,7 @@ export default function TimelinePlannerWorkspace() {
         setSavedLabel(`Company profile synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setSavedLabel("Company profile sync unavailable — local cache saved");
+        setSavedLabel("Connection error — company profile was not saved to Timeline cloud");
       }
     }, 650);
 
@@ -957,15 +855,49 @@ export default function TimelinePlannerWorkspace() {
   }, [pdfPreview]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    try {
-      setWorkspaceUsage(buildLocalWorkspaceUsage(window.localStorage));
-      setUsageState("ready");
-    } catch {
-      setWorkspaceUsage(null);
-      setUsageState("error");
-    }
-  }, [hydrated, usageRefreshToken]);
+    if (!hydrated || planStorageMode !== "cloud") return;
+    const controller = new AbortController();
+    setUsageState("loading");
+    fetch("/api/planner/usage", {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Workspace usage is unavailable.");
+        const usage = (await response.json()) as WorkspaceUsagePayload;
+        setWorkspaceUsage(usage);
+        setUsageState("ready");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setWorkspaceUsage(null);
+        setUsageState("error");
+      });
+    return () => controller.abort();
+  }, [hydrated, planStorageMode, usageRefreshToken]);
+
+  useEffect(() => {
+    if (!hydrated || planStorageMode !== "cloud" || activePage !== "projects" || projectLibraryState !== "idle") return;
+    const controller = new AbortController();
+    setProjectLibraryState("loading");
+    fetch("/api/planner/projects", {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Project library unavailable");
+        const payload = await response.json() as { projects: TenantProjectSummary[] };
+        setProjectLibrary(payload.projects);
+        setProjectLibraryState("ready");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setProjectLibraryState("error");
+      });
+    return () => controller.abort();
+  }, [activePage, hydrated, planStorageMode, projectLibraryState]);
 
   const groups = useMemo(() => activities.filter((activity) => activity.kind === "group"), [activities]);
   const tasks = useMemo(() => activities.filter((activity) => activity.kind === "task"), [activities]);
@@ -1028,15 +960,22 @@ export default function TimelinePlannerWorkspace() {
     setIncludeCurvePdf(saved.includeCurvePdf !== false);
     setShowStatusDate(saved.showStatusDate !== false);
     setPdfOrientation(saved.pdfOrientation === "portrait" ? "portrait" : "landscape");
-    if (saved.company) setCompany((current) => ({ ...current, ...saved.company, logoDataUrl: saved.company?.logoDataUrl || current.logoDataUrl }));
     setCloudProjectId(record.projectId);
+    setSavedPlanSignature(planSignature(saved));
     return true;
   };
 
   const loadProjectLibrary = async () => {
+    if (planStorageMode !== "cloud") {
+      setProjectLibraryState("error");
+      return;
+    }
     setProjectLibraryState("loading");
     try {
-      setProjectLibrary(listLocalProjects(window.localStorage));
+      const response = await fetch("/api/planner/projects", { cache: "no-store", credentials: "same-origin" });
+      if (!response.ok) throw new Error("Project library unavailable");
+      const payload = await response.json() as { projects: TenantProjectSummary[] };
+      setProjectLibrary(payload.projects);
       setProjectLibraryState("ready");
     } catch {
       setProjectLibraryState("error");
@@ -1054,9 +993,8 @@ export default function TimelinePlannerWorkspace() {
     setIncludeCurvePdf(true);
     setShowStatusDate(true);
     setPdfOrientation("landscape");
-    const projectId = createLocalProjectId();
-    window.localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
-    setCloudProjectId(projectId);
+    setCloudProjectId(null);
+    setSavedPlanSignature("");
     setSavedLabel("New project ready — enter a project name to save");
     openWorkspacePage("plan");
   };
@@ -1066,13 +1004,13 @@ export default function TimelinePlannerWorkspace() {
       openWorkspacePage("plan");
       return;
     }
-    setSavedLabel("Opening local project...");
+    setSavedLabel("Opening cloud project...");
     try {
-      const record = readLocalProject(window.localStorage, projectId);
-      if (!record) throw new Error("Could not open this project");
+      const response = await fetch(`/api/planner/plan?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store", credentials: "same-origin" });
+      if (!response.ok) throw new Error("Could not open this project");
+      const record = await response.json() as TenantPlanRecord;
       if (!applyProjectRecord(record)) throw new Error("Project has no plan data");
-      window.localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
-      setSavedLabel("Local project loaded");
+      setSavedLabel("Cloud project loaded");
       openWorkspacePage("plan");
     } catch (error) {
       setSavedLabel(error instanceof Error ? error.message : "Could not open this project");
@@ -1135,13 +1073,14 @@ export default function TimelinePlannerWorkspace() {
       input.value = "";
 
       if (planStorageMode !== "cloud") {
-        setLogoMessage(`${file.name} imported and saved locally`);
+        setCompany((current) => ({ ...current, logoDataUrl: previousLogo }));
+        setLogoMessage("Connection error — logo upload requires Timeline cloud");
         return;
       }
 
       setLogoMessage(`Uploading ${file.name} to Cloudflare...`);
       try {
-        const response = await fetch("/api/tenant/company-logo", {
+        const response = await fetch("/api/planner/company-logo", {
           method: "PUT",
           cache: "no-store",
           credentials: "same-origin",
@@ -1173,13 +1112,14 @@ export default function TimelinePlannerWorkspace() {
     const previousLogo = company.logoDataUrl;
     setCompany((current) => ({ ...current, logoDataUrl: initialCompany.logoDataUrl }));
     if (planStorageMode !== "cloud") {
-      setLogoMessage("Custom logo removed - default logo restored");
+      setCompany((current) => ({ ...current, logoDataUrl: previousLogo }));
+      setLogoMessage("Connection error — logo removal requires Timeline cloud");
       return;
     }
 
     setLogoMessage("Removing logo from Cloudflare...");
     try {
-      const response = await fetch("/api/tenant/company-logo", {
+      const response = await fetch("/api/planner/company-logo", {
         method: "DELETE",
         cache: "no-store",
         credentials: "same-origin",
@@ -1269,23 +1209,37 @@ export default function TimelinePlannerWorkspace() {
 
   const clearPlan = async () => {
     if (!window.confirm("Clear this plan and remove its timeline data? This cannot be undone.")) return;
-    removeLocalProject(window.localStorage, cloudProjectId ?? DEFAULT_LOCAL_PROJECT_ID);
-    const nextProjectId = createLocalProjectId();
-    window.localStorage.setItem(ACTIVE_PROJECT_KEY, nextProjectId);
-    setProject(createFreshProject());
-    setActivities([]);
-    setActualSnapshots([]);
-    setCalendarMode("calendar");
-    setPlanningModel("normal");
-    setCurveView("compare");
-    setShowCurve(true);
-    setIncludeCurvePdf(true);
-    setShowStatusDate(true);
-    setPdfOrientation("landscape");
-    setCloudProjectId(nextProjectId);
-    setProjectLibrary(listLocalProjects(window.localStorage));
-    setSavedLabel("Local workspace cleared");
-    setUsageRefreshToken((value) => value + 1);
+    if (planStorageMode !== "cloud") {
+      setSavedLabel("Connection error — cloud plan was not changed");
+      return;
+    }
+    try {
+      if (cloudProjectId) {
+        const response = await fetch(`/api/planner/plan?projectId=${encodeURIComponent(cloudProjectId)}`, {
+          method: "DELETE",
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (!response.ok) throw new Error("Could not remove this cloud plan.");
+      }
+      setProject(createFreshProject());
+      setActivities([]);
+      setActualSnapshots([]);
+      setCalendarMode("calendar");
+      setPlanningModel("normal");
+      setCurveView("compare");
+      setShowCurve(true);
+      setIncludeCurvePdf(true);
+      setShowStatusDate(true);
+      setPdfOrientation("landscape");
+      setCloudProjectId(null);
+      setSavedPlanSignature("");
+      setSavedLabel("Cloud plan cleared");
+      setUsageRefreshToken((value) => value + 1);
+      if (activePage === "projects") void loadProjectLibrary();
+    } catch (error) {
+      setSavedLabel(error instanceof Error ? error.message : "Could not clear this cloud plan");
+    }
   };
 
   const exportBackup = () => {
@@ -1417,6 +1371,28 @@ export default function TimelinePlannerWorkspace() {
   const measuredCurveLabel = planningModel === "intensive" ? "Earned progress" : "Completed progress";
   const measuredMetricLabel = planningModel === "intensive" ? "Earned" : "Completed";
   const reportOutputActive = pdfPreview || printingPdf;
+
+  if (!hydrated || planStorageMode === "loading") {
+    return <main className="planner-connection-shell" aria-busy="true">
+      <section className="planner-connection-card" role="status">
+        <span className="planner-connection-spinner" aria-hidden="true" />
+        <p className="eyebrow">Timeline Creator production</p>
+        <h1>Connecting cloud workspace...</h1>
+        <p>Loading the live project library, company profile and plan from Timeline Creator.</p>
+      </section>
+    </main>;
+  }
+
+  if (planStorageMode === "error") {
+    return <main className="planner-connection-shell">
+      <section className="planner-connection-card planner-connection-error" role="alert">
+        <p className="eyebrow">Timeline Creator production</p>
+        <h1>Connection error</h1>
+        <p>Cloud data was not loaded. The offline cache was not opened or written back, so the production plan remains protected.</p>
+        <button type="button" className="button primary" onClick={() => window.location.reload()}>Retry connection</button>
+      </section>
+    </main>;
+  }
 
   return (
     <main className={`app-shell pdf-orientation-${pdfOrientation} ${pdfPreview ? "pdf-preview-mode" : ""} ${activePage !== "plan" ? "utility-page-active" : ""} ${mobileMenuOpen ? "mobile-menu-open" : ""}`}>

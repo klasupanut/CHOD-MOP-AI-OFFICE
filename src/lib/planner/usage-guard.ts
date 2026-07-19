@@ -50,7 +50,7 @@ export type WorkspaceUsageSummary = {
   message: string;
   blockedActions: CapacityAction[];
   measuredAt: string;
-  source: "cloudflare-d1-r2-ledger" | "browser-local-storage";
+  source: "cloudflare-d1-r2-ledger";
 };
 
 const LEVEL_RANK: Record<UsageLevel, number> = {
@@ -102,12 +102,7 @@ export function usageLevelForPercent(percent: number): UsageLevel {
 export function buildWorkspaceUsageSummary(
   usage: WorkspaceUsageInput,
   limits: WorkspacePlanLimits = DEFAULT_INTERNAL_PLAN_LIMITS,
-  options: {
-    planCode?: string;
-    planLabel?: string;
-    measuredAt?: string;
-    source?: WorkspaceUsageSummary["source"];
-  } = {},
+  options: { planCode?: string; measuredAt?: string } = {},
 ): WorkspaceUsageSummary {
   const metrics = (Object.keys(METRIC_DEFINITIONS) as UsageMetricKey[]).map(
     (key) => buildMetric(key, usage[key], limits[key]),
@@ -124,7 +119,7 @@ export function buildWorkspaceUsageSummary(
   return {
     plan: {
       code: options.planCode ?? "internal_free",
-      label: options.planLabel ?? "Internal Free",
+      label: "Internal Free",
     },
     metrics,
     overallLevel,
@@ -134,7 +129,7 @@ export function buildWorkspaceUsageSummary(
       .filter((metric) => metric.level === "blocked")
       .map((metric) => actionForMetric(metric.key)),
     measuredAt: options.measuredAt ?? new Date().toISOString(),
-    source: options.source ?? "cloudflare-d1-r2-ledger",
+    source: "cloudflare-d1-r2-ledger",
   };
 }
 
