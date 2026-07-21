@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/api";
 import { probeApprovedUsersSheet } from "@/lib/auth/google-sheets-store";
 import { getQuotationAppsScriptUrl, probeQuotationAppsScript } from "@/lib/quotations/apps-script-backend";
+import { listQuotationsFromGoogleSheet } from "@/lib/quotations/google-sheet-extra-fields";
 import { getBearerToken } from "@/lib/security/request-guards";
 
 export const dynamic = "force-dynamic";
@@ -88,6 +89,7 @@ export async function GET(request: Request) {
     checks.push(await probeBudgetUtilizeSheet(budgetUtilizeSheetId, BUDGET_UTILIZE_PROBE_GID, 10_000));
     checks.push(await probePublicSheet(fitoutSheetId, "RESTORATION", 10_000));
     checks.push(await probePublicSheet(fitoutSheetId, "FIT-OUT", 10_000));
+    checks.push(await probeQuotationSheet(10_000));
     const quotationProbe = await probeQuotationAppsScript(10_000);
     checks.push({
       ok: quotationProbe.configured && quotationProbe.reachable,
@@ -113,6 +115,27 @@ export async function GET(request: Request) {
     },
     { status: 200 },
   );
+}
+
+async function probeQuotationSheet(timeoutMs: number): Promise<HealthCheck> {
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Quotation Google Sheet check timed out after ${timeoutMs}ms.`)), timeoutMs);
+  });
+
+  try {
+    const rows = await Promise.race([listQuotationsFromGoogleSheet(), timeout]);
+    return {
+      ok: true,
+      label: "quotation-sheet",
+      message: `Quotation Google Sheet responds with ${rows.length} live row(s).`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      label: "quotation-sheet",
+      message: error instanceof Error ? error.message : "Quotation Google Sheet check failed.",
+    };
+  }
 }
 
 async function canRunDeepHealth(request: Request) {

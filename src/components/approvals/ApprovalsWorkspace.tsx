@@ -58,10 +58,12 @@ export function ApprovalsWorkspace({
   currentUser,
   initialApprovals,
   initialApprovalPermissions,
+  initialLoadError = "",
 }: {
   currentUser: ApprovedUser;
   initialApprovals: ApprovalRowWithItems[];
   initialApprovalPermissions: ApprovalPermission[];
+  initialLoadError?: string;
 }) {
   const [approvals, setApprovals] = useState<ApprovalRowWithItems[]>(initialApprovals);
   const [approvalPermissions] = useState<ApprovalPermission[]>(initialApprovalPermissions);
@@ -161,6 +163,8 @@ export function ApprovalsWorkspace({
           <h1>Approvals</h1>
         </div>
       </div>
+
+      {initialLoadError ? <p className="approval-denied">{initialLoadError}</p> : null}
 
       <section className="workspace-summary approval-summary">
         <article><strong>{summary.total}</strong><span>Total Quotation Approvals</span></article>

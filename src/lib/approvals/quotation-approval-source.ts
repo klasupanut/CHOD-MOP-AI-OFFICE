@@ -1,7 +1,11 @@
 import "server-only";
 
 import type { QuotationApprovalItem, QuotationApprovalStatus } from "@/data/quotation-approvals";
-import { enrichQuotationExtraFields, updateQuotationSheetInternalApproval } from "@/lib/quotations/google-sheet-extra-fields";
+import {
+  enrichQuotationExtraFields,
+  listQuotationsFromGoogleSheet,
+  updateQuotationSheetInternalApproval,
+} from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript } from "@/lib/quotations/apps-script-backend";
 
 type QuotationBackendRow = {
@@ -312,17 +316,26 @@ export const fallbackRealQuotationApprovals: QuotationApprovalWithItems[] = [
 ].map((item) => ({ ...item, source: "quotation-fallback" }));
 
 export async function listQuotationApprovalsFromBackend(): Promise<QuotationApprovalWithItems[]> {
+  let sheetError: unknown = null;
+  try {
+    const sheetRows = await listQuotationsFromGoogleSheet();
+    return uniqueQuotationRows(sheetRows).map(mapQuotationToApproval);
+  } catch (error) {
+    sheetError = error;
+    console.warn("[approvals] Direct quotation Google Sheet read failed; trying Apps Script fallback.", error);
+  }
+
   const backendUrl = process.env.QUOTATION_APPS_SCRIPT_URL?.trim();
   if (!backendUrl) {
-    console.warn("[approvals] Auto Quotation backend is not configured; no approval rows will be displayed.");
-    return [];
+    throw sheetError instanceof Error
+      ? sheetError
+      : new Error("Quotation data sources are not configured.");
   }
 
   try {
     const { response, result } = await callQuotationAppsScript("listQuotations", {});
     if (!response.ok || !result.ok || !Array.isArray(result.data)) {
-      console.warn("[approvals] Auto Quotation backend returned no live quotation rows.");
-      return [];
+      throw new Error(result.error || `Auto Quotation backend returned HTTP ${response.status}.`);
     }
     // The Apps Script payload is the quotation source, while the dedicated
     // approval columns in the Google Sheet are the latest internal decision.
@@ -332,7 +345,10 @@ export async function listQuotationApprovalsFromBackend(): Promise<QuotationAppr
     return uniqueQuotationRows(enrichedRows).map(mapQuotationToApproval);
   } catch (error) {
     console.warn("[approvals] Unable to load live quotation approval rows.", error);
-    return [];
+    throw new AggregateError(
+      [sheetError, error].filter(Boolean),
+      "Unable to load quotation approvals from Google Sheet or Apps Script.",
+    );
   }
 }
 

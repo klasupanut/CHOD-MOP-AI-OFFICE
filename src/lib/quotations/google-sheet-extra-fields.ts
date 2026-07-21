@@ -23,6 +23,47 @@ type QuotationExtraFieldRow = {
   internalVerifiedAt?: unknown;
 };
 
+export type GoogleSheetQuotationListRow = {
+  quotationId: string;
+  quotationNo: string;
+  projectType: string;
+  mainContractor: string;
+  date: string;
+  client: string;
+  to: string;
+  subject: string;
+  projectSite: string;
+  preparedBy: string;
+  status: string;
+  approvalStatus: string;
+  approvalAt: string;
+  approvalBy: string;
+  approvalNote: string;
+  approvalUpdatedAt: string;
+  signingStatus: string;
+  signingUrl: string;
+  signedAt: string;
+  signedByName: string;
+  signedPdfUrl: string;
+  pdfUrl: string;
+  externalNote: string;
+  grandTotal: number;
+  totalAmount: number;
+  totalAfterDiscount: number;
+  createdAt: string;
+  updatedAt: string;
+  items: Array<{
+    description: string;
+    quantity: number;
+    unit: string;
+    quotationUnitPrice: number;
+    quotationTotal: number;
+    sellingUnitPrice: number;
+    sellingTotal: number;
+    itemType: string;
+  }>;
+};
+
 const QUOTATIONS_TAB = "Quotations";
 let cachedToken: { value: string; expiresAt: number } | null = null;
 let cachedExtraMap: {
@@ -126,6 +167,115 @@ function asExternalNote(value: unknown) {
 
 function normalizeHeader(value: unknown) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function rowRecord(headers: unknown[], row: unknown[]) {
+  const record = new Map<string, unknown>();
+  headers.forEach((header, index) => {
+    const key = normalizeHeader(header);
+    if (key) record.set(key, row[index]);
+  });
+  return record;
+}
+
+function recordValue(record: Map<string, unknown>, aliases: string[]) {
+  for (const alias of aliases) {
+    const key = normalizeHeader(alias);
+    if (record.has(key)) return record.get(key);
+  }
+  return "";
+}
+
+function recordString(record: Map<string, unknown>, aliases: string[]) {
+  return asString(recordValue(record, aliases));
+}
+
+function recordNumber(record: Map<string, unknown>, aliases: string[]) {
+  const normalized = recordString(record, aliases).replace(/,/g, "");
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Read-only quotation list used by server-rendered workspaces such as
+ * Approvals. A single Sheets batchGet replaces the expensive Apps Script
+ * listQuotations loop, which can exceed a serverless request timeout when the
+ * quotation/item history grows. This function never writes to Google Sheets.
+ */
+export async function listQuotationsFromGoogleSheet(): Promise<GoogleSheetQuotationListRow[]> {
+  if (!isConfigured()) throw new Error("Quotation Google Sheet read is not configured.");
+
+  const quotationRange = encodeURIComponent(`${QUOTATIONS_TAB}!A1:AZ`);
+  const itemRange = encodeURIComponent("Quotation_Items!A1:U");
+  const response = await sheetsFetch(`/values:batchGet?ranges=${quotationRange}&ranges=${itemRange}&majorDimension=ROWS`);
+  const payload = (await response.json()) as {
+    valueRanges?: Array<{ values?: unknown[][] }>;
+  };
+  const quotationValues = payload.valueRanges?.[0]?.values || [];
+  const itemValues = payload.valueRanges?.[1]?.values || [];
+  if (!quotationValues.length) return [];
+
+  const quotationHeaders = quotationValues[0] || [];
+  const itemHeaders = itemValues[0] || [];
+  const itemsByQuotation = new Map<string, GoogleSheetQuotationListRow["items"]>();
+
+  for (const row of itemValues.slice(1)) {
+    const record = rowRecord(itemHeaders, row);
+    const quotationId = recordString(record, ["quotation_id", "quotationId"]);
+    if (!quotationId) continue;
+    const items = itemsByQuotation.get(quotationId) || [];
+    items.push({
+      description: recordString(record, ["description"]),
+      quantity: recordNumber(record, ["quantity"]),
+      unit: recordString(record, ["unit"]),
+      quotationUnitPrice: recordNumber(record, ["quotation_unit_price", "quotationUnitPrice"]),
+      quotationTotal: recordNumber(record, ["quotation_total", "quotationTotal"]),
+      sellingUnitPrice: recordNumber(record, ["selling_unit_price", "sellingUnitPrice"]),
+      sellingTotal: recordNumber(record, ["selling_total", "sellingTotal"]),
+      itemType: recordString(record, ["item_type", "itemType"]) || "item",
+    });
+    itemsByQuotation.set(quotationId, items);
+  }
+
+  return quotationValues
+    .slice(1)
+    .map((row) => {
+      const record = rowRecord(quotationHeaders, row);
+      const quotationId = recordString(record, ["quotation_id", "quotationId"]);
+      return {
+        quotationId,
+        quotationNo: recordString(record, ["quotation_no", "quotationNo"]),
+        projectType: recordString(record, ["project_type", "projectType"]),
+        mainContractor: recordString(record, ["main_contractor", "mainContractor"]),
+        date: recordString(record, ["date"]),
+        client: recordString(record, ["client"]),
+        to: recordString(record, ["to"]),
+        subject: recordString(record, ["subject"]),
+        projectSite: recordString(record, ["project_site", "projectSite"]),
+        preparedBy: recordString(record, ["prepared_by", "preparedBy"]),
+        status: recordString(record, ["status"]) || "Draft",
+        approvalStatus: recordString(record, ["approval_status", "approvalStatus"]),
+        approvalAt: recordString(record, ["approval_at", "approvalAt"]),
+        approvalBy: recordString(record, ["approval_by", "approvalBy"]),
+        approvalNote: recordString(record, ["approval_note", "approvalNote"]),
+        approvalUpdatedAt: recordString(record, ["approval_updated_at", "approvalUpdatedAt"]),
+        signingStatus: recordString(record, ["signing_status", "signingStatus"]),
+        signingUrl: recordString(record, ["signing_url", "signingUrl"]),
+        signedAt: recordString(record, ["signed_at", "signedAt"]),
+        signedByName: recordString(record, ["signed_by_name", "signedByName"]),
+        signedPdfUrl: recordString(record, ["signed_pdf_url", "signedPdfUrl"]),
+        pdfUrl: recordString(record, ["pdf_url", "pdfUrl"]),
+        externalNote: asExternalNote(recordValue(record, ["external_note", "externalNote"])),
+        grandTotal: recordNumber(record, ["grand_total", "grandTotal"]),
+        totalAmount: recordNumber(record, ["total_amount", "totalAmount"]),
+        totalAfterDiscount: recordNumber(record, ["total_after_discount", "totalAfterDiscount"]),
+        createdAt: recordString(record, ["created_at", "createdAt"]),
+        updatedAt: recordString(record, ["updated_at", "updatedAt"]),
+        items: itemsByQuotation.get(quotationId) || [],
+      };
+    })
+    .filter((row) => row.quotationId || row.quotationNo)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 function columnLetter(indexZeroBased: number) {
