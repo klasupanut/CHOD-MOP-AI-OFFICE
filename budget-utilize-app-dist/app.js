@@ -538,9 +538,11 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
 function enrichPersonSummaryTasks(sheets) {
   const locationTasks = sheets.filter((sheet) => sheet.group === "location").flatMap((sheet) => sheet.tasks);
   const sourceMap = new Map();
+  const sourceRowMap = new Map();
   const duplicateKeys = new Set();
 
   locationTasks.forEach((task) => {
+    sourceRowMap.set(`${task.gid}:${task.rowNumber}`, task);
     const key = personSummarySourceKey(task.owner, budgetSiteLabelFromTask(task), task.item);
     if (!key) return;
     if (sourceMap.has(key)) {
@@ -555,7 +557,16 @@ function enrichPersonSummaryTasks(sheets) {
     .forEach((sheet) => {
       const owner = sheet.ownerName || personLabelFromTab(sheet.tab);
       sheet.tasks.forEach((task) => {
-        if (hasPersonSummarySyncMetadata(task)) return;
+        const metadata = personSummarySourceMetadata(task);
+        const sourceByRow = metadata ? sourceRowMap.get(`${metadata.gid}:${metadata.rowNumber}`) : null;
+        if (sourceByRow && normalizeTaskMatchText(sourceByRow.item) === normalizeTaskMatchText(task.item)) {
+          hydratePersonSummaryTask(task, sourceByRow);
+          return;
+        }
+
+        // A previously deleted physical row can leave old Source row metadata
+        // behind. Fall back to the unique owner/site/item match instead of
+        // enabling a delete against the wrong Google Sheet row.
         const key = personSummarySourceKey(owner || task.owner, budgetSiteLabelFromTask(task), task.item);
         if (!key || duplicateKeys.has(key)) return;
         const source = sourceMap.get(key);
@@ -590,6 +601,15 @@ function hydratePersonSummaryTask(task, source) {
 
 function hasPersonSummarySyncMetadata(task) {
   return /(^|\s)(site|source sheet|source gid|source row)\s*:/i.test(clean(task.note));
+}
+
+function personSummarySourceMetadata(task) {
+  if (!task || !hasPersonSummarySyncMetadata(task)) return null;
+  const note = clean(task.note);
+  const gid = note.match(/(?:^|\|)\s*source gid\s*:\s*(\d+)/i)?.[1] || "";
+  const rowNumber = Number(note.match(/(?:^|\|)\s*source row\s*:\s*(\d+)/i)?.[1] || 0);
+  if (!gid || !Number.isInteger(rowNumber) || rowNumber < 4) return null;
+  return { gid, rowNumber };
 }
 
 function budgetDeleteTarget(task) {
@@ -2255,7 +2275,9 @@ function bindLiveEditForm(task) {
         taskId: deleteTarget.id,
         gid: deleteTarget.gid,
         rowNumber: deleteTarget.rowNumber,
-        expectedItem: deleteTarget.item || task.item
+        expectedItem: deleteTarget.item || task.item,
+        summaryGid: task.sourceGroup === "person" ? task.gid : "",
+        summaryRowNumber: task.sourceGroup === "person" ? task.rowNumber : 0
       });
       if (result.summarySync?.ok === false) {
         showWriteToast(`ลบ project แล้ว แต่ sync สรุปงานรายคนไม่สำเร็จ: ${result.summarySync.error}`, "error");

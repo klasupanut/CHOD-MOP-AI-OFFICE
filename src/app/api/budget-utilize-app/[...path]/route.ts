@@ -18,6 +18,12 @@ const allowedLocationSheets = new Map([
   ["21424830", "CHODBIZ CHAENG"],
   ["603834483", "CHODBIZ SAI4"],
 ]);
+const allowedPersonSummarySheets = new Map([
+  ["449201554", "สรุปงาน ฟิล์ม"],
+  ["874584096", "สรุปงาน กล้า"],
+  ["1089574858", "สรุปงาน มอส"],
+]);
+const summarySyncMarker = "[BU]";
 const statusWriteLabels = {
   done: "ดำเนินการแล้วเสร็จ",
   active: "กำลังดำเนินการ",
@@ -252,23 +258,76 @@ async function appendBudgetRow(title: string, row: unknown[]) {
   return response.json() as Promise<{ updates?: { updatedRange?: string } }>;
 }
 
-async function deleteBudgetRow(gid: string, rowNumber: number) {
-  await sheetsFetch(":batchUpdate", {
+function parseSummarySource(note: unknown) {
+  const value = clean(note, 2000);
+  if (!value.includes(summarySyncMarker)) return null;
+  const gid = value.match(/(?:^|\|)\s*source gid\s*:\s*(\d+)/i)?.[1] || "";
+  const rowNumber = Number(value.match(/(?:^|\|)\s*source row\s*:\s*(\d+)/i)?.[1] || 0);
+  if (!allowedLocationSheets.has(gid) || !Number.isInteger(rowNumber) || rowNumber < 4) return null;
+  return { gid, rowNumber };
+}
+
+async function findPersonSummaryRows(sourceGid: string, sourceRowNumber: number, expectedItem: string) {
+  const summaryTitles = [...allowedPersonSummarySheets.values()];
+  const params = new URLSearchParams();
+  for (const title of summaryTitles) {
+    params.append("ranges", `${escapeSheetName(title)}!A1:J5000`);
+  }
+  params.set("majorDimension", "ROWS");
+  const response = await sheetsFetch(`/values:batchGet?${params.toString()}`);
+  const payload = (await response.json()) as { valueRanges?: Array<{ range?: string; values?: unknown[][] }> };
+  const strict: Array<{ title: string; rowNumber: number }> = [];
+  const fallback: Array<{ title: string; rowNumber: number }> = [];
+
+  for (const [rangeIndex, valueRange] of (payload.valueRanges || []).entries()) {
+    const title = summaryTitles[rangeIndex];
+    if (!title) continue;
+    (valueRange.values || []).forEach((row, index) => {
+      const item = clean(row[1], 500);
+      if (!item || item !== expectedItem) return;
+      const source = parseSummarySource(row[9]);
+      if (!source || source.gid !== sourceGid) return;
+      const match = { title, rowNumber: index + 1 };
+      if (source.rowNumber === sourceRowNumber) strict.push(match);
+      else fallback.push(match);
+    });
+  }
+
+  if (strict.length) return strict;
+  if (fallback.length <= 1) return fallback;
+  throw new Error("Delete blocked because multiple owner-summary rows match this project. Refresh the owner summary before deleting.");
+}
+
+async function validateSelectedSummaryRow(payload: Record<string, unknown>, sourceGid: string, expectedItem: string) {
+  const summaryGid = clean(payload.summaryGid, 32);
+  if (!summaryGid) return null;
+  const title = allowedPersonSummarySheets.get(summaryGid);
+  if (!title) throw new Error("Selected owner-summary sheet is not allowed.");
+  const rowNumber = assertSafeRowNumber(payload.summaryRowNumber);
+  const range = encodeURIComponent(`${escapeSheetName(title)}!A${rowNumber}:J${rowNumber}`);
+  const response = await sheetsFetch(`/values/${range}`);
+  const body = (await response.json()) as { values?: unknown[][] };
+  const row = body.values?.[0] || [];
+  const selectedItem = clean(row[1], 500);
+  const source = parseSummarySource(row[9]);
+  if (!source || source.gid !== sourceGid || selectedItem !== expectedItem) {
+    throw new Error("Selected owner-summary row no longer matches this project. Refresh and try again.");
+  }
+  return { title, rowNumber };
+}
+
+async function clearBudgetProjectRows(
+  title: string,
+  rowNumber: number,
+  summaryRows: Array<{ title: string; rowNumber: number }>,
+) {
+  const ranges = [
+    `${escapeSheetName(title)}!A${rowNumber}:N${rowNumber}`,
+    ...summaryRows.map((row) => `${escapeSheetName(row.title)}!A${row.rowNumber}:J${row.rowNumber}`),
+  ];
+  await sheetsFetch("/values:batchClear", {
     method: "POST",
-    body: JSON.stringify({
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId: Number(gid),
-              dimension: "ROWS",
-              startIndex: rowNumber - 1,
-              endIndex: rowNumber,
-            },
-          },
-        },
-      ],
-    }),
+    body: JSON.stringify({ ranges }),
   });
 }
 
@@ -351,8 +410,21 @@ async function deleteBudgetProject(payload: Record<string, unknown>) {
   if (expectedItem && item !== expectedItem) {
     throw new Error("Delete blocked because the current row no longer matches the selected project.");
   }
-  await deleteBudgetRow(gid, rowNumber);
-  return { ok: true, mode: "deleted", gid, rowNumber, sheet: title };
+  const detectedSummaryRows = await findPersonSummaryRows(gid, rowNumber, item);
+  const selectedSummaryRow = await validateSelectedSummaryRow(payload, gid, item);
+  const summaryRows = [...detectedSummaryRows];
+  if (selectedSummaryRow && !summaryRows.some((row) => row.title === selectedSummaryRow.title && row.rowNumber === selectedSummaryRow.rowNumber)) {
+    summaryRows.push(selectedSummaryRow);
+  }
+  await clearBudgetProjectRows(title, rowNumber, summaryRows);
+  return {
+    ok: true,
+    mode: "deleted",
+    gid,
+    rowNumber,
+    sheet: title,
+    summarySync: { ok: true, clearedRows: summaryRows.length },
+  };
 }
 
 function rewriteBudgetUtilizeSource(source: string) {
