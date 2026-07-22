@@ -22,3 +22,12 @@ test("budget delete preserves row numbering and clears only validated ranges", (
   assert.match(routeSource, /validateSelectedSummaryRow\(payload, gid, item\)/);
   assert.doesNotMatch(routeSource, /deleteDimension/);
 });
+
+test("orphan person-summary rows use a separate guarded delete action", () => {
+  assert.match(appSource, /function orphanSummaryDeleteTarget\(task\)/);
+  assert.match(appSource, /postWrite\("\/api\/delete-summary-orphan", orphanDeleteTarget\)/);
+  assert.match(routeSource, /async function deleteOrphanPersonSummary\(payload/);
+  assert.match(routeSource, /if \(await sourceSheetContainsItem\(sourceTitle, expectedItem\)\)/);
+  assert.match(routeSource, /Source project still exists\. Delete it from the site project row instead\./);
+  assert.match(routeSource, /clearSummaryRow\(summaryTitle, summaryRowNumber\)/);
+});

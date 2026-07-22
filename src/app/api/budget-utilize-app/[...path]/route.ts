@@ -316,6 +316,23 @@ async function validateSelectedSummaryRow(payload: Record<string, unknown>, sour
   return { title, rowNumber };
 }
 
+async function sourceSheetContainsItem(title: string, expectedItem: string) {
+  const range = encodeURIComponent(`${escapeSheetName(title)}!B4:B5000`);
+  const response = await sheetsFetch(`/values/${range}`);
+  const body = (await response.json()) as { values?: unknown[][] };
+  const normalizedExpected = clean(expectedItem, 500).toLocaleLowerCase().replace(/\s+/g, " ");
+  return (body.values || []).some((row) => (
+    clean(row[0], 500).toLocaleLowerCase().replace(/\s+/g, " ") === normalizedExpected
+  ));
+}
+
+async function clearSummaryRow(title: string, rowNumber: number) {
+  await sheetsFetch("/values:batchClear", {
+    method: "POST",
+    body: JSON.stringify({ ranges: [`${escapeSheetName(title)}!A${rowNumber}:J${rowNumber}`] }),
+  });
+}
+
 async function clearBudgetProjectRows(
   title: string,
   rowNumber: number,
@@ -427,12 +444,54 @@ async function deleteBudgetProject(payload: Record<string, unknown>) {
   };
 }
 
+async function deleteOrphanPersonSummary(payload: Record<string, unknown>) {
+  const summaryGid = clean(payload.summaryGid, 32);
+  const summaryTitle = allowedPersonSummarySheets.get(summaryGid);
+  if (!summaryTitle) throw new Error("Selected owner-summary sheet is not allowed.");
+  const summaryRowNumber = assertSafeRowNumber(payload.summaryRowNumber);
+  const expectedItem = clean(payload.expectedItem, 500);
+  const sourceGid = clean(payload.sourceGid, 32);
+  const sourceRowNumber = assertSafeRowNumber(payload.sourceRowNumber);
+  const sourceTitle = await sheetTitleFromGid(sourceGid);
+  if (!expectedItem) throw new Error("Owner-summary item is required.");
+
+  const summaryRange = encodeURIComponent(`${escapeSheetName(summaryTitle)}!A${summaryRowNumber}:J${summaryRowNumber}`);
+  const summaryResponse = await sheetsFetch(`/values/${summaryRange}`);
+  const summaryBody = (await summaryResponse.json()) as { values?: unknown[][] };
+  const summaryRow = summaryBody.values?.[0] || [];
+  const summaryItem = clean(summaryRow[1], 500);
+  const summarySource = parseSummarySource(summaryRow[9]);
+  if (
+    summaryItem !== expectedItem
+    || !summarySource
+    || summarySource.gid !== sourceGid
+    || summarySource.rowNumber !== sourceRowNumber
+  ) {
+    throw new Error("Owner-summary identity changed. Refresh before removing this stale entry.");
+  }
+
+  if (await sourceSheetContainsItem(sourceTitle, expectedItem)) {
+    throw new Error("Source project still exists. Delete it from the site project row instead.");
+  }
+
+  await clearSummaryRow(summaryTitle, summaryRowNumber);
+  return {
+    ok: true,
+    mode: "summary-orphan-deleted",
+    summaryGid,
+    summaryRowNumber,
+    sourceGid,
+    sourceRowNumber,
+  };
+}
+
 function rewriteBudgetUtilizeSource(source: string) {
   return source
     .replaceAll("/api/sheet", "/api/budget-utilize-app/api/sheet")
     .replaceAll("/api/write-config", "/api/budget-utilize-app/api/write-config")
     .replaceAll("/api/update-task", "/api/budget-utilize-app/api/update-task")
     .replaceAll("/api/add-project", "/api/budget-utilize-app/api/add-project")
+    .replaceAll("/api/delete-summary-orphan", "/api/budget-utilize-app/api/delete-summary-orphan")
     .replaceAll("/api/delete-project", "/api/budget-utilize-app/api/delete-project");
 }
 
@@ -545,9 +604,9 @@ export async function POST(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const requested = (await context.params).path.join("/");
-  if (["api/update-task", "api/add-project", "api/delete-project"].includes(requested)) {
+  if (["api/update-task", "api/add-project", "api/delete-project", "api/delete-summary-orphan"].includes(requested)) {
     const config = writeConfigFor(user);
-    const isDeleteRequest = requested === "api/delete-project";
+    const isDeleteRequest = requested === "api/delete-project" || requested === "api/delete-summary-orphan";
     const isAllowed = isDeleteRequest ? config.canDelete : config.enabled;
     if (!isAllowed) {
       return NextResponse.json({
@@ -562,6 +621,7 @@ export async function POST(
       if (requested === "api/update-task") return NextResponse.json(await updateBudgetTask(payload));
       if (requested === "api/add-project") return NextResponse.json(await addBudgetProject(payload));
       if (requested === "api/delete-project") return NextResponse.json(await deleteBudgetProject(payload));
+      if (requested === "api/delete-summary-orphan") return NextResponse.json(await deleteOrphanPersonSummary(payload));
     } catch (error) {
       return NextResponse.json({
         ok: false,

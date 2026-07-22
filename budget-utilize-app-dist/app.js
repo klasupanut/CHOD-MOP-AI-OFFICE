@@ -621,6 +621,19 @@ function budgetDeleteTarget(task) {
   return source;
 }
 
+function orphanSummaryDeleteTarget(task) {
+  if (!task || task.sourceGroup !== "person" || task.writeSource) return null;
+  const source = personSummarySourceMetadata(task);
+  if (!source) return null;
+  return {
+    summaryGid: task.gid,
+    summaryRowNumber: task.rowNumber,
+    expectedItem: task.item,
+    sourceGid: source.gid,
+    sourceRowNumber: source.rowNumber
+  };
+}
+
 function personSummarySourceKey(owner, site, item) {
   const ownerKey = normalizeOwnerDisplayName(owner);
   const siteKey = budgetSiteLabelFromValue(site);
@@ -2156,10 +2169,13 @@ function renderSelectedDrilldown(tasks) {
 function renderLiveEditForm(task) {
   const canEdit = state.writeConfig.enabled && task.sourceGroup === "location";
   const deleteTarget = budgetDeleteTarget(task);
-  const canDelete = (state.writeConfig.canDelete || state.writeConfig.enabled) && Boolean(deleteTarget);
+  const orphanDeleteTarget = orphanSummaryDeleteTarget(task);
+  const canDelete = (state.writeConfig.canDelete || state.writeConfig.enabled) && Boolean(deleteTarget || orphanDeleteTarget);
   const editDisabled = canEdit ? "" : "disabled";
   const deleteDisabled = canDelete ? "" : "disabled";
-  const helper = task.sourceGroup !== "location" && !deleteTarget
+  const helper = orphanDeleteTarget
+    ? "ไม่พบ Project ต้นทางแล้ว ปุ่มนี้จะลบเฉพาะรายการสรุปค้างโดยไม่แตะงานอื่น"
+    : task.sourceGroup !== "location" && !deleteTarget
     ? "แก้ได้เฉพาะ sheet ของ site เท่านั้น"
     : state.writeConfig.enabled
       ? "บันทึกเฉพาะ field ที่อนุญาต ไม่แตะ template หรือข้อมูล column อื่น"
@@ -2175,7 +2191,7 @@ function renderLiveEditForm(task) {
           <strong>แก้ข้อมูลใน Google Sheet</strong>
         </div>
         <div class="live-edit-actions">
-          <button class="text-button danger-action" type="button" data-delete-project ${deleteDisabled}>ลบ Project</button>
+          <button class="text-button danger-action" type="button" data-delete-project ${deleteDisabled}>${orphanDeleteTarget ? "ลบรายการสรุปค้าง" : "ลบ Project"}</button>
           <button class="text-button primary-action" type="submit" ${editDisabled}>บันทึก</button>
         </div>
       </div>
@@ -2264,8 +2280,20 @@ function bindLiveEditForm(task) {
       return;
     }
     const deleteTarget = budgetDeleteTarget(task);
-    if (!deleteTarget) {
+    const orphanDeleteTarget = orphanSummaryDeleteTarget(task);
+    if (!deleteTarget && !orphanDeleteTarget) {
       showWriteToast("ลบได้เฉพาะ project ใน sheet ของ site เท่านั้น", "error");
+      return;
+    }
+    if (orphanDeleteTarget) {
+      const confirmed = window.confirm(`ลบเฉพาะรายการสรุปค้างนี้ออกจาก Google Sheet?\n\n${task.item}\n\nระบบจะตรวจอีกครั้งว่า Project ต้นทางไม่มีอยู่จริง และจะไม่ลบงานอื่น`);
+      if (!confirmed) return;
+      await runWriteAction(async () => {
+        await postWrite("/api/delete-summary-orphan", orphanDeleteTarget);
+        showWriteToast("ลบรายการสรุปค้างแล้ว กำลัง sync ข้อมูลใหม่", "success");
+        state.selectedTaskId = null;
+        await returnToAppAfterWrite({ preferredTaskId: null });
+      });
       return;
     }
     const confirmed = window.confirm(`ลบ project นี้ออกจาก Google Sheet?\n\n${task.item}\n\nระบบจะลบข้อมูลในแถวนี้จาก sheet ${deleteTarget.sourceTab || task.sourceTab}`);
