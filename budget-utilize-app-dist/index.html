@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Budget Utilize</title>
-    <link rel="stylesheet" href="./styles.css?v=20260714-budget-dark-brighter" />
+    <link rel="stylesheet" href="./styles.css?v=20260726-budget-ux-polish" />
   </head>
   <body>
     <div id="app" class="app-shell" aria-live="polite">
@@ -13,7 +13,7 @@
           <div class="brand-mark">BU</div>
           <div>
             <h1>Budget Utilize</h1>
-            <p>ปี 2569</p>
+            <p id="budgetYearLabel">ปีงบประมาณปัจจุบัน</p>
           </div>
         </div>
 
@@ -179,6 +179,8 @@
                 <select id="sortControl" aria-label="Sort rows">
                   <option value="budget-desc">งบมากไปน้อย</option>
                   <option value="progress-asc">ความคืบหน้าน้อยก่อน</option>
+                  <option value="status-priority">สถานะที่ต้องติดตามก่อน</option>
+                  <option value="owner-asc">เรียงตามผู้รับผิดชอบ</option>
                   <option value="title-asc">เรียงตามรายการ</option>
                 </select>
               </div>
@@ -252,12 +254,19 @@
     <section class="print-report" id="printReport" aria-hidden="true"></section>
     <div class="write-toast hidden" id="writeToast" role="status" aria-live="polite"></div>
 
-    <section class="modal-backdrop hidden" id="projectModal" aria-hidden="true">
+    <section
+      class="modal-backdrop hidden"
+      id="projectModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="newProjectDialogTitle"
+      aria-hidden="true"
+    >
       <form class="modal-panel project-form" id="newProjectForm">
         <div class="modal-heading">
           <div>
             <p class="page-kicker">Live Google Sheet</p>
-            <h3>เพิ่ม Project ใหม่</h3>
+            <h3 id="newProjectDialogTitle">เพิ่ม Project ใหม่</h3>
           </div>
           <button class="icon-button" id="closeProjectModalButton" type="button" aria-label="Close project form">×</button>
         </div>
@@ -327,6 +336,6 @@
     </section>
     <datalist id="budgetCodeSuggestions"></datalist>
 
-    <script src="./app.js?v=20260726-person-summary-auto-rollover"></script>
+    <script src="./app.js?v=20260726-budget-ux-polish"></script>
   </body>
 </html>

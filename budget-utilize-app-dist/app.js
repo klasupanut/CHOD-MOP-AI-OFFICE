@@ -61,7 +61,9 @@ const state = {
 };
 
 const els = {
+  app: document.getElementById("app"),
   nav: document.getElementById("sheetNav"),
+  budgetYearLabel: document.getElementById("budgetYearLabel"),
   viewKicker: document.getElementById("viewKicker"),
   viewTitle: document.getElementById("viewTitle"),
   sourceStamp: document.getElementById("sourceStamp"),
@@ -200,9 +202,10 @@ const chartPalette = {
 };
 const carryForwardSiteColor = chartPalette.carryForward.gradient;
 const actionQueuePageSize = 10;
-const tablePageSize = 60;
+const tablePageSize = 24;
 const searchDebounceMs = 140;
 let searchRenderTimer = null;
+let lastModalTrigger = null;
 const budgetSiteOrder = [
   { label: "โชติธนวัฒน์ 1", aliases: ["โชติธนวัฒน์ 1", "โชติ 1"] },
   { label: "โชติธนวัฒน์ 2", aliases: ["โชติธนวัฒน์ 2", "โชติ 2"] },
@@ -224,6 +227,7 @@ const numberFormatter = new Intl.NumberFormat("th-TH", {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  els.budgetYearLabel.textContent = `ปี ${CURRENT_BUDGET_YEAR}`;
   bindEvents();
   loadWriteConfig();
   loadData();
@@ -250,6 +254,7 @@ function bindEvents() {
   els.projectModal.addEventListener("click", (event) => {
     if (event.target === els.projectModal) closeProjectModal();
   });
+  document.addEventListener("keydown", handleProjectModalKeyboard);
   els.newProjectForm.addEventListener("submit", submitNewProject);
   els.newProjectSite.addEventListener("change", syncNewProjectPeriodUi);
   els.newProjectPeriod.addEventListener("change", syncNewProjectPeriodUi);
@@ -1345,7 +1350,8 @@ function currentPersonSummaryTasks() {
       .filter(Boolean)
   );
   const locationTasks = currentBudgetTasks("location").filter((task) =>
-    supportedOwners.has(normalizeOwnerDisplayName(task.owner))
+    task.statusKey !== "stopped"
+    && supportedOwners.has(normalizeOwnerDisplayName(task.owner))
   );
   const locationKeys = new Set(
     locationTasks
@@ -1357,7 +1363,7 @@ function currentPersonSummaryTasks() {
       .filter(Boolean)
   );
   const unmatchedPersonRows = currentBudgetTasks("person").filter((task) => {
-    if (task.writeSource) return false;
+    if (task.writeSource || task.statusKey === "stopped") return false;
     const owner = task.owner || personLabelFromTab(task.sourceTab);
     const key = personSummarySourceKey(owner, budgetSiteLabelFromTask(task), task.item);
     return !key || !locationKeys.has(key);
@@ -1626,8 +1632,22 @@ function getFilteredTasks(tasks, context) {
 }
 
 function sortTasks(tasks) {
+  const statusPriority = {
+    active: 0,
+    blank: 1,
+    done: 2,
+    stopped: 3
+  };
   return [...tasks].sort((a, b) => {
     if (state.sort === "progress-asc") return a.averageProgress - b.averageProgress || b.budget - a.budget;
+    if (state.sort === "status-priority") {
+      return (statusPriority[a.statusKey] ?? 4) - (statusPriority[b.statusKey] ?? 4)
+        || b.budget - a.budget;
+    }
+    if (state.sort === "owner-asc") {
+      return (a.owner || "ไม่ระบุ").localeCompare(b.owner || "ไม่ระบุ", "th")
+        || a.item.localeCompare(b.item, "th");
+    }
     if (state.sort === "title-asc") return a.item.localeCompare(b.item, "th");
     return b.budget - a.budget;
   });
@@ -2673,6 +2693,9 @@ async function runWriteAction(action) {
 }
 
 function openProjectModal() {
+  lastModalTrigger = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : els.newProjectButton;
   state.newProjectOriginView = state.selectedView;
   const planningView = [OUTSIDE_PLAN_VIEW, NEXT_YEAR_PLAN_VIEW].includes(state.selectedView);
   const locationSheets = state.sheets.filter((sheet) => sheet.group === "location");
@@ -2707,6 +2730,7 @@ function openProjectModal() {
   els.projectModal.style.removeProperty("display");
   els.projectModal.classList.remove("hidden");
   els.projectModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
   if (!els.newProjectStatus.value) els.newProjectStatus.value = "active";
   setTimeout(() => document.getElementById("newProjectItem")?.focus(), 0);
 }
@@ -2715,6 +2739,34 @@ function closeProjectModal() {
   els.projectModal.classList.add("hidden");
   els.projectModal.setAttribute("aria-hidden", "true");
   els.projectModal.style.display = "none";
+  document.body.classList.remove("modal-open");
+  window.requestAnimationFrame(() => {
+    lastModalTrigger?.focus({ preventScroll: true });
+  });
+}
+
+function handleProjectModalKeyboard(event) {
+  if (els.projectModal.classList.contains("hidden")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeProjectModal();
+    return;
+  }
+  if (event.key !== "Tab") return;
+
+  const focusable = [...els.projectModal.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+  )].filter((element) => element instanceof HTMLElement && !element.hidden);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 async function submitNewProject(event) {
@@ -3111,13 +3163,26 @@ function renderTable(tasks) {
   const start = state.tablePage * tablePageSize;
   const visibleTasks = tasks.slice(start, start + tablePageSize);
   const end = start + visibleTasks.length;
-  els.tableCount.textContent = `${numberFormatter.format(tasks.length)} รายการ`;
   els.tableCount.textContent = tasks.length
-    ? `${numberFormatter.format(start + 1)}-${numberFormatter.format(end)} / ${numberFormatter.format(tasks.length)} รายการ`
+    ? `${numberFormatter.format(start + 1)}-${numberFormatter.format(end)} / ${numberFormatter.format(tasks.length)} รายการ • งบตามตัวกรอง ${formatCompactMoney(sum(tasks, "budget"))}`
     : "0 รายการ";
   if (!tasks.length) {
     renderTablePager(0, 0, 1);
-    els.taskTable.innerHTML = `<tr><td colspan="7" class="muted">ไม่มีรายการตามตัวกรอง</td></tr>`;
+    els.taskTable.innerHTML = `
+      <tr class="table-empty-row">
+        <td colspan="7">
+          <div class="table-empty-state">
+            <strong>ไม่พบรายการตามตัวกรอง</strong>
+            <span>ล้างตัวกรองเพื่อกลับไปดูรายการงานทั้งหมด</span>
+            <button class="text-button" type="button" data-clear-table-filters>ล้างตัวกรอง</button>
+          </div>
+        </td>
+      </tr>
+    `;
+    els.taskTable.querySelector("[data-clear-table-filters]")?.addEventListener("click", () => {
+      resetFilters();
+      render();
+    });
     return;
   }
 
@@ -3128,13 +3193,14 @@ function renderTable(tasks) {
           class="${task.id === state.selectedTaskId ? "selected" : ""}"
           data-task-id="${escapeHtml(task.id)}"
           tabindex="0"
+          aria-selected="${task.id === state.selectedTaskId ? "true" : "false"}"
           aria-label="ดูรายละเอียด ${escapeHtml(task.item)}"
         >
-          <td>
+          <td data-label="รายการ">
             <div class="task-title">${escapeHtml(task.item)}</div>
             <div class="task-subtitle">${escapeHtml(task.note || task.plan || "")}</div>
           </td>
-          <td>
+          <td data-label="ชีท / หมวด">
             <strong>${escapeHtml(task.sourceTab)}</strong>
             <div class="task-subtitle">${escapeHtml(
               [task.budgetPeriodLabel, task.section || task.sourceTitle]
@@ -3142,11 +3208,11 @@ function renderTable(tasks) {
                 .join(" • ")
             )}</div>
           </td>
-          <td>${statusPill(task)}</td>
-          <td>${progressCell(task)}</td>
-          <td class="money">${formatMoney(task.budget)}</td>
-          <td>${escapeHtml(task.budgetCode || "ไม่ระบุ")}</td>
-          <td>${escapeHtml(task.owner || "-")}</td>
+          <td data-label="สถานะ">${statusPill(task)}</td>
+          <td data-label="จัดจ้าง">${progressCell(task)}</td>
+          <td class="money" data-label="งบประมาณ">${formatMoney(task.budget)}</td>
+          <td data-label="รหัส">${escapeHtml(task.budgetCode || "ไม่ระบุ")}</td>
+          <td data-label="เจ้าของ">${escapeHtml(task.owner || "-")}</td>
         </tr>
       `
     )
@@ -4051,6 +4117,7 @@ function escapeHtml(value) {
 }
 
 function setLoading(isLoading) {
+  els.app.setAttribute("aria-busy", isLoading ? "true" : "false");
   els.loadingPanel.classList.toggle("hidden", !isLoading);
   els.dashboard.classList.toggle("hidden", isLoading);
   els.errorPanel.classList.add("hidden");

@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const BUDGET_UTILIZE_THEME = "light" as const;
@@ -8,6 +8,7 @@ const BUDGET_UTILIZE_THEME = "light" as const;
 export function BudgetUtilizeModuleFrame() {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [isFrameLoading, setIsFrameLoading] = useState(true);
   const hideShellCursor = () => {
     document.body.classList.add("cursor-over-embedded-module");
     window.dispatchEvent(new Event("chod:hide-shell-cursor"));
@@ -50,13 +51,14 @@ export function BudgetUtilizeModuleFrame() {
           <button
             type="button"
             onClick={() => {
-              frameRef.current?.contentWindow?.location.reload();
+              setIsFrameLoading(true);
               setReloadKey((value) => value + 1);
             }}
             aria-label="Reload Budget Utilize"
+            disabled={isFrameLoading}
           >
-            <RefreshCw size={17} />
-            <span className="embedded-action-label">Refresh</span>
+            {isFrameLoading ? <LoaderCircle className="embedded-module-spinner" size={17} /> : <RefreshCw size={17} />}
+            <span className="embedded-action-label">{isFrameLoading ? "Loading" : "Refresh"}</span>
           </button>
           <a href="/api/budget-utilize-app/index.html?theme=light" target="_blank" rel="noreferrer">
             <ExternalLink size={17} />
@@ -65,7 +67,8 @@ export function BudgetUtilizeModuleFrame() {
         </div>
       </div>
       <div
-        className="quotation-module-frame budget-utilize-embedded-frame"
+        className={`quotation-module-frame budget-utilize-embedded-frame${isFrameLoading ? " is-loading" : ""}`}
+        aria-busy={isFrameLoading}
         onMouseEnter={hideShellCursor}
         onMouseLeave={showShellCursor}
         onPointerEnter={hideShellCursor}
@@ -76,11 +79,21 @@ export function BudgetUtilizeModuleFrame() {
           ref={frameRef}
           src="/api/budget-utilize-app/index.html?theme=light"
           title="CHOD Budget Utilize Workspace"
-          onLoad={syncFrameTheme}
+          onLoad={() => {
+            syncFrameTheme();
+            setIsFrameLoading(false);
+          }}
+          onError={() => setIsFrameLoading(false)}
           onMouseEnter={hideShellCursor}
           onPointerEnter={hideShellCursor}
           sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
         />
+        {isFrameLoading ? (
+          <div className="embedded-module-loading" role="status">
+            <LoaderCircle className="embedded-module-spinner" size={22} />
+            <span>กำลังโหลด Projects & Budgets…</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );

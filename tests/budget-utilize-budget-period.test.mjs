@@ -95,7 +95,11 @@ test("person summaries use current-year site work including outside-plan rows wi
     embeddedApp,
     /const locationTasks = currentBudgetTasks\("location"\)\.filter/,
   );
-  assert.match(embeddedApp, /if \(task\.writeSource\) return false;/);
+  assert.match(embeddedApp, /task\.statusKey !== "stopped"/);
+  assert.match(
+    embeddedApp,
+    /if \(task\.writeSource \|\| task\.statusKey === "stopped"\) return false;/,
+  );
   assert.match(embeddedApp, /tasks: currentPersonSummaryTasks\(\)/);
   assert.match(embeddedApp, /function taskMatchesPersonSheet\(task, tab\)/);
   const summaryFunction = embeddedApp.match(
