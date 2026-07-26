@@ -1090,10 +1090,11 @@ function render() {
   const isBudgetMenu = context.viewType === "budget";
   const isActionCenter = context.viewType === "actionCenter";
   const isOverview = context.viewType === "overview";
+  const isSiteSheet = context.viewType === "sheet" && context.sheet?.group === "location";
   const showsCharts = !isOverview && !isActionCenter;
   const showsTable = !isActionCenter;
   const showsSelected = !isActionCenter;
-  const showsBudgetRemaining = !isOverview && !isActionCenter;
+  const showsBudgetRemaining = !isOverview && !isActionCenter && !isSiteSheet;
 
   els.dashboard.classList.toggle("overview-mode", isOverview);
   els.dashboard.classList.toggle("budget-mode", isBudgetMenu);
@@ -1137,9 +1138,10 @@ function clearInactivePanels(context) {
   const isBudgetMenu = context.viewType === "budget";
   const isActionCenter = context.viewType === "actionCenter";
   const isOverview = context.viewType === "overview";
+  const isSiteSheet = context.viewType === "sheet" && context.sheet?.group === "location";
   const showsCharts = !isOverview && !isActionCenter;
   const showsTable = !isActionCenter;
-  const showsBudgetRemaining = !isOverview && !isActionCenter;
+  const showsBudgetRemaining = !isOverview && !isActionCenter && !isSiteSheet;
 
   if (!isBudgetMenu) els.kpiGrid.innerHTML = "";
   if (!isOverview) {
@@ -1174,6 +1176,7 @@ function syncViewPanels(context) {
   const isBudgetMenu = context.viewType === "budget";
   const isActionCenter = context.viewType === "actionCenter";
   const isOverview = context.viewType === "overview";
+  const isSiteSheet = context.viewType === "sheet" && context.sheet?.group === "location";
 
   els.kpiGrid.classList.toggle("hidden", !isBudgetMenu);
   els.controlIntelligenceGrid.classList.toggle("hidden", !isActionCenter);
@@ -1186,7 +1189,9 @@ function syncViewPanels(context) {
   els.analysisGrid.classList.toggle("hidden", isOverview || isActionCenter);
   els.tablePanel.classList.toggle("hidden", isActionCenter);
   els.selectedPanel.classList.toggle("hidden", isActionCenter);
-  els.budgetRemainingPanel.classList.toggle("hidden", isOverview || isActionCenter);
+  els.contentGrid.classList.toggle("site-sheet-layout", isSiteSheet);
+  els.insightRail.classList.toggle("hidden", isSiteSheet);
+  els.budgetRemainingPanel.classList.toggle("hidden", isOverview || isActionCenter || isSiteSheet);
   els.wideActionGrid.classList.toggle("hidden", !isActionCenter);
   els.dataQualityPanel.classList.toggle("hidden", !isActionCenter);
   els.controlIntelligenceGrid.classList.toggle("single-panel", isActionCenter);

@@ -51,3 +51,20 @@ test("BID PR PO CON progress always uses all four stages as the denominator", ()
   assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: null }, "active"), 0.75);
   assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: 1 }, "done"), 1);
 });
+
+test("location site views hide remaining budget and expand the work table", () => {
+  assert.match(
+    app,
+    /const isSiteSheet = context\.viewType === "sheet" && context\.sheet\?\.group === "location";/
+  );
+  assert.match(app, /els\.contentGrid\.classList\.toggle\("site-sheet-layout", isSiteSheet\);/);
+  assert.match(app, /els\.insightRail\.classList\.toggle\("hidden", isSiteSheet\);/);
+  assert.match(
+    app,
+    /els\.budgetRemainingPanel\.classList\.toggle\("hidden", isOverview \|\| isActionCenter \|\| isSiteSheet\);/
+  );
+  assert.match(
+    styles,
+    /\.content-grid\.site-sheet-layout\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/
+  );
+});

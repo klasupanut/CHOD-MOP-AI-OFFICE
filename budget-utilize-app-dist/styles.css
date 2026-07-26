@@ -2405,6 +2405,10 @@ button:disabled {
   min-width: 0;
 }
 
+.content-grid.site-sheet-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .table-panel {
   grid-column: 1;
   grid-row: 1;
