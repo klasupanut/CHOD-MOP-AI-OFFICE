@@ -3249,9 +3249,12 @@ function readProgress(row, normalizedStatus) {
 }
 
 function averageProgress(progress, normalizedStatus) {
-  const values = Object.values(progress).filter((value) => value !== null);
-  if (!values.length) return normalizedStatus === "done" ? 1 : 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  const values = progressStageOptions.map(([key]) => {
+    const value = Number(progress?.[key]);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+  });
+  if (!values.some((value) => value > 0) && normalizedStatus === "done") return 1;
+  return values.reduce((sum, value) => sum + value, 0) / progressStageOptions.length;
 }
 
 function normalizeStatus(status) {

@@ -2412,9 +2412,15 @@ button:disabled {
   overflow: hidden;
 }
 
-.content-grid > .compare-panel {
+.project-detail-panel {
   grid-column: 1;
   grid-row: 2;
+  min-width: 0;
+}
+
+.content-grid > .compare-panel {
+  grid-column: 1;
+  grid-row: 3;
 }
 
 .table-heading {
@@ -2626,7 +2632,7 @@ tbody tr.selected {
 
 .insight-rail {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
   display: grid;
   gap: 16px;
   min-width: 0;
@@ -2639,7 +2645,7 @@ tbody tr.selected {
 
 .wide-action-grid {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 3;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
@@ -2672,6 +2678,10 @@ tbody tr.selected {
 
 .selected-panel {
   min-height: 190px;
+}
+
+.project-detail-panel .detail-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .selected-title {
@@ -3226,6 +3236,8 @@ tbody tr.selected {
   }
 
   .table-panel,
+  .project-detail-panel,
+  .content-grid > .compare-panel,
   .insight-rail,
   .wide-action-grid {
     grid-column: auto;
@@ -3236,12 +3248,20 @@ tbody tr.selected {
     order: 1;
   }
 
-  .wide-action-grid {
+  .project-detail-panel {
     order: 2;
   }
 
-  .insight-rail {
+  .content-grid > .compare-panel {
     order: 3;
+  }
+
+  .wide-action-grid {
+    order: 3;
+  }
+
+  .insight-rail {
+    order: 4;
   }
 
   .analysis-watch {
@@ -3271,6 +3291,10 @@ tbody tr.selected {
 
   .wide-action-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-detail-panel .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
