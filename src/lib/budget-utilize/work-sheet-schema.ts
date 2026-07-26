@@ -265,7 +265,10 @@ function requireColumn(columns: Record<string, number>, key: string, label: stri
   throw new Error(`Google Sheet column "${label}" was not found. Data mapping stopped to prevent an incorrect write.`);
 }
 
-export function resolveWorkSheetColumns(rows: unknown[][]): WorkSheetColumns {
+export function resolveWorkSheetColumns(
+  rows: unknown[][],
+  options: { stageOnly?: boolean } = {},
+): WorkSheetColumns {
   const headerRow = rows.findIndex(
     (row) => normalizeHeader(row[0]) === normalizeHeader("ลำดับ")
       && normalizeHeader(row[1]) === normalizeHeader("รายการ"),
@@ -303,16 +306,23 @@ export function resolveWorkSheetColumns(rows: unknown[][]): WorkSheetColumns {
     columns.budgetCode = columns.budget + 1;
   }
 
-  [
+  const requiredColumns = [
     ["index", "ลำดับ"],
     ["item", "รายการ"],
-    ["bid", "BID"],
-    ["pr", "PR"],
-    ["po", "PO"],
-    ["con", "CON"],
     ["status", "สถานะ"],
     ["budget", "งบประมาณ"],
-  ].forEach(([key, label]) => requireColumn(columns, key, label));
+  ];
+  if (options.stageOnly) {
+    requiredColumns.push(["stage", "STAGE"]);
+  } else {
+    requiredColumns.push(
+      ["bid", "BID"],
+      ["pr", "PR"],
+      ["po", "PO"],
+      ["con", "CON"],
+    );
+  }
+  requiredColumns.forEach(([key, label]) => requireColumn(columns, key, label));
 
   const lastColumn = Math.max(
     ...Object.entries(columns)

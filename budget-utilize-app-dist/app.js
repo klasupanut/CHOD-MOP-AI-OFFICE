@@ -538,7 +538,7 @@ function requireWorkColumn(columns, key, label) {
   throw new Error(`Google Sheet column "${label}" was not found. Data mapping stopped to prevent an incorrect status.`);
 }
 
-function resolveWorkColumns(rows) {
+function resolveWorkColumns(rows, options = {}) {
   const headerRow = rows.findIndex(
     (row) => normalizeWorkHeader(row[0]) === normalizeWorkHeader("ลำดับ")
       && normalizeWorkHeader(row[1]) === normalizeWorkHeader("รายการ")
@@ -576,16 +576,23 @@ function resolveWorkColumns(rows) {
     columns.budgetCode = columns.budget + 1;
   }
 
-  [
+  const requiredColumns = [
     ["index", "ลำดับ"],
     ["item", "รายการ"],
-    ["bid", "BID"],
-    ["pr", "PR"],
-    ["po", "PO"],
-    ["con", "CON"],
     ["status", "สถานะ"],
     ["budget", "งบประมาณ"]
-  ].forEach(([key, label]) => requireWorkColumn(columns, key, label));
+  ];
+  if (options.stageOnly) {
+    requiredColumns.push(["stage", "STAGE"]);
+  } else {
+    requiredColumns.push(
+      ["bid", "BID"],
+      ["pr", "PR"],
+      ["po", "PO"],
+      ["con", "CON"]
+    );
+  }
+  requiredColumns.forEach(([key, label]) => requireWorkColumn(columns, key, label));
 
   return columns;
 }
@@ -677,7 +684,8 @@ function isWorkSummaryItem(index, item) {
 }
 
 function parseWorkRows(config, rows, mainTitle, ownerName) {
-  const columns = resolveWorkColumns(rows);
+  const stageOnly = PERIOD_AWARE_SITE_GIDS.has(clean(config.gid));
+  const columns = resolveWorkColumns(rows, { stageOnly });
   const startIndex = columns.headerRow + 2;
   const tasks = [];
   let currentSection = extractSectionFromTitle(mainTitle);
@@ -702,7 +710,7 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
     const status = clean(workCell(row, columns.status));
     const budget = toNumber(workCell(row, columns.budget));
     const stageKey = normalizeProjectStage(workCell(row, columns.stage));
-    const hasProgress = [columns.bid, columns.pr, columns.po, columns.con]
+    const hasProgress = !stageOnly && [columns.bid, columns.pr, columns.po, columns.con]
       .some((column) => clean(workCell(row, column)) !== "");
     const hasWorkData = status || budget > 0 || hasProgress || stageKey;
 
@@ -715,7 +723,9 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
 
     const extras = readExtras(config, row, columns);
     const normalizedStatus = normalizeStatus(status);
-    const progress = readProgress(row, normalizedStatus, columns);
+    const progress = stageOnly
+      ? { bid: null, pr: null, po: null, con: null }
+      : readProgress(row, normalizedStatus, columns);
     const sheetRowNumber = startIndex + offset + 1;
     const id = `${config.gid}-${startIndex + offset}-${index || tasks.length + 1}`;
 
@@ -738,7 +748,9 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
       note: extras.note,
       issue: extras.issue,
       progress,
-      averageProgress: averageProgress(progress, normalizedStatus, stageKey),
+      averageProgress: stageOnly
+        ? (projectStageProgress(stageKey) ?? 0)
+        : averageProgress(progress, normalizedStatus, stageKey),
       sourceTab: config.tab,
       sourceTitle: mainTitle,
       sourceGroup: config.group,
@@ -1473,6 +1485,7 @@ function getViewContext() {
       kicker: "งานนอกแผนรวมทุกสถานที่",
       tasks: tasksForBudgetPeriod(CURRENT_BUDGET_YEAR, "outside-plan"),
       viewType: "planningPeriod",
+      budgetPeriodKind: "outside-plan",
       budgetScope: "tasks"
     };
   }
@@ -1483,6 +1496,7 @@ function getViewContext() {
       kicker: "พื้นที่วิเคราะห์งานและงบประมาณล่วงหน้า",
       tasks: tasksForBudgetPeriod(NEXT_BUDGET_YEAR, "annual"),
       viewType: "planningPeriod",
+      budgetPeriodKind: "annual",
       budgetScope: "tasks"
     };
   }
@@ -1631,6 +1645,11 @@ function taskMatchesSource(task, source) {
 
 function taskMatchesStage(task, stage) {
   const requestedStage = normalizeProjectStage(stage);
+  if (isStageOnlyTask(task) && requestedStage) {
+    const currentIndex = projectStageOptions.findIndex(([key]) => key === task.stageKey);
+    const requestedIndex = projectStageOptions.findIndex(([key]) => key === requestedStage);
+    return currentIndex < requestedIndex;
+  }
   if (task.stageKey && requestedStage) {
     const currentIndex = projectStageOptions.findIndex(([key]) => key === task.stageKey);
     const requestedIndex = projectStageOptions.findIndex(([key]) => key === requestedStage);
@@ -1861,8 +1880,11 @@ function renderKpis(tasks, context, budgetRows) {
     const missingBudgetTasks = tasks.filter((task) => task.budget <= 0);
     const sites = new Set(tasks.map((task) => task.sourceTab).filter(Boolean));
     const owners = new Set(tasks.map((task) => task.owner).filter(Boolean));
+    const periodBudgetLabel = context.budgetPeriodKind === "outside-plan"
+      ? "งบนอกแผนรวม"
+      : "งบประมาณรวม";
     cards = [
-      ["งบประมาณรวม", formatMoney(sum(tasks, "budget")), context.title],
+      [periodBudgetLabel, formatMoney(sum(tasks, "budget")), context.title],
       ["จำนวนงาน", numberFormatter.format(tasks.length), `${numberFormatter.format(sites.size)} สถานที่`],
       ["มีงบประมาณแล้ว", numberFormatter.format(budgetedTasks.length), formatMoney(sum(budgetedTasks, "budget"))],
       ["ยังไม่ระบุงบ", numberFormatter.format(missingBudgetTasks.length), "รายการที่ควรวิเคราะห์เพิ่มเติม"],
@@ -1871,13 +1893,16 @@ function renderKpis(tasks, context, budgetRows) {
   } else if (context.viewType === "budget") {
     const realizedTasks = getRealizedBudgetTasks(tasks);
     const realizedBudget = sum(realizedTasks, "budget");
+    const annualRealizedTasks = realizedTasks.filter(isAnnualPlanTask);
+    const annualRealizedBudget = sum(annualRealizedTasks, "budget");
+    const outsidePlanRealizedBudget = realizedBudget - annualRealizedBudget;
     const remainingBudget = sumBudgetRows(budgetRows);
-    const overallBudget = realizedBudget + remainingBudget;
+    const overallBudget = annualRealizedBudget + remainingBudget;
     const done = tasks.filter((task) => task.statusKey === "done");
     const watchItems = tasks.filter((task) => isWatchableTask(task) && task.budget > 0);
     cards = [
-      ["งบประมาณรวม (คลังสินค้า)", formatMoney(overallBudget), `${formatMoney(realizedBudget)} ใช้จริง + ${formatMoney(remainingBudget)} คงเหลือคลังสินค้า`],
-      ["งบประมาณที่ใช้จริง", formatMoney(realizedBudget), `${numberFormatter.format(realizedTasks.length)} รายการ ไม่รวมไม่ดำเนินการ`],
+      ["งบประมาณรวม (คลังสินค้า)", formatMoney(overallBudget), `${formatMoney(annualRealizedBudget)} ใช้จริงในแผน + ${formatMoney(remainingBudget)} คงเหลือ (ไม่รวมงบนอกแผน)`],
+      ["งบประมาณที่ใช้จริง", formatMoney(realizedBudget), `${numberFormatter.format(realizedTasks.length)} รายการ รวมงบนอกแผน ${formatMoney(outsidePlanRealizedBudget)}`],
       ["งบประมาณคงเหลือ", formatMoney(remainingBudget), `${numberFormatter.format(budgetRows.length)} รายการจากชีทคลังสินค้า`],
       ["อัตราการแล้วเสร็จ", formatPercent(ratio(done.length, tasks.length)), `${numberFormatter.format(done.length)} จาก ${numberFormatter.format(tasks.length)} รายการ`],
       ["งานที่จ้องจับตา", numberFormatter.format(watchItems.length), formatMoney(sum(watchItems, "budget"))]
@@ -1910,8 +1935,11 @@ function renderOverviewAnalysis(tasks, context, budgetRows) {
 
   const realizedTasks = getRealizedBudgetTasks(tasks);
   const realizedBudget = sum(realizedTasks, "budget");
+  const annualRealizedTasks = realizedTasks.filter(isAnnualPlanTask);
+  const annualRealizedBudget = sum(annualRealizedTasks, "budget");
+  const outsidePlanRealizedBudget = realizedBudget - annualRealizedBudget;
   const remainingBudget = sumBudgetRows(budgetRows);
-  const totalBudget = realizedBudget + remainingBudget;
+  const totalBudget = annualRealizedBudget + remainingBudget;
   const done = tasks.filter((task) => task.statusKey === "done");
   const active = tasks.filter((task) => task.statusKey === "active");
   const stopped = tasks.filter((task) => task.statusKey === "stopped");
@@ -1957,12 +1985,12 @@ function renderOverviewAnalysis(tasks, context, budgetRows) {
         <div class="glass-metric accent-teal">
           <span>งบประมาณรวม</span>
           <strong>${formatMoney(totalBudget)}</strong>
-          <em>${formatMoney(realizedBudget)} ใช้จริง + ${formatMoney(remainingBudget)} คงเหลือ</em>
+          <em>${formatMoney(annualRealizedBudget)} ใช้จริงในแผน + ${formatMoney(remainingBudget)} คงเหลือ (ไม่รวมงบนอกแผน)</em>
         </div>
         <div class="glass-metric accent-blue">
           <span>งบประมาณใช้จริง</span>
           <strong>${formatMoney(realizedBudget)}</strong>
-          <em>${numberFormatter.format(realizedTasks.length)} รายการ ไม่รวมไม่ดำเนินการ</em>
+          <em>${numberFormatter.format(realizedTasks.length)} รายการ รวมงบนอกแผน ${formatMoney(outsidePlanRealizedBudget)}</em>
         </div>
         <div class="glass-metric accent-amber">
           <span>งบที่อยู่ระหว่างดำเนินการ</span>
@@ -3110,6 +3138,10 @@ function getRealizedBudgetTasks(tasks) {
   return nonStoppedTasks.filter((task) => realizedBudgetCodeBuckets.includes(normalizedTaskBudgetCode(task)));
 }
 
+function isAnnualPlanTask(task) {
+  return task.budgetPeriodKind !== "outside-plan";
+}
+
 function buildRealizedCodeRows(tasks) {
   return realizedBudgetCodeBuckets
     .map((code) => ({
@@ -3778,10 +3810,13 @@ function statusPill(task) {
 
 function progressCell(task) {
   const pct = task.averageProgress;
+  const progressLabel = isStageOnlyTask(task)
+    ? (task.stage || "Stage not set")
+    : (task.stage || "Legacy progress");
   return `
     <div class="progress-cell">
       <div class="progress-label">
-        <span>${escapeHtml(task.stage || "Legacy progress")}</span>
+        <span>${escapeHtml(progressLabel)}</span>
         <strong>${formatPercent(pct)}</strong>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${Math.round(pct * 100)}%"></div></div>
@@ -4004,6 +4039,10 @@ function groupTaskSummary(tasks, getName) {
 function averageProgressStage(tasks, key) {
   const requestedIndex = projectStageOptions.findIndex(([stageKey]) => stageKey === key);
   const values = tasks.map((task) => {
+    if (isStageOnlyTask(task)) {
+      const taskIndex = projectStageOptions.findIndex(([stageKey]) => stageKey === task.stageKey);
+      return requestedIndex >= 0 && taskIndex >= requestedIndex ? 1 : 0;
+    }
     if (task.stageKey && requestedIndex >= 0) {
       const taskIndex = projectStageOptions.findIndex(([stageKey]) => stageKey === task.stageKey);
       return taskIndex >= requestedIndex ? 1 : 0;
@@ -4013,6 +4052,10 @@ function averageProgressStage(tasks, key) {
     return legacyValue === null || legacyValue === undefined ? 0 : legacyValue;
   });
   return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
+}
+
+function isStageOnlyTask(task) {
+  return PERIOD_AWARE_SITE_GIDS.has(clean(task?.gid));
 }
 
 function buildStatusDonutStyle(statusRows) {

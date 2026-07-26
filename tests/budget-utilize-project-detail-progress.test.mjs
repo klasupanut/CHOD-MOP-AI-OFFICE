@@ -71,6 +71,17 @@ test("new project stage uses the six-step workflow while legacy progress stays c
   assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: 1 }, "done", ""), 1);
 });
 
+test("stage-only CHOD sites never fall back to legacy procurement columns", () => {
+  const pipelineFunction = app.match(
+    /function averageProgressStage\(tasks, key\)\s*\{([\s\S]*?)\n\}/,
+  );
+  assert.ok(pipelineFunction, "averageProgressStage function must exist");
+  assert.match(pipelineFunction[1], /if \(isStageOnlyTask\(task\)\)/);
+  assert.match(app, /const stageOnly = PERIOD_AWARE_SITE_GIDS\.has\(clean\(config\.gid\)\)/);
+  assert.match(app, /stageOnly\s*\?\s*\{ bid: null, pr: null, po: null, con: null \}/);
+  assert.match(app, /stageOnly\s*\?\s*\(projectStageProgress\(stageKey\) \?\? 0\)/);
+});
+
 test("six-step progress pipeline stays contained across desktop and mobile", () => {
   assert.match(
     styles,

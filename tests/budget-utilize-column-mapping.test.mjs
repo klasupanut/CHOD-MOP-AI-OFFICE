@@ -66,6 +66,26 @@ const compactRows = [
   ["", "", "BID", "PR", "PO", "CON"],
 ];
 
+const stageOnlyRows = [
+  ["งานปรับปรุง"],
+  [
+    "ลำดับ",
+    "รายการ",
+    "ปริมาณ",
+    "",
+    "งบประมาณ",
+    "",
+    "แผนงาน",
+    "ผู้รับผิดชอบ",
+    "สถานะ",
+    "ผู้รับเหมา",
+    "PO NUMBER",
+    "หมายเหตุ",
+    "STAGE",
+  ],
+  ["", "", "จำนวน", "หน่วย", "จำนวนเงิน", "รหัส"],
+];
+
 test("expanded CHOD sheets resolve status and procurement stages from their real headers", () => {
   const columns = resolveWorkSheetColumns(expandedRows);
   assert.equal(columns.plan, 6);
@@ -115,16 +135,45 @@ test("compact CHODBIZ sheets retain their C-F stages and G status mapping", () =
   assert.equal(columnLetter(columns.status), "G");
 });
 
+test("CHOD 1/2/3/5 stage-only schema no longer requires BID/PR/PO/CON columns", () => {
+  const columns = resolveWorkSheetColumns(stageOnlyRows, { stageOnly: true });
+  assert.equal(columns.bid, -1);
+  assert.equal(columns.pr, -1);
+  assert.equal(columns.po, -1);
+  assert.equal(columns.con, -1);
+  assert.equal(columns.status, 8);
+  assert.equal(columns.stage, 12);
+  assert.equal(columnLetter(columns.stage), "M");
+  assert.throws(
+    () => resolveWorkSheetColumns(stageOnlyRows),
+    /Google Sheet column "BID" was not found/,
+  );
+  assert.throws(
+    () => resolveWorkSheetColumns(
+      stageOnlyRows.map((row) => row.map((cell) => cell === "STAGE" ? "" : cell)),
+      { stageOnly: true },
+    ),
+    /Google Sheet column "STAGE" was not found/,
+  );
+});
+
 test("all Budget Utilize read and write paths use header mapping instead of fixed status column 6", () => {
-  assert.match(embeddedApp, /const columns = resolveWorkColumns\(rows\)/);
+  assert.match(embeddedApp, /const columns = resolveWorkColumns\(rows, \{ stageOnly \}\)/);
   assert.match(embeddedApp, /workCell\(row, columns\.status\)/);
   assert.doesNotMatch(embeddedApp, /const status = clean\(row\[6\]\)/);
 
-  assert.match(serverReader, /const columns = resolveWorkSheetColumns\(rows\)/);
+  assert.match(serverReader, /const columns = resolveWorkSheetColumns\(rows, \{ stageOnly \}\)/);
+  assert.match(serverReader, /STAGE_ONLY_LOCATION_GIDS\.has\(task\.gid\)/);
   assert.match(serverReader, /workCell\(row, columns\.status\)/);
   assert.doesNotMatch(serverReader, /const status = clean\(row\[6\]\)/);
 
-  assert.match(writeRoute, /const columns = await readWorkSheetSchema\(title\)/);
+  assert.match(writeRoute, /const columns = await readWorkSheetSchema\(title, stageOnly\)/);
+  assert.match(writeRoute, /resolveWorkSheetColumns\(rows, \{ stageOnly: true \}\)/);
+  assert.match(writeRoute, /if \(stageOnly && !hasStageUpdate\)/);
+  assert.match(
+    writeRoute,
+    /\.\.\.\(stageOnly\s*\?\s*\[\{ column: columns\.stage, value: projectStageSheetValue\(requestedStage\) \}\]/,
+  );
   assert.match(writeRoute, /putBudgetCells\(title, rowNumber/);
   assert.match(writeRoute, /columns\.stage/);
   assert.match(writeRoute, /statusForChangedStage/);

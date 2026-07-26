@@ -95,6 +95,12 @@ const PROJECT_STAGE_OPTIONS: Array<{ key: BudgetUtilizeStageKey; label: string }
   { key: "po", label: "PO" },
   { key: "handover", label: "Handover" },
 ];
+const STAGE_ONLY_LOCATION_GIDS = new Set([
+  "1670988984",
+  "715191170",
+  "1288685133",
+  "1504272791",
+]);
 
 const BUDGET_UTILIZE_SHEETS = [
   { tab: "CHOD 1", title: "งานปรับปรุง-พัฒนา โชติธนวัฒน์ 1", gid: "1670988984", group: "location" as const },
@@ -315,7 +321,8 @@ function isWorkSummaryItem(index: string, item: string) {
 
 function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: string[][]) {
   const mainTitle = firstText(rows[0]) || sheet.title;
-  const columns = resolveWorkSheetColumns(rows);
+  const stageOnly = STAGE_ONLY_LOCATION_GIDS.has(sheet.gid);
+  const columns = resolveWorkSheetColumns(rows, { stageOnly });
   const startIndex = columns.headerRow + 2;
   const tasks: BudgetUtilizeTask[] = [];
   let budgetPeriod = defaultBudgetPeriod();
@@ -333,12 +340,14 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
     const status = clean(workCell(row, columns.status));
     const stageKey = normalizeProjectStage(workCell(row, columns.stage));
     const budget = toNumber(workCell(row, columns.budget));
-    const hasProgress = [columns.bid, columns.pr, columns.po, columns.con]
+    const hasProgress = !stageOnly && [columns.bid, columns.pr, columns.po, columns.con]
       .some((column) => clean(workCell(row, column)));
     if (!status && budget <= 0 && !hasProgress && !stageKey) return;
 
     const statusKey = normalizeStatus(status);
-    const progress = readProgress(row, statusKey, columns);
+    const progress = stageOnly
+      ? { bid: null, pr: null, po: null, con: null }
+      : readProgress(row, statusKey, columns);
     const rowNumber = startIndex + offset + 1;
 
     tasks.push({
@@ -364,7 +373,9 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
       budgetPeriodKind: budgetPeriod.kind,
       budgetPeriodLabel: budgetPeriod.label,
       progress,
-      averageProgress: averageProgress(progress, statusKey, stageKey),
+      averageProgress: stageOnly
+        ? (projectStageProgress(stageKey) ?? 0)
+        : averageProgress(progress, statusKey, stageKey),
     });
   });
 
@@ -431,6 +442,7 @@ function groupRows<T>(
 
 function buildSummary(tasks: BudgetUtilizeTask[], remainingBudget: number) {
   const realizedTasks = tasks.filter(isRealizedBudgetTask);
+  const annualRealizedTasks = realizedTasks.filter((task) => task.budgetPeriodKind !== "outside-plan");
   const doneTasks = tasks.filter((task) => task.statusKey === "done");
   const activeTasks = tasks.filter((task) => task.statusKey === "active");
   const stoppedTasks = tasks.filter((task) => task.statusKey === "stopped");
@@ -440,6 +452,7 @@ function buildSummary(tasks: BudgetUtilizeTask[], remainingBudget: number) {
     .sort((a, b) => b.budget - a.budget || a.averageProgress - b.averageProgress);
 
   const realizedBudget = sum(realizedTasks, (task) => task.budget);
+  const annualRealizedBudget = sum(annualRealizedTasks, (task) => task.budget);
   const statusRows = [
     { key: "done" as const, label: statusLabels.done, rows: doneTasks },
     { key: "active" as const, label: statusLabels.active, rows: activeTasks },
@@ -476,7 +489,9 @@ function buildSummary(tasks: BudgetUtilizeTask[], remainingBudget: number) {
     realizedTasks: realizedTasks.length,
     realizedBudget,
     remainingBudget,
-    totalBudget: realizedBudget + remainingBudget,
+    // Annual budget excludes current-year outside-plan work. Those rows remain
+    // available in actual-spend and owner summaries for operational visibility.
+    totalBudget: annualRealizedBudget + remainingBudget,
     activeBudget: sum(activeTasks, (task) => task.budget),
     watchItems: watchRows.length,
     watchBudget: sum(watchRows, (task) => task.budget),
@@ -488,6 +503,10 @@ function buildSummary(tasks: BudgetUtilizeTask[], remainingBudget: number) {
       label,
       value: percent(tasks.length
         ? tasks.reduce((total, task) => {
+          if (STAGE_ONLY_LOCATION_GIDS.has(task.gid)) {
+            const taskIndex = PROJECT_STAGE_OPTIONS.findIndex((stage) => stage.key === task.stageKey);
+            return total + (taskIndex >= stageIndex ? 1 : 0);
+          }
           if (task.stageKey) {
             const taskIndex = PROJECT_STAGE_OPTIONS.findIndex((stage) => stage.key === task.stageKey);
             return total + (taskIndex >= stageIndex ? 1 : 0);

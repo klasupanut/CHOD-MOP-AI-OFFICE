@@ -288,11 +288,11 @@ function assertTaskIdentity(input: Record<string, unknown>, gid: string, rowNumb
   }
 }
 
-async function readWorkSheetSchema(title: string) {
+async function readWorkSheetSchema(title: string, stageOnly = false) {
   const range = encodeURIComponent(`${escapeSheetName(title)}!A1:Z4`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
-  return resolveWorkSheetColumns(payload.values || []);
+  return resolveWorkSheetColumns(payload.values || [], { stageOnly });
 }
 
 async function readWorkSheetRows(title: string) {
@@ -729,10 +729,11 @@ async function nextIndexForSheet(title: string) {
 
 async function updateBudgetTask(payload: Record<string, unknown>) {
   const gid = clean(payload.gid, 32);
+  const stageOnly = periodAwareLocationSheets.has(gid);
   const rowNumber = assertSafeRowNumber(payload.rowNumber);
   assertTaskIdentity(payload, gid, rowNumber);
   const title = await sheetTitleFromGid(gid);
-  const columns = await readWorkSheetSchema(title);
+  const columns = await readWorkSheetSchema(title, stageOnly);
   const row = await readBudgetRow(title, rowNumber, columns);
   if (!clean(workCell(row, columns.item), 500)) throw new Error("Target Budget Utilize row has no project item.");
 
@@ -747,12 +748,17 @@ async function updateBudgetTask(payload: Record<string, unknown>) {
     : requestedStatusKey;
   const progress = normalizeProgress(updates.progress, updates.stage);
 
-  if (periodAwareLocationSheets.has(gid) && columns.stage < 0) {
+  if (stageOnly && columns.stage < 0) {
     throw new Error("STAGE column is not configured for this sheet. No data was changed.");
+  }
+  if (stageOnly && !hasStageUpdate) {
+    throw new Error("STAGE is required for this sheet. No data was changed.");
   }
 
   await putBudgetCells(title, rowNumber, [
-    ...(columns.stage >= 0 && hasStageUpdate
+    ...(stageOnly
+      ? [{ column: columns.stage, value: projectStageSheetValue(requestedStage) }]
+      : columns.stage >= 0 && hasStageUpdate
       ? [{ column: columns.stage, value: projectStageSheetValue(requestedStage) }]
       : [
           { column: columns.bid, value: progressCell(progress.bid) },
@@ -781,7 +787,7 @@ async function addBudgetProject(payload: Record<string, unknown>) {
 
   if (periodAwareLocationSheets.has(gid)) {
     let rows = await readWorkSheetRows(title);
-    const columns = resolveWorkSheetColumns(rows);
+    const columns = resolveWorkSheetColumns(rows, { stageOnly: true });
     if (columns.stage < 0) {
       throw new Error("STAGE column is not configured for this sheet. No data was changed.");
     }
@@ -849,7 +855,7 @@ async function addBudgetProject(payload: Record<string, unknown>) {
   }
 
   const index = await nextIndexForSheet(title);
-  const columns = await readWorkSheetSchema(title);
+  const columns = await readWorkSheetSchema(title, false);
   const progress = normalizeProgress(null, project.stage);
   const statusKey = normalizeStatusKey(project.statusKey);
   const row: unknown[] = Array.from({ length: columns.lastColumn + 1 }, () => "");
@@ -879,10 +885,11 @@ async function addBudgetProject(payload: Record<string, unknown>) {
 
 async function deleteBudgetProject(payload: Record<string, unknown>) {
   const gid = clean(payload.gid, 32);
+  const stageOnly = periodAwareLocationSheets.has(gid);
   const rowNumber = assertSafeRowNumber(payload.rowNumber);
   assertTaskIdentity(payload, gid, rowNumber);
   const title = await sheetTitleFromGid(gid);
-  const columns = await readWorkSheetSchema(title);
+  const columns = await readWorkSheetSchema(title, stageOnly);
   const row = await readBudgetRow(title, rowNumber, columns);
   const item = clean(workCell(row, columns.item), 500);
   const expectedItem = clean(payload.expectedItem, 500);

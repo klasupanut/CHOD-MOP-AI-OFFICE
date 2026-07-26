@@ -109,6 +109,37 @@ test("person summaries use current-year site work including outside-plan rows wi
   assert.doesNotMatch(summaryFunction, /budgetPeriodKind\s*===\s*"annual"/);
 });
 
+test("annual total budget excludes outside-plan value without hiding outside-plan work", () => {
+  assert.match(
+    embeddedApp,
+    /const annualRealizedTasks = realizedTasks\.filter\(isAnnualPlanTask\);/,
+  );
+  assert.match(
+    embeddedApp,
+    /const totalBudget = annualRealizedBudget \+ remainingBudget;/,
+  );
+  assert.match(
+    embeddedApp,
+    /function isAnnualPlanTask\(task\) \{\s*return task\.budgetPeriodKind !== "outside-plan";\s*\}/,
+  );
+  assert.match(
+    embeddedApp,
+    /budgetPeriodKind: "outside-plan"/,
+  );
+  assert.match(
+    embeddedApp,
+    /periodBudgetLabel = context\.budgetPeriodKind === "outside-plan"\s*\? "งบนอกแผนรวม"/,
+  );
+  assert.match(
+    serverDataSource,
+    /const annualRealizedTasks = realizedTasks\.filter\(\(task\) => task\.budgetPeriodKind !== "outside-plan"\);/,
+  );
+  assert.match(
+    serverDataSource,
+    /totalBudget: annualRealizedBudget \+ remainingBudget/,
+  );
+});
+
 test("work rows navigate to details and details provide a return-to-list control", () => {
   assert.match(embeddedApp, /function selectTaskAndShowDetails\(row, tasks\)/);
   assert.match(
