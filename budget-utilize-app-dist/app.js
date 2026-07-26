@@ -470,16 +470,97 @@ function buildSheetModel(config, rows) {
   };
 }
 
+function normalizeWorkHeader(value) {
+  return clean(value).replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+function findExactWorkColumn(headerRows, aliases) {
+  const normalizedAliases = aliases.map(normalizeWorkHeader);
+  for (const row of headerRows) {
+    const index = row.findIndex((value) => normalizedAliases.includes(normalizeWorkHeader(value)));
+    if (index >= 0) return index;
+  }
+  return -1;
+}
+
+function requireWorkColumn(columns, key, label) {
+  if (columns[key] >= 0) return;
+  throw new Error(`Google Sheet column "${label}" was not found. Data mapping stopped to prevent an incorrect status.`);
+}
+
+function resolveWorkColumns(rows) {
+  const headerRow = rows.findIndex(
+    (row) => normalizeWorkHeader(row[0]) === normalizeWorkHeader("ลำดับ")
+      && normalizeWorkHeader(row[1]) === normalizeWorkHeader("รายการ")
+  );
+  if (headerRow < 0) {
+    throw new Error("Google Sheet work header was not found.");
+  }
+
+  const primary = rows[headerRow] || [];
+  const secondary = rows[headerRow + 1] || [];
+  const columns = {
+    headerRow,
+    index: findExactWorkColumn([primary], ["ลำดับ"]),
+    item: findExactWorkColumn([primary], ["รายการ"]),
+    bid: findExactWorkColumn([secondary, primary], ["BID"]),
+    pr: findExactWorkColumn([secondary, primary], ["PR"]),
+    po: findExactWorkColumn([secondary, primary], ["PO"]),
+    con: findExactWorkColumn([secondary, primary], ["CON"]),
+    status: findExactWorkColumn([primary], ["สถานะ", "STATUS"]),
+    contractor: findExactWorkColumn([primary], ["ผู้รับเหมา", "CONTRACTOR"]),
+    budget: findExactWorkColumn([primary], ["งบประมาณ", "BUDGET"]),
+    budgetCode: findExactWorkColumn([primary], ["รหัสงบประมาณ", "รหัสงบ", "BUDGET CODE"]),
+    plan: findExactWorkColumn([primary], ["แผนงาน", "PLAN"]),
+    owner: findExactWorkColumn([primary], ["ผู้รับผิดชอบ", "OWNER"]),
+    note: findExactWorkColumn([primary], ["หมายเหตุ", "NOTE"]),
+    poNumber: findExactWorkColumn([primary], ["PO NUMBER", "PO NO", "PO NO."])
+  };
+
+  if (
+    columns.budgetCode < 0
+    && columns.budget >= 0
+    && normalizeWorkHeader(secondary[columns.budget + 1]) === normalizeWorkHeader("รหัส")
+  ) {
+    columns.budgetCode = columns.budget + 1;
+  }
+
+  [
+    ["index", "ลำดับ"],
+    ["item", "รายการ"],
+    ["bid", "BID"],
+    ["pr", "PR"],
+    ["po", "PO"],
+    ["con", "CON"],
+    ["status", "สถานะ"],
+    ["budget", "งบประมาณ"]
+  ].forEach(([key, label]) => requireWorkColumn(columns, key, label));
+
+  return columns;
+}
+
+function workCell(row, column) {
+  return column >= 0 ? row[column] : "";
+}
+
+function isWorkSummaryItem(index, item) {
+  const text = clean(item);
+  return !clean(index) && (
+    text.includes("รวมจำนวนเงิน")
+    || /^(?:แผน)?งบประมาณปี/.test(text)
+  );
+}
+
 function parseWorkRows(config, rows, mainTitle, ownerName) {
-  const headerRow = rows.findIndex((row) => row[0]?.includes("ลำดับ") && row[1]?.includes("รายการ"));
-  const startIndex = headerRow >= 0 ? headerRow + 2 : 0;
+  const columns = resolveWorkColumns(rows);
+  const startIndex = columns.headerRow + 2;
   const tasks = [];
   let currentSection = extractSectionFromTitle(mainTitle);
 
   rows.slice(startIndex).forEach((row, offset) => {
-    const index = clean(row[0]);
-    const item = clean(row[1]);
-    if (!item || item.includes("รวมจำนวนเงิน")) return;
+    const index = clean(workCell(row, columns.index));
+    const item = clean(workCell(row, columns.item));
+    if (!item || isWorkSummaryItem(index, item)) return;
 
     const siteTitle = siteTitleFromSummaryRow(index, item);
     if (siteTitle) {
@@ -487,10 +568,10 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
       return;
     }
 
-    const status = clean(row[6]);
-    const budgetIndex = config.mode === "support" ? 7 : 8;
-    const budget = toNumber(row[budgetIndex]);
-    const hasProgress = [2, 3, 4, 5].some((col) => row[col] !== undefined && clean(row[col]) !== "");
+    const status = clean(workCell(row, columns.status));
+    const budget = toNumber(workCell(row, columns.budget));
+    const hasProgress = [columns.bid, columns.pr, columns.po, columns.con]
+      .some((column) => clean(workCell(row, column)) !== "");
     const hasWorkData = status || budget > 0 || hasProgress;
 
     if (!hasWorkData && isSectionRow(index, item)) {
@@ -500,9 +581,9 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
 
     if (!hasWorkData && /กำลังกรอกข้อมูล/.test(item)) return;
 
-    const extras = readExtras(config, row);
+    const extras = readExtras(config, row, columns);
     const normalizedStatus = normalizeStatus(status);
-    const progress = readProgress(row, normalizedStatus);
+    const progress = readProgress(row, normalizedStatus, columns);
     const sheetRowNumber = startIndex + offset + 1;
     const id = `${config.gid}-${startIndex + offset}-${index || tasks.length + 1}`;
 
@@ -514,7 +595,7 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
       item,
       status: status || statusLabels[normalizedStatus],
       statusKey: normalizedStatus,
-      contractor: clean(row[7]),
+      contractor: clean(workCell(row, columns.contractor)),
       budget,
       budgetCode: extras.budgetCode,
       poNumber: extras.poNumber,
@@ -648,49 +729,29 @@ function normalizeTaskMatchText(value) {
     .replace(/[()"'\u201c\u201d.,\-_/]/g, "");
 }
 
-function readExtras(config, row) {
+function readExtras(config, row, columns) {
   const result = {
-    budgetCode: "",
-    poNumber: "",
-    plan: "",
-    owner: "",
-    note: "",
+    budgetCode: clean(workCell(row, columns.budgetCode)),
+    poNumber: clean(workCell(row, columns.poNumber)),
+    plan: clean(workCell(row, columns.plan)),
+    owner: clean(workCell(row, columns.owner)),
+    note: clean(workCell(row, columns.note)),
     issue: ""
   };
 
-  if (config.mode === "project-long") {
-    result.budgetCode = clean(row[9]);
-    result.plan = clean(row[10]);
-    result.owner = clean(row[11]);
-    result.note = clean(row[12]);
-    result.poNumber = clean(row[13]);
-    return result;
-  }
+  const structuredCandidates = config.mode === "person"
+    ? [result.note, ...row.slice(9, 14)].map(clean).filter(Boolean)
+    : [result.note].filter(Boolean);
+  const structured = structuredCandidates
+    .map(parseStructuredNote)
+    .find((value) => value.consumed)
+    || parseStructuredNote(result.note);
 
-  if (config.mode === "support") {
-    result.note = clean(row[8]);
-    return result;
-  }
-
-  const structured = parseStructuredNote(row[9]);
   if (structured.budgetCode) result.budgetCode = structured.budgetCode;
   if (structured.poNumber) result.poNumber = structured.poNumber;
   if (structured.owner) result.owner = structured.owner;
   if (structured.issue) result.issue = structured.issue;
-  if (structured.note) result.note = structured.note;
-
-  const candidates = [structured.consumed ? "" : row[9], row[10], row[11], row[12]].map(clean).filter(Boolean);
-  candidates.forEach((value) => {
-    if (isBudgetCode(value) && !result.budgetCode) {
-      result.budgetCode = value;
-    } else if (isMonth(value) && !result.plan) {
-      result.plan = value;
-    } else if (isLikelyOwner(value) && !result.owner && config.mode !== "person") {
-      result.owner = value;
-    } else {
-      result.note = [result.note, value].filter(Boolean).join(" | ");
-    }
-  });
+  if (structured.note || structured.consumed) result.note = structured.note;
   return result;
 }
 
@@ -3234,12 +3295,12 @@ function progressCell(task) {
   `;
 }
 
-function readProgress(row, normalizedStatus) {
+function readProgress(row, normalizedStatus, columns) {
   const values = {
-    bid: toProgress(row[2]),
-    pr: toProgress(row[3]),
-    po: toProgress(row[4]),
-    con: toProgress(row[5])
+    bid: toProgress(workCell(row, columns.bid)),
+    pr: toProgress(workCell(row, columns.pr)),
+    po: toProgress(workCell(row, columns.po)),
+    con: toProgress(workCell(row, columns.con))
   };
 
   if (Object.values(values).every((value) => value === null) && normalizedStatus === "done") {

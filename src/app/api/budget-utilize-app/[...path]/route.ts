@@ -3,6 +3,12 @@ import { createSign } from "node:crypto";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/api";
+import {
+  columnLetter,
+  resolveWorkSheetColumns,
+  type WorkSheetColumns,
+  workCell,
+} from "@/lib/budget-utilize/work-sheet-schema";
 import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
 
@@ -232,28 +238,50 @@ function assertTaskIdentity(input: Record<string, unknown>, gid: string, rowNumb
   }
 }
 
-async function readBudgetRow(title: string, rowNumber: number) {
-  const range = encodeURIComponent(`${escapeSheetName(title)}!A${rowNumber}:N${rowNumber}`);
+async function readWorkSheetSchema(title: string) {
+  const range = encodeURIComponent(`${escapeSheetName(title)}!A1:Z4`);
+  const response = await sheetsFetch(`/values/${range}`);
+  const payload = (await response.json()) as { values?: unknown[][] };
+  return resolveWorkSheetColumns(payload.values || []);
+}
+
+async function readBudgetRow(title: string, rowNumber: number, columns: WorkSheetColumns) {
+  const endColumn = columnLetter(columns.lastColumn);
+  const range = encodeURIComponent(`${escapeSheetName(title)}!A${rowNumber}:${endColumn}${rowNumber}`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
   const row = [...(payload.values?.[0] || [])];
-  while (row.length < 14) row.push("");
+  while (row.length <= columns.lastColumn) row.push("");
   return row;
 }
 
-async function putBudgetRow(title: string, rowNumber: number, row: unknown[]) {
-  const range = encodeURIComponent(`${escapeSheetName(title)}!A${rowNumber}:N${rowNumber}`);
-  await sheetsFetch(`/values/${range}?valueInputOption=USER_ENTERED`, {
-    method: "PUT",
-    body: JSON.stringify({ values: [row.slice(0, 14)] }),
+async function putBudgetCells(
+  title: string,
+  rowNumber: number,
+  updates: Array<{ column: number; value: unknown }>,
+) {
+  const data = updates
+    .filter((update) => update.column >= 0)
+    .map((update) => {
+      const letter = columnLetter(update.column);
+      return {
+        range: `${escapeSheetName(title)}!${letter}${rowNumber}:${letter}${rowNumber}`,
+        values: [[update.value]],
+      };
+    });
+  if (!data.length) throw new Error("No mapped Budget Utilize columns are available for this update.");
+  await sheetsFetch("/values:batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({ valueInputOption: "USER_ENTERED", data }),
   });
 }
 
-async function appendBudgetRow(title: string, row: unknown[]) {
-  const range = encodeURIComponent(`${escapeSheetName(title)}!A:N`);
+async function appendBudgetRow(title: string, row: unknown[], columns: WorkSheetColumns) {
+  const endColumn = columnLetter(columns.lastColumn);
+  const range = encodeURIComponent(`${escapeSheetName(title)}!A:${endColumn}`);
   const response = await sheetsFetch(`/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
     method: "POST",
-    body: JSON.stringify({ values: [row.slice(0, 14)] }),
+    body: JSON.stringify({ values: [row.slice(0, columns.lastColumn + 1)] }),
   });
   return response.json() as Promise<{ updates?: { updatedRange?: string } }>;
 }
@@ -337,9 +365,11 @@ async function clearBudgetProjectRows(
   title: string,
   rowNumber: number,
   summaryRows: Array<{ title: string; rowNumber: number }>,
+  columns: WorkSheetColumns,
 ) {
+  const endColumn = columnLetter(columns.lastColumn);
   const ranges = [
-    `${escapeSheetName(title)}!A${rowNumber}:N${rowNumber}`,
+    `${escapeSheetName(title)}!A${rowNumber}:${endColumn}${rowNumber}`,
     ...summaryRows.map((row) => `${escapeSheetName(row.title)}!A${row.rowNumber}:J${row.rowNumber}`),
   ];
   await sheetsFetch("/values:batchClear", {
@@ -363,24 +393,25 @@ async function updateBudgetTask(payload: Record<string, unknown>) {
   const rowNumber = assertSafeRowNumber(payload.rowNumber);
   assertTaskIdentity(payload, gid, rowNumber);
   const title = await sheetTitleFromGid(gid);
-  const row = await readBudgetRow(title, rowNumber);
-  if (!clean(row[1], 500)) throw new Error("Target Budget Utilize row has no project item.");
+  const columns = await readWorkSheetSchema(title);
+  const row = await readBudgetRow(title, rowNumber, columns);
+  if (!clean(workCell(row, columns.item), 500)) throw new Error("Target Budget Utilize row has no project item.");
 
   const updates = (payload.updates && typeof payload.updates === "object" ? payload.updates : {}) as Record<string, unknown>;
   const statusKey = normalizeStatusKey(updates.statusKey);
   const progress = normalizeProgress(updates.progress, updates.stage);
 
-  row[2] = progressCell(progress.bid);
-  row[3] = progressCell(progress.pr);
-  row[4] = progressCell(progress.po);
-  row[5] = progressCell(progress.con);
-  row[6] = statusWriteLabels[statusKey];
-  row[9] = clean(updates.budgetCode, 40);
-  row[11] = clean(updates.owner, 80);
-  row[12] = clean(updates.note, 1000);
-  row[13] = clean(updates.poNumber, 120);
-
-  await putBudgetRow(title, rowNumber, row);
+  await putBudgetCells(title, rowNumber, [
+    { column: columns.bid, value: progressCell(progress.bid) },
+    { column: columns.pr, value: progressCell(progress.pr) },
+    { column: columns.po, value: progressCell(progress.po) },
+    { column: columns.con, value: progressCell(progress.con) },
+    { column: columns.status, value: statusWriteLabels[statusKey] },
+    { column: columns.budgetCode, value: clean(updates.budgetCode, 40) },
+    { column: columns.owner, value: clean(updates.owner, 80) },
+    { column: columns.note, value: clean(updates.note, 1000) },
+    { column: columns.poNumber, value: clean(updates.poNumber, 120) },
+  ]);
   return { ok: true, mode: "updated", gid, rowNumber, sheet: title };
 }
 
@@ -394,24 +425,23 @@ async function addBudgetProject(payload: Record<string, unknown>) {
   const statusKey = normalizeStatusKey(project.statusKey);
   const progress = normalizeProgress(null, project.stage);
   const index = await nextIndexForSheet(title);
-  const row = [
-    index,
-    item,
-    progressCell(progress.bid),
-    progressCell(progress.pr),
-    progressCell(progress.po),
-    progressCell(progress.con),
-    statusWriteLabels[statusKey],
-    clean(project.contractor, 200),
-    toMoneyNumber(project.budget),
-    clean(project.budgetCode, 40),
-    "",
-    clean(project.owner, 80),
-    clean(project.note, 1000),
-    clean(project.poNumber, 120),
-  ];
+  const columns = await readWorkSheetSchema(title);
+  const row: unknown[] = Array.from({ length: columns.lastColumn + 1 }, () => "");
+  row[columns.index] = index;
+  row[columns.item] = item;
+  row[columns.bid] = progressCell(progress.bid);
+  row[columns.pr] = progressCell(progress.pr);
+  row[columns.po] = progressCell(progress.po);
+  row[columns.con] = progressCell(progress.con);
+  row[columns.status] = statusWriteLabels[statusKey];
+  if (columns.contractor >= 0) row[columns.contractor] = clean(project.contractor, 200);
+  row[columns.budget] = toMoneyNumber(project.budget);
+  if (columns.budgetCode >= 0) row[columns.budgetCode] = clean(project.budgetCode, 40);
+  if (columns.owner >= 0) row[columns.owner] = clean(project.owner, 80);
+  if (columns.note >= 0) row[columns.note] = clean(project.note, 1000);
+  if (columns.poNumber >= 0) row[columns.poNumber] = clean(project.poNumber, 120);
 
-  const result = await appendBudgetRow(title, row);
+  const result = await appendBudgetRow(title, row, columns);
   return { ok: true, mode: "appended", gid, sheet: title, updatedRange: result.updates?.updatedRange || "" };
 }
 
@@ -420,8 +450,9 @@ async function deleteBudgetProject(payload: Record<string, unknown>) {
   const rowNumber = assertSafeRowNumber(payload.rowNumber);
   assertTaskIdentity(payload, gid, rowNumber);
   const title = await sheetTitleFromGid(gid);
-  const row = await readBudgetRow(title, rowNumber);
-  const item = clean(row[1], 500);
+  const columns = await readWorkSheetSchema(title);
+  const row = await readBudgetRow(title, rowNumber, columns);
+  const item = clean(workCell(row, columns.item), 500);
   const expectedItem = clean(payload.expectedItem, 500);
   if (!item) throw new Error("Target Budget Utilize row has no project item.");
   if (expectedItem && item !== expectedItem) {
@@ -433,7 +464,7 @@ async function deleteBudgetProject(payload: Record<string, unknown>) {
   if (selectedSummaryRow && !summaryRows.some((row) => row.title === selectedSummaryRow.title && row.rowNumber === selectedSummaryRow.rowNumber)) {
     summaryRows.push(selectedSummaryRow);
   }
-  await clearBudgetProjectRows(title, rowNumber, summaryRows);
+  await clearBudgetProjectRows(title, rowNumber, summaryRows, columns);
   return {
     ok: true,
     mode: "deleted",

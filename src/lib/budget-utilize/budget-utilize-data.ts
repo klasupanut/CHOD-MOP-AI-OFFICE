@@ -1,4 +1,9 @@
 import "server-only";
+import {
+  resolveWorkSheetColumns,
+  type WorkSheetColumns,
+  workCell,
+} from "@/lib/budget-utilize/work-sheet-schema";
 
 export type BudgetUtilizeStatusKey = "done" | "active" | "stopped" | "blank";
 
@@ -210,12 +215,12 @@ function normalizeStatus(status: string): BudgetUtilizeStatusKey {
   return "blank";
 }
 
-function readProgress(row: string[], statusKey: BudgetUtilizeStatusKey) {
+function readProgress(row: string[], statusKey: BudgetUtilizeStatusKey, columns: WorkSheetColumns) {
   const progress = {
-    bid: toProgress(row[2]),
-    pr: toProgress(row[3]),
-    po: toProgress(row[4]),
-    con: toProgress(row[5]),
+    bid: toProgress(workCell(row, columns.bid)),
+    pr: toProgress(workCell(row, columns.pr)),
+    po: toProgress(workCell(row, columns.po)),
+    con: toProgress(workCell(row, columns.con)),
   };
 
   if (Object.values(progress).every((value) => value === null) && statusKey === "done") {
@@ -225,8 +230,12 @@ function readProgress(row: string[], statusKey: BudgetUtilizeStatusKey) {
 }
 
 function averageProgress(progress: BudgetUtilizeTask["progress"], statusKey: BudgetUtilizeStatusKey) {
-  const values = Object.values(progress).filter((value): value is number => value !== null);
-  if (!values.length) return statusKey === "done" ? 1 : 0;
+  const values = [progress.bid, progress.pr, progress.po, progress.con].map((value) => (
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.min(1, Math.max(0, value))
+      : 0
+  ));
+  if (!values.some((value) => value > 0) && statusKey === "done") return 1;
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
@@ -247,24 +256,33 @@ function isRealizedBudgetTask(task: BudgetUtilizeTask) {
   return task.statusKey !== "stopped" && REALIZED_BUDGET_CODES.includes(normalizedBudgetCode(task));
 }
 
+function isWorkSummaryItem(index: string, item: string) {
+  const text = clean(item);
+  return !clean(index) && (
+    text.includes("รวมจำนวนเงิน")
+    || /^(?:แผน)?งบประมาณปี/.test(text)
+  );
+}
+
 function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: string[][]) {
   const mainTitle = firstText(rows[0]) || sheet.title;
-  const headerRow = rows.findIndex((row) => row[0]?.includes("ลำดับ") && row[1]?.includes("รายการ"));
-  const startIndex = headerRow >= 0 ? headerRow + 2 : 0;
+  const columns = resolveWorkSheetColumns(rows);
+  const startIndex = columns.headerRow + 2;
   const tasks: BudgetUtilizeTask[] = [];
 
   rows.slice(startIndex).forEach((row, offset) => {
-    const index = clean(row[0]);
-    const item = clean(row[1]);
-    if (!item || item.includes("รวมจำนวนเงิน")) return;
+    const index = clean(workCell(row, columns.index));
+    const item = clean(workCell(row, columns.item));
+    if (!item || isWorkSummaryItem(index, item)) return;
 
-    const status = clean(row[6]);
-    const budget = toNumber(row[8]);
-    const hasProgress = [2, 3, 4, 5].some((column) => clean(row[column]));
+    const status = clean(workCell(row, columns.status));
+    const budget = toNumber(workCell(row, columns.budget));
+    const hasProgress = [columns.bid, columns.pr, columns.po, columns.con]
+      .some((column) => clean(workCell(row, column)));
     if (!status && budget <= 0 && !hasProgress) return;
 
     const statusKey = normalizeStatus(status);
-    const progress = readProgress(row, statusKey);
+    const progress = readProgress(row, statusKey, columns);
     const rowNumber = startIndex + offset + 1;
 
     tasks.push({
@@ -277,13 +295,13 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
       sourceTitle: mainTitle,
       status: status || statusLabels[statusKey],
       statusKey,
-      contractor: clean(row[7]),
+      contractor: clean(workCell(row, columns.contractor)),
       budget,
-      budgetCode: clean(row[9]),
-      plan: clean(row[10]),
-      owner: normalizeOwner(row[11]),
-      note: clean(row[12]),
-      poNumber: clean(row[13]),
+      budgetCode: clean(workCell(row, columns.budgetCode)),
+      plan: clean(workCell(row, columns.plan)),
+      owner: normalizeOwner(clean(workCell(row, columns.owner))),
+      note: clean(workCell(row, columns.note)),
+      poNumber: clean(workCell(row, columns.poNumber)),
       progress,
       averageProgress: averageProgress(progress, statusKey),
     });
