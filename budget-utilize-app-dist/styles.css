@@ -1293,22 +1293,26 @@ button:disabled {
 
 .pipeline-chart {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  min-height: 142px;
-  align-items: end;
+  min-width: 0;
+  min-height: 0;
+  align-items: stretch;
 }
 
 .pipeline-row {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 8px;
-  min-height: 142px;
+  min-width: 0;
+  min-height: 124px;
+  padding: 10px;
   border: 0;
   border-radius: var(--radius);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--bar-color, #00a6a6) 7%, rgba(255, 255, 255, 0.68)), rgba(255, 255, 255, 0.28));
   color: inherit;
+  overflow: hidden;
   text-align: center;
 }
 
@@ -1320,16 +1324,20 @@ button:disabled {
 }
 
 .pipeline-row span {
+  min-width: 0;
+  min-height: 30px;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+  line-height: 1.25;
 }
 
 .pipeline-track {
   display: flex;
   align-items: end;
   justify-content: center;
-  min-height: 96px;
+  min-height: 68px;
   border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.5);
   background:
@@ -4189,6 +4197,10 @@ tbody tr,
 }
 
 @media screen and (max-width: 480px) {
+  .pipeline-chart {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .table-wrap tbody tr {
     grid-template-columns: minmax(0, 1fr);
   }

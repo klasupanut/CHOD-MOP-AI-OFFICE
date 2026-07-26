@@ -71,6 +71,21 @@ test("new project stage uses the six-step workflow while legacy progress stays c
   assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: 1 }, "done", ""), 1);
 });
 
+test("six-step progress pipeline stays contained across desktop and mobile", () => {
+  assert.match(
+    styles,
+    /\.pipeline-chart\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);[\s\S]*?min-width:\s*0;/,
+  );
+  assert.match(
+    styles,
+    /\.pipeline-row\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?overflow:\s*hidden;/,
+  );
+  assert.match(
+    styles,
+    /@media screen and \(max-width:\s*480px\)\s*\{[\s\S]*?\.pipeline-chart\s*\{[\s\S]*?repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+  );
+});
+
 test("all work-list menus expand the table and details without duplicating remaining budget", () => {
   assert.match(app, /const showsBudgetRemaining = isBudgetMenu;/);
   assert.match(app, /els\.contentGrid\.classList\.toggle\("wide-work-layout", !isActionCenter\);/);
