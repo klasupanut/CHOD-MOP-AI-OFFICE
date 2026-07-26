@@ -2405,8 +2405,13 @@ button:disabled {
   min-width: 0;
 }
 
-.content-grid.site-sheet-layout {
+.content-grid.wide-work-layout {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.content-grid.wide-work-layout > .insight-rail {
+  grid-column: 1;
+  grid-row: 4;
 }
 
 .table-panel {

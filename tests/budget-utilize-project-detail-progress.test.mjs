@@ -52,19 +52,23 @@ test("BID PR PO CON progress always uses all four stages as the denominator", ()
   assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: 1 }, "done"), 1);
 });
 
-test("location site views hide remaining budget and expand the work table", () => {
+test("all work-list menus expand the table and details without duplicating remaining budget", () => {
+  assert.match(app, /const showsBudgetRemaining = isBudgetMenu;/);
+  assert.match(app, /els\.contentGrid\.classList\.toggle\("wide-work-layout", !isActionCenter\);/);
   assert.match(
     app,
-    /const isSiteSheet = context\.viewType === "sheet" && context\.sheet\?\.group === "location";/
+    /els\.insightRail\.classList\.toggle\("hidden", !isBudgetMenu && !isActionCenter\);/
   );
-  assert.match(app, /els\.contentGrid\.classList\.toggle\("site-sheet-layout", isSiteSheet\);/);
-  assert.match(app, /els\.insightRail\.classList\.toggle\("hidden", isSiteSheet\);/);
   assert.match(
     app,
-    /els\.budgetRemainingPanel\.classList\.toggle\("hidden", isOverview \|\| isActionCenter \|\| isSiteSheet\);/
+    /els\.budgetRemainingPanel\.classList\.toggle\("hidden", !isBudgetMenu\);/
   );
   assert.match(
     styles,
-    /\.content-grid\.site-sheet-layout\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/
+    /\.content-grid\.wide-work-layout\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/
+  );
+  assert.match(
+    styles,
+    /\.content-grid\.wide-work-layout\s*>\s*\.insight-rail\s*\{[\s\S]*?grid-column:\s*1;[\s\S]*?grid-row:\s*4;/
   );
 });
