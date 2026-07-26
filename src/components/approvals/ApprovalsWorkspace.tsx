@@ -49,11 +49,6 @@ function countPendingApprovals(items: QuotationApprovalItem[]) {
   return items.filter((item) => item.status === "Waiting Approval" || item.status === "Waiting Final Approval").length;
 }
 
-function validPdfUrl(url: string) {
-  const normalized = url.trim();
-  return Boolean(normalized) && normalized !== "/quotations";
-}
-
 export function ApprovalsWorkspace({
   currentUser,
   initialApprovals,
@@ -77,7 +72,7 @@ export function ApprovalsWorkspace({
   const selected = approvals.find((approval) => approval.approvalId === selectedId) ?? approvals[0];
   const selectedIsCancelled = selected?.status === "Cancelled";
   const permissionState = selected ? canUserApproveQuotation(currentUser, agentId, selected, approvalPermissions) : null;
-  const selectedPdfUrl = selected && validPdfUrl(selected.quotationPdfUrl) ? selected.quotationPdfUrl : "";
+  const selectedPreviewUrl = selected ? `/approvals/${encodeURIComponent(selected.approvalId)}/preview` : "";
   const selectedLineItems = selected?.quotationItems?.length
     ? selected.quotationItems
     : selected
@@ -268,7 +263,7 @@ export function ApprovalsWorkspace({
                 <strong>Online Quotation PDF</strong>
                 <span>{selected.customerName}</span>
                 <em>{money(selected.amount)}</em>
-                <small>{selectedPdfUrl ? `Ready to open: ${selected.quotationNo}` : "PDF has not been generated yet."}</small>
+                <small>{selected.quotationPdfUrl ? `Secure workspace preview ready: ${selected.quotationNo}` : "Live quotation data preview ready."}</small>
               </div>
               <div className="detail-stack">
                 <div className="detail-kpi"><span>Project / Site</span><strong>{selected.projectName} / {selected.site}</strong></div>
@@ -281,7 +276,7 @@ export function ApprovalsWorkspace({
                 <header>
                   <div>
                     <span>IN-HOUSE QUOTATION DATA</span>
-                    <strong>{selectedPdfUrl ? "PDF available, table shown for approval check" : "Unsigned PDF not saved yet — review data table instead"}</strong>
+                    <strong>{selected.quotationPdfUrl ? "Secure preview from the live quotation record" : "Unsigned PDF not saved yet — review live data below"}</strong>
                   </div>
                 </header>
                 <div className="approval-inhouse-scroll">
@@ -325,7 +320,7 @@ export function ApprovalsWorkspace({
                 {!selectedIsCancelled ? <button disabled={!permissionState?.allowed || isSaving} onClick={approve} type="button"><CheckCircle2 size={16} />{isSaving ? "Saving..." : permissionState?.needsFinal ? "Review / Recommend Approval" : "Approve"}</button> : null}
                 {!selectedIsCancelled ? <button disabled={!permissionState?.allowed || isSaving} onClick={() => void updateStatus("Rejected", "Rejected from CHOD MOP OFFICE approval flow.")} type="button"><XCircle size={16} />Reject</button> : null}
                 <button onClick={() => setNote("Note added locally.")} type="button"><MessageSquare size={16} />Add Note</button>
-                <Link href={selectedPdfUrl || selected.quotationPreviewUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />Preview Quotation</Link>
+                <Link href={selectedPreviewUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />Preview Quotation</Link>
               </div>
               <section className="task-note-box">
                 <strong>Approval History</strong>

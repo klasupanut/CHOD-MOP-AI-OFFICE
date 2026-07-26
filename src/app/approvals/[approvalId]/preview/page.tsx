@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { findApprovalRow } from "@/lib/approvals/approval-store";
 import { requireModule } from "@/lib/auth/session";
 
@@ -15,48 +15,11 @@ function money(value: number) {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(value);
 }
 
-function configuredAppHost() {
-  const raw = process.env.AUTH_URL || process.env.NEXTAUTH_URL || "";
-  try {
-    return raw ? new URL(raw).hostname.toLowerCase() : "";
-  } catch {
-    return "";
-  }
-}
-
-function validPdfUrl(url: string) {
-  const normalized = url.trim();
-  if (!normalized || normalized === "/quotations") return false;
-  if (normalized.startsWith("/") && !normalized.startsWith("//")) return true;
-
-  try {
-    const parsed = new URL(normalized);
-    if (parsed.protocol !== "https:") return false;
-    const host = parsed.hostname.toLowerCase();
-    const appHost = configuredAppHost();
-    return (
-      host === "drive.google.com" ||
-      host === "docs.google.com" ||
-      host === "script.google.com" ||
-      host === "script.googleusercontent.com" ||
-      host === "storage.googleapis.com" ||
-      host.endsWith(".googleusercontent.com") ||
-      Boolean(appHost && host === appHost)
-    );
-  } catch {
-    return false;
-  }
-}
-
 export default async function QuotationApprovalPreviewPage({ params }: { params: Promise<{ approvalId: string }> }) {
   await requireModule("Approvals");
   const { approvalId } = await params;
   const approval = await findApprovalRow(approvalId);
   if (!approval) notFound();
-
-  if (validPdfUrl(approval.quotationPdfUrl)) {
-    redirect(approval.quotationPdfUrl);
-  }
 
   const lineItems: PreviewLineItem[] =
     "quotationItems" in approval && Array.isArray(approval.quotationItems) && approval.quotationItems.length
@@ -70,7 +33,10 @@ export default async function QuotationApprovalPreviewPage({ params }: { params:
           <div>
             <span>CHOD MOP OFFICE</span>
             <h1>Preview Quotation</h1>
-            <p>Unsigned PDF has not been saved to Google Drive yet. This full-page in-house table shows the important quotation data for approval review.</p>
+            <p>
+              Secure workspace preview generated from the live quotation record.
+              Google Drive remains private and does not require a separate access request.
+            </p>
           </div>
           <strong>{approval.quotationNo}</strong>
         </header>

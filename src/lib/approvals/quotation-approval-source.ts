@@ -178,7 +178,10 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
     dueDate: String(row.date || updatedAt.slice(0, 10)),
     remark: `Internal approval: ${row.approvalStatus || row.status || "Waiting Approval"} | Customer signing: ${row.signingStatus === "INTERNAL_VERIFIED" ? "Internal verified hard copy" : row.signingStatus || "Not sent/signed"}`,
     quotationPdfUrl: pdfUrl,
-    quotationPreviewUrl: pdfUrl || `/approvals/APR-${quotationId}/preview`,
+    // Workspace members must preview through CHOD's authenticated route.
+    // A Google Drive URL has a separate ACL and would incorrectly ask an
+    // already-approved CHOD user to request Drive access again.
+    quotationPreviewUrl: `/approvals/APR-${quotationId}/preview`,
     validity: "From quotation record",
     paymentTerms: "From quotation record",
     lastUpdate: updatedAt.replace("T", " ").slice(0, 16),
