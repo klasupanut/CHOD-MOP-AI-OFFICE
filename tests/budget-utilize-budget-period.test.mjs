@@ -6,6 +6,7 @@ import {
   defaultBudgetPeriod,
   parseBudgetPeriodMarker,
   resolveBudgetPeriodInsertTarget,
+  resolveBudgetPeriodSectionCreationTarget,
 } from "../src/lib/budget-utilize/work-sheet-schema.ts";
 
 const embeddedApp = await readFile(
@@ -88,6 +89,21 @@ test("normal summaries use current-year work while virtual planning menus expose
   );
 });
 
+test("person summaries use current-year site work including outside-plan rows without duplicates", () => {
+  assert.match(embeddedApp, /function currentPersonSummaryTasks\(\)/);
+  assert.match(
+    embeddedApp,
+    /const locationTasks = currentBudgetTasks\("location"\)\.filter/,
+  );
+  assert.match(embeddedApp, /if \(task\.writeSource\) return false;/);
+  assert.match(embeddedApp, /tasks: currentPersonSummaryTasks\(\)/);
+  assert.match(embeddedApp, /function taskMatchesPersonSheet\(task, tab\)/);
+  const summaryFunction = embeddedApp.match(
+    /function currentPersonSummaryTasks\(\) \{[\s\S]*?\n\}/,
+  )?.[0] || "";
+  assert.doesNotMatch(summaryFunction, /budgetPeriodKind\s*===\s*"annual"/);
+});
+
 test("work rows navigate to details and details provide a return-to-list control", () => {
   assert.match(embeddedApp, /function selectTaskAndShowDetails\(row, tasks\)/);
   assert.match(
@@ -128,6 +144,7 @@ test("period-aware add reuses a safe trailing slot or inserts before the next ma
         label: "แผนงบประมาณปี 2569",
       },
       markerRowNumber: 3,
+      summaryRowNumber: 4,
       rowNumber: 6,
       nextIndex: 2,
       needsInsert: false,
@@ -168,14 +185,95 @@ test("period-aware add refuses a missing marker instead of silently appending", 
   );
 });
 
+test("missing future sections use the nearest same-kind template and preserve period order", () => {
+  const rows = [
+    ["ลำดับ", "รายการ"],
+    ["", ""],
+    ["", "แผนงบประมาณปี 2569"],
+    ["", "แผนงบประมาณปี 2569 รวมจำนวนเงิน"],
+    [1, "งานเดิมปี 2569"],
+    ["", ""],
+    ["", "นอกแผนงบประมาณปี 2569"],
+    ["", "นอกแผนงบประมาณปี 2569 รวมจำนวนเงิน"],
+    [1, "งานนอกแผนเดิม"],
+    ["", "แผนงบประมาณปี 2570"],
+    ["", "แผนงบประมาณปี 2570 รวมจำนวนเงิน"],
+    [1, ""],
+  ];
+  const requestedPeriod = {
+    year: 2570,
+    kind: "outside-plan",
+    label: "นอกแผนงบประมาณปี 2570",
+  };
+
+  assert.deepEqual(
+    resolveBudgetPeriodSectionCreationTarget(rows, testColumns, requestedPeriod),
+    {
+      period: requestedPeriod,
+      insertionRowNumber: 13,
+      sourceTitleRowNumber: 7,
+      sourceSummaryRowNumber: 8,
+    },
+  );
+
+  const rowsWithNextAnnual = [
+    ...rows,
+    ["", "แผนงบประมาณปี 2571"],
+    ["", "แผนงบประมาณปี 2571 รวมจำนวนเงิน"],
+  ];
+  assert.equal(
+    resolveBudgetPeriodSectionCreationTarget(rowsWithNextAnnual, testColumns, requestedPeriod)
+      ?.insertionRowNumber,
+    13,
+  );
+});
+
+test("section auto-creation is idempotent and refuses a mismatched template kind", () => {
+  const existingRows = [
+    ["ลำดับ", "รายการ"],
+    ["", ""],
+    ["", "นอกแผนงบประมาณปี 2569"],
+    ["", "นอกแผนงบประมาณปี 2569 รวมจำนวนเงิน"],
+    [1, "งานเดิม"],
+  ];
+  const existingPeriod = {
+    year: 2569,
+    kind: "outside-plan",
+    label: "นอกแผนงบประมาณปี 2569",
+  };
+  assert.equal(
+    resolveBudgetPeriodSectionCreationTarget(existingRows, testColumns, existingPeriod),
+    null,
+  );
+
+  const annualOnlyRows = [
+    ["ลำดับ", "รายการ"],
+    ["", ""],
+    ["", "แผนงบประมาณปี 2569"],
+    ["", "แผนงบประมาณปี 2569 รวมจำนวนเงิน"],
+    [1, "งานเดิม"],
+  ];
+  assert.throws(
+    () => resolveBudgetPeriodSectionCreationTarget(annualOnlyRows, testColumns, {
+      year: 2569,
+      kind: "outside-plan",
+      label: "นอกแผนงบประมาณปี 2569",
+    }),
+    /template/,
+  );
+});
+
 test("live add UI and API carry a guarded budget period for the four reference sheets", () => {
   assert.match(embeddedHtml, /id="newProjectPeriod"/);
   assert.match(embeddedApp, /const PERIOD_AWARE_SITE_GIDS = new Set/);
   assert.match(embeddedApp, /budgetYear: selectedPeriod\?\.year/);
   assert.match(embeddedApp, /budgetPeriodKind: selectedPeriod\?\.kind/);
   assert.match(writeRoute, /const periodAwareLocationSheets = new Set/);
+  assert.match(writeRoute, /resolveBudgetPeriodSectionCreationTarget\(rows, columns, period\)/);
   assert.match(writeRoute, /resolveBudgetPeriodInsertTarget\(rows, columns, period\)/);
   assert.match(writeRoute, /sheetsFetch\(":batchUpdate"/);
   assert.match(writeRoute, /insertDimension/);
+  assert.match(writeRoute, /PASTE_FORMULA/);
+  assert.match(writeRoute, /sectionCreated/);
   assert.match(writeRoute, /Google Sheet write verification failed/);
 });

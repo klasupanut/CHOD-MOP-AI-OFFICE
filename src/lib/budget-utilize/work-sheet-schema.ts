@@ -28,10 +28,25 @@ export type BudgetPeriod = {
 export type BudgetPeriodInsertTarget = {
   period: BudgetPeriod;
   markerRowNumber: number;
+  summaryRowNumber: number;
   rowNumber: number;
   nextIndex: number;
   needsInsert: boolean;
   formatSourceRowNumber: number | null;
+};
+
+export type BudgetPeriodSectionCreationTarget = {
+  period: BudgetPeriod;
+  insertionRowNumber: number;
+  sourceTitleRowNumber: number;
+  sourceSummaryRowNumber: number;
+};
+
+type BudgetPeriodSection = {
+  period: BudgetPeriod;
+  markerStartIndex: number;
+  contentStartIndex: number;
+  endIndex: number;
 };
 
 function clean(value: unknown) {
@@ -86,19 +101,13 @@ function numericWorkIndex(value: unknown) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function resolveBudgetPeriodInsertTarget(
+function collectBudgetPeriodSections(
   rows: unknown[][],
   columns: WorkSheetColumns,
-  requestedPeriod: Pick<BudgetPeriod, "year" | "kind">,
-): BudgetPeriodInsertTarget {
+): BudgetPeriodSection[] {
   const dataStartIndex = columns.headerRow + 2;
-  const sections: Array<{
-    period: BudgetPeriod;
-    markerStartIndex: number;
-    contentStartIndex: number;
-    endIndex: number;
-  }> = [];
-  let activeSection: (typeof sections)[number] | null = null;
+  const sections: BudgetPeriodSection[] = [];
+  let activeSection: BudgetPeriodSection | null = null;
 
   for (let rowIndex = dataStartIndex; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex] || [];
@@ -128,7 +137,52 @@ export function resolveBudgetPeriodInsertTarget(
   }
 
   if (activeSection) sections.push(activeSection);
+  return sections;
+}
 
+function periodRank(period: Pick<BudgetPeriod, "year" | "kind">) {
+  return period.year * 2 + (period.kind === "outside-plan" ? 1 : 0);
+}
+
+export function resolveBudgetPeriodSectionCreationTarget(
+  rows: unknown[][],
+  columns: WorkSheetColumns,
+  requestedPeriod: BudgetPeriod,
+): BudgetPeriodSectionCreationTarget | null {
+  const sections = collectBudgetPeriodSections(rows, columns);
+  if (sections.some((section) => sameBudgetPeriod(section.period, requestedPeriod))) {
+    return null;
+  }
+
+  const sameKindSources = sections
+    .filter((section) => section.period.kind === requestedPeriod.kind)
+    .sort((left, right) => (
+      Math.abs(left.period.year - requestedPeriod.year)
+      - Math.abs(right.period.year - requestedPeriod.year)
+    ));
+  const source = sameKindSources[0];
+  if (!source || source.contentStartIndex !== source.markerStartIndex + 2) {
+    throw new Error("ไม่พบ template หัวข้อและแถวรวมเงินที่ปลอดภัยสำหรับสร้างหมวดงบประมาณใหม่");
+  }
+
+  const nextSection = sections.find((section) => (
+    periodRank(section.period) > periodRank(requestedPeriod)
+  ));
+  return {
+    period: requestedPeriod,
+    insertionRowNumber: (nextSection?.markerStartIndex ?? rows.length) + 1,
+    sourceTitleRowNumber: source.markerStartIndex + 1,
+    sourceSummaryRowNumber: source.contentStartIndex,
+  };
+}
+
+export function resolveBudgetPeriodInsertTarget(
+  rows: unknown[][],
+  columns: WorkSheetColumns,
+  requestedPeriod: Pick<BudgetPeriod, "year" | "kind">,
+): BudgetPeriodInsertTarget {
+  const dataStartIndex = columns.headerRow + 2;
+  const sections = collectBudgetPeriodSections(rows, columns);
   const matches = sections.filter((section) => (
     section.period.year === requestedPeriod.year
     && section.period.kind === requestedPeriod.kind
@@ -184,6 +238,7 @@ export function resolveBudgetPeriodInsertTarget(
   return {
     period: section.period,
     markerRowNumber: section.markerStartIndex + 1,
+    summaryRowNumber: section.contentStartIndex,
     rowNumber: (reusableRowIndex ?? section.endIndex) + 1,
     nextIndex: reusableIndex ?? (maxIndex + 1),
     needsInsert: reusableRowIndex === null,

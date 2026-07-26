@@ -6,9 +6,12 @@ import { getApiUser } from "@/lib/auth/api";
 import {
   columnLetter,
   currentThailandBudgetYear,
+  parseBudgetPeriodMarker,
   resolveBudgetPeriodInsertTarget,
+  resolveBudgetPeriodSectionCreationTarget,
   resolveWorkSheetColumns,
   type BudgetPeriod,
+  type BudgetPeriodSectionCreationTarget,
   type WorkSheetColumns,
   workCell,
 } from "@/lib/budget-utilize/work-sheet-schema";
@@ -335,12 +338,163 @@ function googleCellData(value: unknown) {
   return { userEnteredValue: { stringValue: clean(value, 5000) } };
 }
 
+function googleFormulaCell(formula: string) {
+  if (!formula.startsWith("=")) throw new Error("Invalid Google Sheet formula.");
+  return { userEnteredValue: { formulaValue: formula } };
+}
+
+function shiftSourceRowAfterInsertion(
+  sourceRowNumber: number,
+  insertionRowNumber: number,
+  insertedRowCount: number,
+) {
+  return sourceRowNumber >= insertionRowNumber
+    ? sourceRowNumber + insertedRowCount
+    : sourceRowNumber;
+}
+
+function replaceBudgetYear(value: unknown, sourceYear: number, targetYear: number) {
+  const source = clean(value, 500);
+  if (!source || !source.includes(String(sourceYear))) {
+    throw new Error("Budget section template year could not be verified.");
+  }
+  return source.replaceAll(String(sourceYear), String(targetYear));
+}
+
+async function createBudgetPeriodSection(input: {
+  gid: string;
+  rows: unknown[][];
+  columns: WorkSheetColumns;
+  target: BudgetPeriodSectionCreationTarget;
+}) {
+  const sheetId = Number(input.gid);
+  const insertedRowCount = 2;
+  const insertionRowIndex = input.target.insertionRowNumber - 1;
+  const sourceTitle = input.rows[input.target.sourceTitleRowNumber - 1] || [];
+  const sourceSummary = input.rows[input.target.sourceSummaryRowNumber - 1] || [];
+  if (input.target.sourceSummaryRowNumber !== input.target.sourceTitleRowNumber + 1) {
+    throw new Error("Budget section template rows are not consecutive.");
+  }
+  const sourcePeriod = parseBudgetPeriodMarker(
+    workCell(sourceTitle, input.columns.index),
+    workCell(sourceTitle, input.columns.item),
+  );
+  if (!sourcePeriod || sourcePeriod.kind !== input.target.period.kind) {
+    throw new Error("Budget section template type could not be verified.");
+  }
+
+  const titleValue = replaceBudgetYear(
+    workCell(sourceTitle, input.columns.item),
+    sourcePeriod.year,
+    input.target.period.year,
+  );
+  const summaryValue = replaceBudgetYear(
+    workCell(sourceSummary, input.columns.item),
+    sourcePeriod.year,
+    input.target.period.year,
+  );
+  const shiftedSourceTitle = shiftSourceRowAfterInsertion(
+    input.target.sourceTitleRowNumber,
+    input.target.insertionRowNumber,
+    insertedRowCount,
+  );
+  const shiftedSourceSummary = shiftSourceRowAfterInsertion(
+    input.target.sourceSummaryRowNumber,
+    input.target.insertionRowNumber,
+    insertedRowCount,
+  );
+  const requests: Array<Record<string, unknown>> = [{
+    insertDimension: {
+      range: {
+        sheetId,
+        dimension: "ROWS",
+        startIndex: insertionRowIndex,
+        endIndex: insertionRowIndex + insertedRowCount,
+      },
+      inheritFromBefore: input.target.insertionRowNumber > 1,
+    },
+  }];
+
+  for (const pasteType of ["PASTE_FORMAT", "PASTE_DATA_VALIDATION"]) {
+    requests.push({
+      copyPaste: {
+        source: {
+          sheetId,
+          startRowIndex: shiftedSourceTitle - 1,
+          endRowIndex: shiftedSourceSummary,
+          startColumnIndex: 0,
+          endColumnIndex: 26,
+        },
+        destination: {
+          sheetId,
+          startRowIndex: insertionRowIndex,
+          endRowIndex: insertionRowIndex + insertedRowCount,
+          startColumnIndex: 0,
+          endColumnIndex: 26,
+        },
+        pasteType,
+        pasteOrientation: "NORMAL",
+      },
+    });
+  }
+
+  requests.push({
+    copyPaste: {
+      source: {
+        sheetId,
+        startRowIndex: shiftedSourceSummary - 1,
+        endRowIndex: shiftedSourceSummary,
+        startColumnIndex: 0,
+        endColumnIndex: 26,
+      },
+      destination: {
+        sheetId,
+        startRowIndex: insertionRowIndex + 1,
+        endRowIndex: insertionRowIndex + 2,
+        startColumnIndex: 0,
+        endColumnIndex: 26,
+      },
+      pasteType: "PASTE_FORMULA",
+      pasteOrientation: "NORMAL",
+    },
+  });
+
+  for (const [rowIndex, value] of [
+    [insertionRowIndex, titleValue],
+    [insertionRowIndex + 1, summaryValue],
+  ] as const) {
+    requests.push({
+      updateCells: {
+        range: {
+          sheetId,
+          startRowIndex: rowIndex,
+          endRowIndex: rowIndex + 1,
+          startColumnIndex: input.columns.item,
+          endColumnIndex: input.columns.item + 1,
+        },
+        rows: [{ values: [googleCellData(value)] }],
+        fields: "userEnteredValue",
+      },
+    });
+  }
+
+  await sheetsFetch(":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({ requests }),
+  });
+}
+
 async function writeSectionAwareBudgetRow(input: {
   gid: string;
   rowNumber: number;
   needsInsert: boolean;
   formatSourceRowNumber: number | null;
   updates: Array<{ column: number; value: unknown }>;
+  summaryFormula: {
+    rowNumber: number;
+    column: number;
+    formula: string;
+  };
 }) {
   const sheetId = Number(input.gid);
   const rowIndex = input.rowNumber - 1;
@@ -411,6 +565,20 @@ async function writeSectionAwareBudgetRow(input: {
       },
     });
   }
+
+  requests.push({
+    updateCells: {
+      range: {
+        sheetId,
+        startRowIndex: input.summaryFormula.rowNumber - 1,
+        endRowIndex: input.summaryFormula.rowNumber,
+        startColumnIndex: input.summaryFormula.column,
+        endColumnIndex: input.summaryFormula.column + 1,
+      },
+      rows: [{ values: [googleFormulaCell(input.summaryFormula.formula)] }],
+      fields: "userEnteredValue",
+    },
+  });
 
   if (!requests.length) throw new Error("No guarded Google Sheet changes were prepared.");
   await sheetsFetch(":batchUpdate", {
@@ -559,11 +727,24 @@ async function addBudgetProject(payload: Record<string, unknown>) {
   const progress = normalizeProgress(null, project.stage);
 
   if (periodAwareLocationSheets.has(gid)) {
-    const rows = await readWorkSheetRows(title);
+    let rows = await readWorkSheetRows(title);
     const columns = resolveWorkSheetColumns(rows);
     const period = normalizedBudgetPeriod(project);
+    const creationTarget = resolveBudgetPeriodSectionCreationTarget(rows, columns, period);
+    let sectionCreated = false;
+    if (creationTarget) {
+      await createBudgetPeriodSection({
+        gid,
+        rows,
+        columns,
+        target: creationTarget,
+      });
+      rows = await readWorkSheetRows(title);
+      sectionCreated = true;
+    }
     const target = resolveBudgetPeriodInsertTarget(rows, columns, period);
     const index = target.nextIndex;
+    const budgetColumn = columnLetter(columns.budget);
 
     await writeSectionAwareBudgetRow({
       gid,
@@ -585,6 +766,11 @@ async function addBudgetProject(payload: Record<string, unknown>) {
         { column: columns.note, value: clean(project.note, 1000) },
         { column: columns.poNumber, value: clean(project.poNumber, 120) },
       ],
+      summaryFormula: {
+        rowNumber: target.summaryRowNumber,
+        column: columns.budget,
+        formula: `=SUM(${budgetColumn}${target.summaryRowNumber + 1}:${budgetColumn}${target.rowNumber})`,
+      },
     });
 
     const verified = await readBudgetRow(title, target.rowNumber, columns);
@@ -603,6 +789,7 @@ async function addBudgetProject(payload: Record<string, unknown>) {
       rowNumber: target.rowNumber,
       index,
       budgetPeriod: period,
+      sectionCreated,
       updatedRange: `${escapeSheetName(title)}!A${target.rowNumber}:${columnLetter(columns.lastColumn)}${target.rowNumber}`,
     };
   }

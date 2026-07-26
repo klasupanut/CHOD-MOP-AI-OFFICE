@@ -1335,6 +1335,55 @@ function currentBudgetTasks(group = "") {
   );
 }
 
+function currentPersonSummaryTasks() {
+  const personSheets = state.sheets.filter((sheet) => sheet.group === "person");
+  const supportedOwners = new Set(
+    personSheets
+      .map((sheet) => normalizeOwnerDisplayName(
+        sheet.ownerName || personLabelFromTab(sheet.tab)
+      ))
+      .filter(Boolean)
+  );
+  const locationTasks = currentBudgetTasks("location").filter((task) =>
+    supportedOwners.has(normalizeOwnerDisplayName(task.owner))
+  );
+  const locationKeys = new Set(
+    locationTasks
+      .map((task) => personSummarySourceKey(
+        task.owner,
+        budgetSiteLabelFromTask(task),
+        task.item
+      ))
+      .filter(Boolean)
+  );
+  const unmatchedPersonRows = currentBudgetTasks("person").filter((task) => {
+    if (task.writeSource) return false;
+    const owner = task.owner || personLabelFromTab(task.sourceTab);
+    const key = personSummarySourceKey(owner, budgetSiteLabelFromTask(task), task.item);
+    return !key || !locationKeys.has(key);
+  });
+  return [...locationTasks, ...unmatchedPersonRows];
+}
+
+function personSheetOwner(tab) {
+  const sheet = state.sheets.find((item) => item.group === "person" && item.tab === tab);
+  return normalizeOwnerDisplayName(sheet?.ownerName || personLabelFromTab(tab));
+}
+
+function personSheetTabForOwner(owner) {
+  const normalizedOwner = normalizeOwnerDisplayName(owner);
+  return state.sheets.find((item) => (
+    item.group === "person"
+    && normalizeOwnerDisplayName(item.ownerName || personLabelFromTab(item.tab)) === normalizedOwner
+  ))?.tab || "";
+}
+
+function taskMatchesPersonSheet(task, tab) {
+  if (!tab || tab === "all") return true;
+  if (task.sourceGroup === "person") return task.sourceTab === tab;
+  return normalizeOwnerDisplayName(task.owner) === personSheetOwner(tab);
+}
+
 function getViewContext() {
   if (state.selectedView === "budget") {
     return {
@@ -1371,7 +1420,7 @@ function getViewContext() {
     return {
       title: "สรุปงานรายคน",
       kicker: "เลือกผู้รับผิดชอบจาก dropdown",
-      tasks: currentBudgetTasks("person"),
+      tasks: currentPersonSummaryTasks(),
       viewType: "personSummary",
       budgetScope: "tasks"
     };
@@ -1397,7 +1446,7 @@ function getViewContext() {
     return {
       title: "Data Analyze",
       kicker: groupTitles[group],
-      tasks: currentBudgetTasks(group),
+      tasks: group === "person" ? currentPersonSummaryTasks() : currentBudgetTasks(group),
       viewType: "overview",
       budgetScope: "tasks"
     };
@@ -1557,7 +1606,11 @@ function getFilteredTasks(tasks, context) {
       .toLowerCase();
 
     if (tokens.length && !tokens.every((token) => haystack.includes(token))) return false;
-    if (context?.viewType === "personSummary" && state.filters.personSheet !== "all" && task.sourceTab !== state.filters.personSheet) {
+    if (
+      context?.viewType === "personSummary"
+      && state.filters.personSheet !== "all"
+      && !taskMatchesPersonSheet(task, state.filters.personSheet)
+    ) {
       return false;
     }
     if (state.filters.source !== "all" && !taskMatchesSource(task, state.filters.source)) return false;
@@ -1681,6 +1734,7 @@ function renderNav() {
 }
 
 function countByPerspective(group) {
+  if (group === "person") return currentPersonSummaryTasks().length;
   return currentBudgetTasks(group).length;
 }
 
@@ -3709,24 +3763,27 @@ function groupPersonRealizedBudget(tasks, countTasks = tasks) {
   const countMap = new Map();
   countTasks.forEach((task) => {
     const tab = clean(task.sourceTab);
-    const name = clean(task.owner) || personLabelFromTab(tab) || "\u0E44\u0E21\u0E48\u0E23\u0E30\u0E1A\u0E38";
-    const key = tab || name;
+    const name = normalizeOwnerDisplayName(task.owner)
+      || personLabelFromTab(tab)
+      || "\u0E44\u0E21\u0E48\u0E23\u0E30\u0E1A\u0E38";
+    const key = name;
     countMap.set(key, (countMap.get(key) || 0) + 1);
   });
 
   const map = new Map();
   tasks.forEach((task) => {
     const tab = clean(task.sourceTab);
-    const name = clean(task.owner) || personLabelFromTab(tab) || "ไม่ระบุ";
-    const key = tab || name;
+    const name = normalizeOwnerDisplayName(task.owner) || personLabelFromTab(tab) || "ไม่ระบุ";
+    const key = name;
+    const personTab = personSheetTabForOwner(name);
     const current =
       map.get(key) || {
         name,
         count: 0,
         value: 0,
-      filter: tab ? "personSheet" : "owner",
-      filterValue: tab || name,
-      color: chartPersonColor(name)
+        filter: personTab ? "personSheet" : "owner",
+        filterValue: personTab || name,
+        color: chartPersonColor(name)
       };
     current.value += task.budget;
     current.count = countMap.get(key) || current.count + 1;
