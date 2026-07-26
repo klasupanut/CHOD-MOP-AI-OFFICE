@@ -9,6 +9,13 @@ import {
 } from "@/lib/budget-utilize/work-sheet-schema";
 
 export type BudgetUtilizeStatusKey = "done" | "active" | "stopped" | "blank";
+export type BudgetUtilizeStageKey =
+  | "site-survey"
+  | "bid"
+  | "budget-approved"
+  | "pr"
+  | "po"
+  | "handover";
 
 export type BudgetUtilizeTask = {
   id: string;
@@ -20,6 +27,8 @@ export type BudgetUtilizeTask = {
   sourceTitle: string;
   status: string;
   statusKey: BudgetUtilizeStatusKey;
+  stage: string;
+  stageKey: BudgetUtilizeStageKey | "";
   contractor: string;
   budget: number;
   budgetCode: string;
@@ -60,7 +69,7 @@ export type BudgetUtilizeData = {
     doneRate: number;
     averageProgress: number;
     statusRows: Array<{ key: BudgetUtilizeStatusKey; label: string; value: number; budget: number; color: string }>;
-    pipelineRows: Array<{ key: "bid" | "pr" | "po" | "con"; label: string; value: number }>;
+    pipelineRows: Array<{ key: BudgetUtilizeStageKey; label: string; value: number }>;
     codeRows: Array<{ name: string; value: number; count: number; color: string }>;
     siteRows: Array<{ name: string; value: number; count: number; color: string }>;
     ownerRows: Array<{
@@ -78,6 +87,14 @@ export type BudgetUtilizeData = {
 
 const DEFAULT_SPREADSHEET_ID = "1NmVPZkEGxeUvIQYsuoyF7L9Xhjn03zH5RZvDf8UJ2Po";
 const REALIZED_BUDGET_CODES = ["ไม่ระบุ", "1C01", "1C02", "1B02"];
+const PROJECT_STAGE_OPTIONS: Array<{ key: BudgetUtilizeStageKey; label: string }> = [
+  { key: "site-survey", label: "Site Survey" },
+  { key: "bid", label: "Bid" },
+  { key: "budget-approved", label: "Budget Approved" },
+  { key: "pr", label: "PR" },
+  { key: "po", label: "PO" },
+  { key: "handover", label: "Handover" },
+];
 
 const BUDGET_UTILIZE_SHEETS = [
   { tab: "CHOD 1", title: "งานปรับปรุง-พัฒนา โชติธนวัฒน์ 1", gid: "1670988984", group: "location" as const },
@@ -221,6 +238,26 @@ function normalizeStatus(status: string): BudgetUtilizeStatusKey {
   return "blank";
 }
 
+function normalizeProjectStage(value: unknown): BudgetUtilizeStageKey | "" {
+  const normalized = clean(value).toLowerCase().replace(/[_\s]+/g, "-");
+  if (normalized === "site-survey" || normalized === "survey") return "site-survey";
+  if (normalized === "bid") return "bid";
+  if (normalized === "budget-approved" || normalized === "budget-approve") return "budget-approved";
+  if (normalized === "pr") return "pr";
+  if (normalized === "po") return "po";
+  if (normalized === "handover" || normalized === "hand-over") return "handover";
+  return "";
+}
+
+function projectStageLabel(stageKey: BudgetUtilizeStageKey | "") {
+  return PROJECT_STAGE_OPTIONS.find((stage) => stage.key === stageKey)?.label || "";
+}
+
+function projectStageProgress(stageKey: BudgetUtilizeStageKey | "") {
+  const index = PROJECT_STAGE_OPTIONS.findIndex((stage) => stage.key === stageKey);
+  return index >= 0 ? (index + 1) / PROJECT_STAGE_OPTIONS.length : null;
+}
+
 function readProgress(row: string[], statusKey: BudgetUtilizeStatusKey, columns: WorkSheetColumns) {
   const progress = {
     bid: toProgress(workCell(row, columns.bid)),
@@ -235,7 +272,13 @@ function readProgress(row: string[], statusKey: BudgetUtilizeStatusKey, columns:
   return progress;
 }
 
-function averageProgress(progress: BudgetUtilizeTask["progress"], statusKey: BudgetUtilizeStatusKey) {
+function averageProgress(
+  progress: BudgetUtilizeTask["progress"],
+  statusKey: BudgetUtilizeStatusKey,
+  stageKey: BudgetUtilizeStageKey | "",
+) {
+  const stageValue = projectStageProgress(stageKey);
+  if (stageValue !== null) return stageValue;
   const values = [progress.bid, progress.pr, progress.po, progress.con].map((value) => (
     typeof value === "number" && Number.isFinite(value)
       ? Math.min(1, Math.max(0, value))
@@ -288,10 +331,11 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
     if (!item || isWorkSummaryItem(index, item)) return;
 
     const status = clean(workCell(row, columns.status));
+    const stageKey = normalizeProjectStage(workCell(row, columns.stage));
     const budget = toNumber(workCell(row, columns.budget));
     const hasProgress = [columns.bid, columns.pr, columns.po, columns.con]
       .some((column) => clean(workCell(row, column)));
-    if (!status && budget <= 0 && !hasProgress) return;
+    if (!status && budget <= 0 && !hasProgress && !stageKey) return;
 
     const statusKey = normalizeStatus(status);
     const progress = readProgress(row, statusKey, columns);
@@ -307,6 +351,8 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
       sourceTitle: mainTitle,
       status: status || statusLabels[statusKey],
       statusKey,
+      stage: projectStageLabel(stageKey),
+      stageKey,
       contractor: clean(workCell(row, columns.contractor)),
       budget,
       budgetCode: clean(workCell(row, columns.budgetCode)),
@@ -318,7 +364,7 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
       budgetPeriodKind: budgetPeriod.kind,
       budgetPeriodLabel: budgetPeriod.label,
       progress,
-      averageProgress: averageProgress(progress, statusKey),
+      averageProgress: averageProgress(progress, statusKey, stageKey),
     });
   });
 
@@ -437,10 +483,22 @@ function buildSummary(tasks: BudgetUtilizeTask[], remainingBudget: number) {
     doneRate: percent(ratio(doneTasks.length, tasks.length)),
     averageProgress: percent(tasks.length ? tasks.reduce((total, task) => total + task.averageProgress, 0) / tasks.length : 0),
     statusRows,
-    pipelineRows: (["bid", "pr", "po", "con"] as const).map((key) => ({
+    pipelineRows: PROJECT_STAGE_OPTIONS.map(({ key, label }, stageIndex) => ({
       key,
-      label: key.toUpperCase(),
-      value: percent(tasks.length ? tasks.reduce((total, task) => total + (task.progress[key] ?? 0), 0) / tasks.length : 0),
+      label,
+      value: percent(tasks.length
+        ? tasks.reduce((total, task) => {
+          if (task.stageKey) {
+            const taskIndex = PROJECT_STAGE_OPTIONS.findIndex((stage) => stage.key === task.stageKey);
+            return total + (taskIndex >= stageIndex ? 1 : 0);
+          }
+          if (key === "bid") return total + (task.progress.bid ?? 0);
+          if (key === "pr") return total + (task.progress.pr ?? 0);
+          if (key === "po") return total + (task.progress.po ?? 0);
+          if (key === "handover") return total + (task.statusKey === "done" ? 1 : 0);
+          return total;
+        }, 0) / tasks.length
+        : 0),
     })),
     codeRows: groupRows(realizedTasks, normalizedBudgetCode, (task) => task.budget, codeColors).filter((row) => row.value > 0),
     siteRows: groupRows(realizedTasks, (task) => task.site, (task) => task.budget, siteColors).filter((row) => row.value > 0),

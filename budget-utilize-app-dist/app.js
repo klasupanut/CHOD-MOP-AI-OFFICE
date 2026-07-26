@@ -150,6 +150,23 @@ const progressStageOptions = [
   ["con", "CON"]
 ];
 
+const projectStageOptions = [
+  ["site-survey", "Site Survey"],
+  ["bid", "Bid"],
+  ["budget-approved", "Budget Approved"],
+  ["pr", "PR"],
+  ["po", "PO"],
+  ["handover", "Handover"]
+];
+
+const legacyStageWriteOptions = [
+  ["bid", "Bid"],
+  ["pr", "PR"],
+  ["po", "PO"],
+  ["con", "Con"],
+  ["complete", "Complete"]
+];
+
 const hiddenOwnerFilterOptions = new Set(["กล้า", "ฟิล์ม", "มอส"]);
 const writeOwnerOptions = ["ฟิล์ม", "กล้า", "มอส"];
 const ownerDisplayAliases = new Map([
@@ -258,6 +275,7 @@ function bindEvents() {
   els.newProjectForm.addEventListener("submit", submitNewProject);
   els.newProjectSite.addEventListener("change", syncNewProjectPeriodUi);
   els.newProjectPeriod.addEventListener("change", syncNewProjectPeriodUi);
+  els.newProjectStage.addEventListener("change", syncNewProjectStageStatus);
   els.searchInput.addEventListener("input", (event) => {
     state.filters.search = event.target.value.trim().toLowerCase();
     state.selectedTaskId = null;
@@ -546,7 +564,8 @@ function resolveWorkColumns(rows) {
     plan: findExactWorkColumn([primary], ["แผนงาน", "PLAN"]),
     owner: findExactWorkColumn([primary], ["ผู้รับผิดชอบ", "OWNER"]),
     note: findExactWorkColumn([primary], ["หมายเหตุ", "NOTE"]),
-    poNumber: findExactWorkColumn([primary], ["PO NUMBER", "PO NO", "PO NO."])
+    poNumber: findExactWorkColumn([primary], ["PO NUMBER", "PO NO", "PO NO."]),
+    stage: findExactWorkColumn([primary], ["STAGE", "PROJECT STAGE", "ขั้นตอนงาน"])
   };
 
   if (
@@ -682,9 +701,10 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
 
     const status = clean(workCell(row, columns.status));
     const budget = toNumber(workCell(row, columns.budget));
+    const stageKey = normalizeProjectStage(workCell(row, columns.stage));
     const hasProgress = [columns.bid, columns.pr, columns.po, columns.con]
       .some((column) => clean(workCell(row, column)) !== "");
-    const hasWorkData = status || budget > 0 || hasProgress;
+    const hasWorkData = status || budget > 0 || hasProgress || stageKey;
 
     if (!hasWorkData && isSectionRow(index, item)) {
       currentSection = item;
@@ -707,6 +727,8 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
       item,
       status: status || statusLabels[normalizedStatus],
       statusKey: normalizedStatus,
+      stage: projectStageLabel(stageKey),
+      stageKey,
       contractor: clean(workCell(row, columns.contractor)),
       budget,
       budgetCode: extras.budgetCode,
@@ -716,7 +738,7 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
       note: extras.note,
       issue: extras.issue,
       progress,
-      averageProgress: averageProgress(progress, normalizedStatus),
+      averageProgress: averageProgress(progress, normalizedStatus, stageKey),
       sourceTab: config.tab,
       sourceTitle: mainTitle,
       sourceGroup: config.group,
@@ -783,6 +805,8 @@ function hydratePersonSummaryTask(task, source) {
   };
   task.status = source.status;
   task.statusKey = source.statusKey;
+  task.stage = source.stage;
+  task.stageKey = source.stageKey;
   task.contractor = source.contractor;
   task.budget = source.budget;
   task.budgetCode = source.budgetCode;
@@ -1027,10 +1051,24 @@ function fillSelect(select, options) {
 }
 
 function syncNewProjectPeriodUi() {
-  const sectionAware = PERIOD_AWARE_SITE_GIDS.has(clean(els.newProjectSite.value));
+  const selectedGid = clean(els.newProjectSite.value);
+  const sectionAware = PERIOD_AWARE_SITE_GIDS.has(selectedGid);
   els.newProjectPeriod.disabled = !sectionAware;
   els.newProjectPeriod.required = sectionAware;
+  fillSelect(
+    els.newProjectStage,
+    sectionAware
+      ? stageWriteOptions("Stage เริ่มต้น")
+      : legacyStageOptions("Stage เริ่มต้น")
+  );
+  syncNewProjectStageStatus();
   updateWriteModeUi();
+}
+
+function syncNewProjectStageStatus() {
+  if (!PERIOD_AWARE_SITE_GIDS.has(clean(els.newProjectSite.value))) return;
+  const nextStatus = statusKeyForSelectedStage(els.newProjectStage.value, els.newProjectStatus.value);
+  if (nextStatus) els.newProjectStatus.value = nextStatus;
 }
 
 function fillDatalist(datalist, options) {
@@ -1047,14 +1085,18 @@ function statusWriteOptions() {
 }
 
 function stageWriteOptions(firstLabel = "ไม่เปลี่ยน Stage") {
-  return [
-    ["", firstLabel],
-    ["bid", "Bid"],
-    ["pr", "PR"],
-    ["po", "PO"],
-    ["con", "Con"],
-    ["complete", "Complete"]
-  ];
+  return [["", firstLabel], ...projectStageOptions];
+}
+
+function legacyStageOptions(firstLabel = "ไม่เปลี่ยน Stage") {
+  return [["", firstLabel], ...legacyStageWriteOptions];
+}
+
+function statusKeyForSelectedStage(stage, currentStatus = "blank") {
+  const stageKey = normalizeProjectStage(stage);
+  if (stageKey === "handover") return "done";
+  if (stageKey) return "active";
+  return currentStatus;
 }
 
 function ownerWriteOptions() {
@@ -1073,6 +1115,29 @@ function renderProgressCheckboxes(task, disabled = "") {
       `;
     })
     .join("");
+}
+
+function renderStageEditor(task, disabled = "") {
+  if (PERIOD_AWARE_SITE_GIDS.has(clean(task.gid))) {
+    return `
+      <label>
+        <span>Project Stage</span>
+        <select name="stage" ${disabled}>
+          ${[["", "ยังไม่ระบุ"], ...projectStageOptions]
+            .map(([value, label]) => `<option value="${escapeHtml(value)}" ${task.stageKey === value ? "selected" : ""}>${escapeHtml(label)}</option>`)
+            .join("")}
+        </select>
+      </label>
+    `;
+  }
+  return `
+    <fieldset class="stage-checkbox-field">
+      <legend>สถานะจัดจ้าง</legend>
+      <div class="stage-checkbox-grid">
+        ${renderProgressCheckboxes(task, disabled)}
+      </div>
+    </fieldset>
+  `;
 }
 
 function isProgressComplete(value) {
@@ -1565,7 +1630,14 @@ function taskMatchesSource(task, source) {
 }
 
 function taskMatchesStage(task, stage) {
+  const requestedStage = normalizeProjectStage(stage);
+  if (task.stageKey && requestedStage) {
+    const currentIndex = projectStageOptions.findIndex(([key]) => key === task.stageKey);
+    const requestedIndex = projectStageOptions.findIndex(([key]) => key === requestedStage);
+    return currentIndex < requestedIndex;
+  }
   const value = task.progress?.[stage];
+  if (requestedStage === "handover") return task.statusKey !== "done";
   if (value === null || value === undefined) return task.statusKey !== "done";
   return value < 1;
 }
@@ -1856,12 +1928,8 @@ function renderOverviewAnalysis(tasks, context, budgetRows) {
   ];
   const statusDonutStyle = buildStatusDonutStyle(statusRows);
   const maxStatusBudget = Math.max(...statusRows.map((item) => sum(item.rows, "budget")), 1);
-  const pipelineRows = [
-    { key: "bid", label: "Bid" },
-    { key: "pr", label: "PR" },
-    { key: "po", label: "PO" },
-    { key: "con", label: "Con" }
-  ].map((stage) => ({ ...stage, value: averageProgressStage(tasks, stage.key) }));
+  const pipelineRows = projectStageOptions
+    .map(([key, label]) => ({ key, label, value: averageProgressStage(tasks, key) }));
   const codeRows = (state.filters.code === "all"
     ? buildRealizedCodeRows(realizedTasks)
     : groupSum(realizedTasks, (task) => normalizedTaskBudgetCode(task))).slice(0, 5);
@@ -1908,7 +1976,7 @@ function renderOverviewAnalysis(tasks, context, budgetRows) {
           <strong>${averageProgressPercent}%</strong>
           <span>AVG</span>
         </div>
-        <small>Avg progress จาก Bid / PR / PO / Con</small>
+        <small>Avg progress จาก Site Survey ถึง Handover</small>
       </div>
 
       <div class="analysis-hero-insights">
@@ -1963,7 +2031,7 @@ function renderOverviewAnalysis(tasks, context, budgetRows) {
         <div class="panel-heading">
           <div>
             <h3>Progress pipeline</h3>
-            <p>ค่าเฉลี่ยแต่ละขั้น Bid / PR / PO / Con</p>
+            <p>ค่าเฉลี่ยแต่ละขั้น Site Survey ถึง Handover</p>
           </div>
         </div>
         <div class="pipeline-chart">
@@ -2410,6 +2478,7 @@ function getTaskDataGaps(task, tasks = state.tasks) {
 
 function taskHasMissingStage(task) {
   if (!isWatchableTask(task)) return false;
+  if (PERIOD_AWARE_SITE_GIDS.has(clean(task.gid))) return !task.stageKey;
   const values = Object.values(task.progress || {});
   return values.length > 0 && values.every((value) => value === null || value === undefined);
 }
@@ -2548,12 +2617,7 @@ function renderLiveEditForm(task) {
               .join("")}
           </select>
         </label>
-        <fieldset class="stage-checkbox-field">
-          <legend>สถานะจัดจ้าง</legend>
-          <div class="stage-checkbox-grid">
-            ${renderProgressCheckboxes(task, editDisabled)}
-          </div>
-        </fieldset>
+        ${renderStageEditor(task, editDisabled)}
         <label>
           <span>Owner</span>
           <select name="owner" ${editDisabled}>
@@ -2597,7 +2661,9 @@ function bindLiveEditForm(task) {
     const formData = new FormData(form);
     const selectedOwner = formData.get("owner");
     const originalOwner = formData.get("ownerOriginal");
-    const progress = getProgressUpdateFromForm(form);
+    const stageAware = PERIOD_AWARE_SITE_GIDS.has(clean(task.gid));
+    const progress = stageAware ? task.progress : getProgressUpdateFromForm(form);
+    const selectedStage = stageAware ? formData.get("stage") : stageKeyFromProgress(progress);
     await runWriteAction(async () => {
       await postWrite("/api/update-task", {
         taskId: task.id,
@@ -2606,7 +2672,7 @@ function bindLiveEditForm(task) {
         updates: {
           statusKey: formData.get("statusKey"),
           progress,
-          stage: stageKeyFromProgress(progress),
+          stage: selectedStage,
           owner: selectedOwner || originalOwner || "",
           budgetCode: formData.get("budgetCode"),
           poNumber: formData.get("poNumber"),
@@ -2616,6 +2682,12 @@ function bindLiveEditForm(task) {
       showWriteToast("บันทึกการแก้ไขแล้ว กำลัง sync ข้อมูลใหม่", "success");
       await returnToAppAfterWrite({ preferredTaskId: task.id });
     });
+  });
+  const stageSelect = form.querySelector('select[name="stage"]');
+  stageSelect?.addEventListener("change", () => {
+    const statusSelect = form.querySelector('select[name="statusKey"]');
+    if (!statusSelect) return;
+    statusSelect.value = statusKeyForSelectedStage(stageSelect.value, statusSelect.value);
   });
   const deleteButton = form.querySelector("[data-delete-project]");
   deleteButton?.addEventListener("click", async () => {
@@ -2914,6 +2986,19 @@ function getLowRemainingRows(budgetRows, limit = 3) {
 }
 
 function getTaskTimeline(task) {
+  if (PERIOD_AWARE_SITE_GIDS.has(clean(task.gid))) {
+    const currentIndex = projectStageOptions.findIndex(([key]) => key === task.stageKey);
+    return projectStageOptions.map(([key, label], stageIndex) => {
+      const completed = currentIndex >= stageIndex;
+      return {
+        key,
+        label,
+        tone: completed ? "done" : "empty",
+        width: completed ? 100 : 0,
+        display: completed ? "ถึงขั้นนี้แล้ว" : "-"
+      };
+    });
+  }
   return [
     { key: "bid", label: "Bid" },
     { key: "pr", label: "PR" },
@@ -2933,6 +3018,7 @@ function getTaskTimeline(task) {
 }
 
 function getCurrentStageLabel(task) {
+  if (task.stageKey) return `Stage: ${projectStageLabel(task.stageKey)}`;
   const nextStage = getTaskTimeline(task).find((stage) => stage.tone !== "done");
   if (!nextStage) return "Stage: Complete";
   if (nextStage.tone === "empty") return `Stage: ${nextStage.label} ไม่มีข้อมูล`;
@@ -3209,7 +3295,7 @@ function renderTable(tasks) {
             )}</div>
           </td>
           <td data-label="สถานะ">${statusPill(task)}</td>
-          <td data-label="จัดจ้าง">${progressCell(task)}</td>
+          <td data-label="Stage / Progress">${progressCell(task)}</td>
           <td class="money" data-label="งบประมาณ">${formatMoney(task.budget)}</td>
           <td data-label="รหัส">${escapeHtml(task.budgetCode || "ไม่ระบุ")}</td>
           <td data-label="เจ้าของ">${escapeHtml(task.owner || "-")}</td>
@@ -3694,7 +3780,10 @@ function progressCell(task) {
   const pct = task.averageProgress;
   return `
     <div class="progress-cell">
-      <div class="progress-label"><span>${formatPercent(pct)}</span></div>
+      <div class="progress-label">
+        <span>${escapeHtml(task.stage || "Legacy progress")}</span>
+        <strong>${formatPercent(pct)}</strong>
+      </div>
       <div class="progress-track"><div class="progress-fill" style="width:${Math.round(pct * 100)}%"></div></div>
     </div>
   `;
@@ -3714,7 +3803,26 @@ function readProgress(row, normalizedStatus, columns) {
   return values;
 }
 
-function averageProgress(progress, normalizedStatus) {
+function normalizeProjectStage(value) {
+  const normalized = clean(value).toLowerCase().replace(/[_\s]+/g, "-");
+  if (normalized === "survey") return "site-survey";
+  if (normalized === "budget-approve") return "budget-approved";
+  if (normalized === "hand-over") return "handover";
+  return projectStageOptions.some(([key]) => key === normalized) ? normalized : "";
+}
+
+function projectStageLabel(stageKey) {
+  return projectStageOptions.find(([key]) => key === stageKey)?.[1] || "";
+}
+
+function projectStageProgress(stageKey) {
+  const index = projectStageOptions.findIndex(([key]) => key === stageKey);
+  return index >= 0 ? (index + 1) / projectStageOptions.length : null;
+}
+
+function averageProgress(progress, normalizedStatus, stageKey = "") {
+  const stageValue = projectStageProgress(stageKey);
+  if (stageValue !== null) return stageValue;
   const values = progressStageOptions.map(([key]) => {
     const value = Number(progress?.[key]);
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
@@ -3894,9 +4002,16 @@ function groupTaskSummary(tasks, getName) {
 }
 
 function averageProgressStage(tasks, key) {
-  const values = tasks
-    .map((task) => task.progress?.[key])
-    .filter((value) => value !== null && value !== undefined);
+  const requestedIndex = projectStageOptions.findIndex(([stageKey]) => stageKey === key);
+  const values = tasks.map((task) => {
+    if (task.stageKey && requestedIndex >= 0) {
+      const taskIndex = projectStageOptions.findIndex(([stageKey]) => stageKey === task.stageKey);
+      return taskIndex >= requestedIndex ? 1 : 0;
+    }
+    if (key === "handover") return task.statusKey === "done" ? 1 : 0;
+    const legacyValue = task.progress?.[key];
+    return legacyValue === null || legacyValue === undefined ? 0 : legacyValue;
+  });
   return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
 }
 
@@ -3965,15 +4080,18 @@ function stageGradient(key, index = 0) {
 }
 
 function stagePaletteIndex(key, index = 0) {
-  const optionIndex = progressStageOptions.findIndex(([stageKey]) => stageKey === key);
+  const optionIndex = projectStageOptions.findIndex(([stageKey]) => stageKey === key);
   return (optionIndex >= 0 ? optionIndex : index) % chartPalette.stage.length;
 }
 
 function stageLabel(key) {
   const labels = {
+    "site-survey": "Site Survey ยังไม่ครบ",
     bid: "Bid ยังไม่ครบ",
+    "budget-approved": "Budget Approved ยังไม่ครบ",
     pr: "PR ยังไม่ครบ",
     po: "PO ยังไม่ครบ",
+    handover: "Handover ยังไม่ครบ",
     con: "Con ยังไม่ครบ"
   };
   return labels[key] || key;

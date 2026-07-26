@@ -40,8 +40,9 @@ const expandedRows = [
     "ผู้รับเหมา",
     "PO \nNUMBER",
     "หมายเหตุ",
+    "STAGE",
   ],
-  ["", "", "จำนวน", "หน่วย", "จำนวนเงิน", "รหัส", "", "", "BID", "PR", "PO", "CON"],
+  ["", "", "จำนวน", "หน่วย", "จำนวนเงิน", "รหัส", "", "", "BID", "PR", "PO", "CON", "", "", "", "", "", "", "", ""],
 ];
 
 const compactRows = [
@@ -78,7 +79,9 @@ test("expanded CHOD sheets resolve status and procurement stages from their real
   assert.equal(columns.contractor, 16);
   assert.equal(columns.poNumber, 17);
   assert.equal(columns.note, 18);
+  assert.equal(columns.stage, 19);
   assert.equal(columnLetter(columns.status), "M");
+  assert.equal(columnLetter(columns.stage), "T");
 
   const projectRow = [
     "1",
@@ -123,5 +126,7 @@ test("all Budget Utilize read and write paths use header mapping instead of fixe
 
   assert.match(writeRoute, /const columns = await readWorkSheetSchema\(title\)/);
   assert.match(writeRoute, /putBudgetCells\(title, rowNumber/);
+  assert.match(writeRoute, /columns\.stage/);
+  assert.match(writeRoute, /statusForChangedStage/);
   assert.doesNotMatch(writeRoute, /row\[6\]\s*=\s*statusWriteLabels/);
 });

@@ -14,6 +14,7 @@ export type WorkSheetColumns = {
   owner: number;
   note: number;
   poNumber: number;
+  stage: number;
   lastColumn: number;
 };
 
@@ -291,6 +292,7 @@ export function resolveWorkSheetColumns(rows: unknown[][]): WorkSheetColumns {
     owner: findExactColumn([primary], ["ผู้รับผิดชอบ", "OWNER"]),
     note: findExactColumn([primary], ["หมายเหตุ", "NOTE"]),
     poNumber: findExactColumn([primary], ["PO NUMBER", "PO NO", "PO NO."]),
+    stage: findExactColumn([primary], ["STAGE", "PROJECT STAGE", "ขั้นตอนงาน"]),
   };
 
   if (

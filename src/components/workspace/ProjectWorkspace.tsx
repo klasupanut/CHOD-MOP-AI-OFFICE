@@ -316,7 +316,7 @@ export function ProjectWorkspace({
           </article>
 
           <article className="budget-utilize-card progress-pipeline">
-            <header><Activity size={20} /><div><span>Progress pipeline</span><strong>BID / PR / PO / CON</strong></div></header>
+            <header><Activity size={20} /><div><span>Progress pipeline</span><strong>Survey → Handover</strong></div></header>
             <div className="budget-pipeline-bars">
               {budgetSummary.pipelineRows.map((row) => (
                 <p key={row.label}>

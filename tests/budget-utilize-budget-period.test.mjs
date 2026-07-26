@@ -46,6 +46,7 @@ const testColumns = {
   owner: 11,
   note: 12,
   poNumber: 13,
+  stage: -1,
   lastColumn: 13,
 };
 

@@ -26,12 +26,17 @@ test("project details render after the project table and outside the insight rai
   assert.match(styles, /\.project-detail-panel\s*\{[\s\S]*?grid-column:\s*1;[\s\S]*?grid-row:\s*2;/);
 });
 
-test("BID PR PO CON progress always uses all four stages as the denominator", () => {
+test("new project stage uses the six-step workflow while legacy progress stays compatible", () => {
   const averageFunction = app.match(
-    /function averageProgress\(progress, normalizedStatus\)\s*\{([\s\S]*?)\n\}/
+    /function averageProgress\(progress, normalizedStatus, stageKey = ""\)\s*\{([\s\S]*?)\n\}/
+  );
+  const stageProgressFunction = app.match(
+    /function projectStageProgress\(stageKey\)\s*\{([\s\S]*?)\n\}/
   );
 
   assert.ok(averageFunction, "averageProgress function must exist");
+  assert.ok(stageProgressFunction, "projectStageProgress function must exist");
+  assert.match(averageFunction[1], /projectStageProgress\(stageKey\)/);
   assert.match(averageFunction[1], /progressStageOptions\.map/);
   assert.match(averageFunction[1], /\/ progressStageOptions\.length/);
   assert.doesNotMatch(averageFunction[1], /\.filter\(\(value\) => value !== null\)/);
@@ -39,17 +44,31 @@ test("BID PR PO CON progress always uses all four stages as the denominator", ()
   const calculate = new Function(
     "progress",
     "normalizedStatus",
+    "stageKey",
     `
       const progressStageOptions = [["bid", "BID"], ["pr", "PR"], ["po", "PO"], ["con", "CON"]];
+      const projectStageOptions = [
+        ["site-survey", "Site Survey"],
+        ["bid", "Bid"],
+        ["budget-approved", "Budget Approved"],
+        ["pr", "PR"],
+        ["po", "PO"],
+        ["handover", "Handover"]
+      ];
+      ${stageProgressFunction[0]}
       ${averageFunction[0]}
-      return averageProgress(progress, normalizedStatus);
+      return averageProgress(progress, normalizedStatus, stageKey);
     `
   );
 
-  assert.equal(calculate({ bid: 1, pr: null, po: null, con: null }, "active"), 0.25);
-  assert.equal(calculate({ bid: 1, pr: 1, po: null, con: null }, "active"), 0.5);
-  assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: null }, "active"), 0.75);
-  assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: 1 }, "done"), 1);
+  assert.equal(calculate({}, "active", "site-survey"), 1 / 6);
+  assert.equal(calculate({}, "active", "bid"), 2 / 6);
+  assert.equal(calculate({}, "active", "budget-approved"), 3 / 6);
+  assert.equal(calculate({}, "active", "pr"), 4 / 6);
+  assert.equal(calculate({}, "active", "po"), 5 / 6);
+  assert.equal(calculate({}, "done", "handover"), 1);
+  assert.equal(calculate({ bid: 1, pr: null, po: null, con: null }, "active", ""), 0.25);
+  assert.equal(calculate({ bid: 1, pr: 1, po: 1, con: 1 }, "done", ""), 1);
 });
 
 test("all work-list menus expand the table and details without duplicating remaining budget", () => {

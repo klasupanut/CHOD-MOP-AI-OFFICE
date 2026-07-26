@@ -48,6 +48,15 @@ const statusWriteLabels = {
   stopped: "ไม่ดำเนินการ",
   blank: "",
 } as const;
+const projectStageValues = [
+  "site-survey",
+  "bid",
+  "budget-approved",
+  "pr",
+  "po",
+  "handover",
+] as const;
+type ProjectStageKey = (typeof projectStageValues)[number];
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
@@ -192,6 +201,35 @@ function normalizeStatusKey(value: unknown): keyof typeof statusWriteLabels {
   const key = clean(value).toLowerCase();
   if (key === "done" || key === "active" || key === "stopped" || key === "blank") return key;
   return "blank";
+}
+
+function normalizeProjectStage(value: unknown): ProjectStageKey | "" {
+  const key = clean(value).toLowerCase().replace(/[_\s]+/g, "-");
+  if (key === "survey") return "site-survey";
+  if (key === "budget-approve") return "budget-approved";
+  if (key === "hand-over") return "handover";
+  return projectStageValues.includes(key as ProjectStageKey) ? key as ProjectStageKey : "";
+}
+
+function projectStageSheetValue(stage: ProjectStageKey | "") {
+  const labels: Record<ProjectStageKey, string> = {
+    "site-survey": "Site Survey",
+    bid: "Bid",
+    "budget-approved": "Budget Approved",
+    pr: "PR",
+    po: "PO",
+    handover: "Handover",
+  };
+  return stage ? labels[stage] : "";
+}
+
+function statusForChangedStage(
+  stage: ProjectStageKey | "",
+  requestedStatus: keyof typeof statusWriteLabels,
+) {
+  if (stage === "handover") return "done";
+  if (stage) return "active";
+  return requestedStatus;
 }
 
 function stageProgress(stage: unknown) {
@@ -699,14 +737,29 @@ async function updateBudgetTask(payload: Record<string, unknown>) {
   if (!clean(workCell(row, columns.item), 500)) throw new Error("Target Budget Utilize row has no project item.");
 
   const updates = (payload.updates && typeof payload.updates === "object" ? payload.updates : {}) as Record<string, unknown>;
-  const statusKey = normalizeStatusKey(updates.statusKey);
+  const requestedStatusKey = normalizeStatusKey(updates.statusKey);
+  const hasStageUpdate = Object.prototype.hasOwnProperty.call(updates, "stage");
+  const requestedStage = normalizeProjectStage(updates.stage);
+  const currentStage = normalizeProjectStage(workCell(row, columns.stage));
+  const stageChanged = columns.stage >= 0 && hasStageUpdate && requestedStage !== currentStage;
+  const statusKey = requestedStage === "handover" || stageChanged
+    ? statusForChangedStage(requestedStage, requestedStatusKey)
+    : requestedStatusKey;
   const progress = normalizeProgress(updates.progress, updates.stage);
 
+  if (periodAwareLocationSheets.has(gid) && columns.stage < 0) {
+    throw new Error("STAGE column is not configured for this sheet. No data was changed.");
+  }
+
   await putBudgetCells(title, rowNumber, [
-    { column: columns.bid, value: progressCell(progress.bid) },
-    { column: columns.pr, value: progressCell(progress.pr) },
-    { column: columns.po, value: progressCell(progress.po) },
-    { column: columns.con, value: progressCell(progress.con) },
+    ...(columns.stage >= 0 && hasStageUpdate
+      ? [{ column: columns.stage, value: projectStageSheetValue(requestedStage) }]
+      : [
+          { column: columns.bid, value: progressCell(progress.bid) },
+          { column: columns.pr, value: progressCell(progress.pr) },
+          { column: columns.po, value: progressCell(progress.po) },
+          { column: columns.con, value: progressCell(progress.con) },
+        ]),
     { column: columns.status, value: statusWriteLabels[statusKey] },
     { column: columns.budgetCode, value: clean(updates.budgetCode, 40) },
     { column: columns.owner, value: clean(updates.owner, 80) },
@@ -723,12 +776,16 @@ async function addBudgetProject(payload: Record<string, unknown>) {
   const item = clean(project.item, 500);
   if (!item) throw new Error("Project item is required.");
 
-  const statusKey = normalizeStatusKey(project.statusKey);
-  const progress = normalizeProgress(null, project.stage);
+  const requestedStatusKey = normalizeStatusKey(project.statusKey);
+  const requestedStage = normalizeProjectStage(project.stage);
 
   if (periodAwareLocationSheets.has(gid)) {
     let rows = await readWorkSheetRows(title);
     const columns = resolveWorkSheetColumns(rows);
+    if (columns.stage < 0) {
+      throw new Error("STAGE column is not configured for this sheet. No data was changed.");
+    }
+    const statusKey = statusForChangedStage(requestedStage, requestedStatusKey);
     const period = normalizedBudgetPeriod(project);
     const creationTarget = resolveBudgetPeriodSectionCreationTarget(rows, columns, period);
     let sectionCreated = false;
@@ -754,10 +811,7 @@ async function addBudgetProject(payload: Record<string, unknown>) {
       updates: [
         { column: columns.index, value: index },
         { column: columns.item, value: item },
-        { column: columns.bid, value: progress.bid ? 1 : "" },
-        { column: columns.pr, value: progress.pr ? 1 : "" },
-        { column: columns.po, value: progress.po ? 1 : "" },
-        { column: columns.con, value: progress.con ? 1 : "" },
+        { column: columns.stage, value: projectStageSheetValue(requestedStage) },
         { column: columns.status, value: statusWriteLabels[statusKey] },
         { column: columns.contractor, value: clean(project.contractor, 200) },
         { column: columns.budget, value: toMoneyNumber(project.budget) },
@@ -796,6 +850,8 @@ async function addBudgetProject(payload: Record<string, unknown>) {
 
   const index = await nextIndexForSheet(title);
   const columns = await readWorkSheetSchema(title);
+  const progress = normalizeProgress(null, project.stage);
+  const statusKey = normalizeStatusKey(project.statusKey);
   const row: unknown[] = Array.from({ length: columns.lastColumn + 1 }, () => "");
   row[columns.index] = index;
   row[columns.item] = item;
