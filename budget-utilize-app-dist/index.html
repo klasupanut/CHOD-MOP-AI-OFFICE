@@ -256,7 +256,7 @@
       <form class="modal-panel project-form" id="newProjectForm">
         <div class="modal-heading">
           <div>
-            <p class="page-kicker">Append row only</p>
+            <p class="page-kicker">Live Google Sheet</p>
             <h3>เพิ่ม Project ใหม่</h3>
           </div>
           <button class="icon-button" id="closeProjectModalButton" type="button" aria-label="Close project form">×</button>
@@ -265,6 +265,11 @@
         <label>
           <span>Site</span>
           <select id="newProjectSite" name="site" required></select>
+        </label>
+
+        <label>
+          <span>Budget period</span>
+          <select id="newProjectPeriod" name="budgetPeriod" required></select>
         </label>
 
         <label class="full-field">
@@ -312,7 +317,7 @@
           <textarea id="newProjectNote" name="note" maxlength="1000" rows="4" placeholder="หมายเหตุหรือ issue ที่ต้องตาม"></textarea>
         </label>
 
-        <p class="write-helper" id="newProjectHelper">เพิ่มเป็นแถวใหม่ท้ายชีทของ site ที่เลือกเท่านั้น ไม่แทรกหรือแก้ template เดิม</p>
+        <p class="write-helper" id="newProjectHelper">เลือกระยะงบประมาณเพื่อบันทึกงานใต้หัวข้อที่ตรงกันใน Google Sheet</p>
 
         <div class="modal-actions">
           <button class="text-button" id="cancelProjectButton" type="button">ยกเลิก</button>
@@ -322,6 +327,6 @@
     </section>
     <datalist id="budgetCodeSuggestions"></datalist>
 
-    <script src="./app.js?v=20260708-delete-any-linked-view"></script>
+    <script src="./app.js?v=20260726-budget-period-live-write"></script>
   </body>
 </html>

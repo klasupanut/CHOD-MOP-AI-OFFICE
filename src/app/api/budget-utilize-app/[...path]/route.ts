@@ -5,7 +5,10 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/api";
 import {
   columnLetter,
+  currentThailandBudgetYear,
+  resolveBudgetPeriodInsertTarget,
   resolveWorkSheetColumns,
+  type BudgetPeriod,
   type WorkSheetColumns,
   workCell,
 } from "@/lib/budget-utilize/work-sheet-schema";
@@ -23,6 +26,12 @@ const allowedLocationSheets = new Map([
   ["1651929286", "CHODBIZ KM.8"],
   ["21424830", "CHODBIZ CHAENG"],
   ["603834483", "CHODBIZ SAI4"],
+]);
+const periodAwareLocationSheets = new Set([
+  "1670988984",
+  "715191170",
+  "1288685133",
+  "1504272791",
 ]);
 const allowedPersonSummarySheets = new Map([
   ["449201554", "สรุปงาน ฟิล์ม"],
@@ -245,6 +254,13 @@ async function readWorkSheetSchema(title: string) {
   return resolveWorkSheetColumns(payload.values || []);
 }
 
+async function readWorkSheetRows(title: string) {
+  const range = encodeURIComponent(`${escapeSheetName(title)}!A1:Z5000`);
+  const response = await sheetsFetch(`/values/${range}?majorDimension=ROWS`);
+  const payload = (await response.json()) as { values?: unknown[][] };
+  return payload.values || [];
+}
+
 async function readBudgetRow(title: string, rowNumber: number, columns: WorkSheetColumns) {
   const endColumn = columnLetter(columns.lastColumn);
   const range = encodeURIComponent(`${escapeSheetName(title)}!A${rowNumber}:${endColumn}${rowNumber}`);
@@ -284,6 +300,123 @@ async function appendBudgetRow(title: string, row: unknown[], columns: WorkSheet
     body: JSON.stringify({ values: [row.slice(0, columns.lastColumn + 1)] }),
   });
   return response.json() as Promise<{ updates?: { updatedRange?: string } }>;
+}
+
+function normalizedBudgetPeriod(project: Record<string, unknown>): BudgetPeriod {
+  const currentYear = currentThailandBudgetYear();
+  const year = Number(project.budgetYear || currentYear);
+  const kind = clean(project.budgetPeriodKind).toLowerCase() === "outside-plan"
+    ? "outside-plan"
+    : "annual";
+  const allowed = (
+    (year === currentYear && (kind === "annual" || kind === "outside-plan"))
+    || (year === currentYear + 1 && kind === "annual")
+  );
+  if (!allowed) {
+    throw new Error("Budget period is not allowed. Select the current annual plan, current outside-plan, or next annual plan.");
+  }
+  return {
+    year,
+    kind,
+    label: kind === "outside-plan"
+      ? `นอกแผนงบประมาณปี ${year}`
+      : `แผนงบประมาณปี ${year}`,
+  };
+}
+
+function googleCellData(value: unknown) {
+  if (value === "" || value === null || value === undefined) return {};
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { userEnteredValue: { numberValue: value } };
+  }
+  if (typeof value === "boolean") {
+    return { userEnteredValue: { boolValue: value } };
+  }
+  return { userEnteredValue: { stringValue: clean(value, 5000) } };
+}
+
+async function writeSectionAwareBudgetRow(input: {
+  gid: string;
+  rowNumber: number;
+  needsInsert: boolean;
+  formatSourceRowNumber: number | null;
+  updates: Array<{ column: number; value: unknown }>;
+}) {
+  const sheetId = Number(input.gid);
+  const rowIndex = input.rowNumber - 1;
+  const requests: Array<Record<string, unknown>> = [];
+
+  if (input.needsInsert) {
+    requests.push({
+      insertDimension: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex: rowIndex,
+          endIndex: rowIndex + 1,
+        },
+        inheritFromBefore: Boolean(
+          input.formatSourceRowNumber
+          && input.formatSourceRowNumber < input.rowNumber,
+        ),
+      },
+    });
+
+    if (input.formatSourceRowNumber) {
+      const shiftedSourceRow = input.formatSourceRowNumber >= input.rowNumber
+        ? input.formatSourceRowNumber + 1
+        : input.formatSourceRowNumber;
+      for (const pasteType of ["PASTE_FORMAT", "PASTE_DATA_VALIDATION"]) {
+        requests.push({
+          copyPaste: {
+            source: {
+              sheetId,
+              startRowIndex: shiftedSourceRow - 1,
+              endRowIndex: shiftedSourceRow,
+              startColumnIndex: 0,
+              endColumnIndex: 26,
+            },
+            destination: {
+              sheetId,
+              startRowIndex: rowIndex,
+              endRowIndex: rowIndex + 1,
+              startColumnIndex: 0,
+              endColumnIndex: 26,
+            },
+            pasteType,
+            pasteOrientation: "NORMAL",
+          },
+        });
+      }
+    }
+  }
+
+  const uniqueUpdates = new Map(
+    input.updates
+      .filter((update) => update.column >= 0)
+      .map((update) => [update.column, update.value]),
+  );
+  for (const [column, value] of uniqueUpdates) {
+    requests.push({
+      updateCells: {
+        range: {
+          sheetId,
+          startRowIndex: rowIndex,
+          endRowIndex: rowIndex + 1,
+          startColumnIndex: column,
+          endColumnIndex: column + 1,
+        },
+        rows: [{ values: [googleCellData(value)] }],
+        fields: "userEnteredValue",
+      },
+    });
+  }
+
+  if (!requests.length) throw new Error("No guarded Google Sheet changes were prepared.");
+  await sheetsFetch(":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({ requests }),
+  });
 }
 
 function parseSummarySource(note: unknown) {
@@ -424,6 +557,56 @@ async function addBudgetProject(payload: Record<string, unknown>) {
 
   const statusKey = normalizeStatusKey(project.statusKey);
   const progress = normalizeProgress(null, project.stage);
+
+  if (periodAwareLocationSheets.has(gid)) {
+    const rows = await readWorkSheetRows(title);
+    const columns = resolveWorkSheetColumns(rows);
+    const period = normalizedBudgetPeriod(project);
+    const target = resolveBudgetPeriodInsertTarget(rows, columns, period);
+    const index = target.nextIndex;
+
+    await writeSectionAwareBudgetRow({
+      gid,
+      rowNumber: target.rowNumber,
+      needsInsert: target.needsInsert,
+      formatSourceRowNumber: target.formatSourceRowNumber,
+      updates: [
+        { column: columns.index, value: index },
+        { column: columns.item, value: item },
+        { column: columns.bid, value: progress.bid ? 1 : "" },
+        { column: columns.pr, value: progress.pr ? 1 : "" },
+        { column: columns.po, value: progress.po ? 1 : "" },
+        { column: columns.con, value: progress.con ? 1 : "" },
+        { column: columns.status, value: statusWriteLabels[statusKey] },
+        { column: columns.contractor, value: clean(project.contractor, 200) },
+        { column: columns.budget, value: toMoneyNumber(project.budget) },
+        { column: columns.budgetCode, value: clean(project.budgetCode, 40) },
+        { column: columns.owner, value: clean(project.owner, 80) },
+        { column: columns.note, value: clean(project.note, 1000) },
+        { column: columns.poNumber, value: clean(project.poNumber, 120) },
+      ],
+    });
+
+    const verified = await readBudgetRow(title, target.rowNumber, columns);
+    if (
+      clean(workCell(verified, columns.item), 500) !== item
+      || Number(workCell(verified, columns.index)) !== index
+    ) {
+      throw new Error("Google Sheet write verification failed. Refresh before trying another write.");
+    }
+
+    return {
+      ok: true,
+      mode: target.needsInsert ? "period-inserted" : "period-slot-reused",
+      gid,
+      sheet: title,
+      rowNumber: target.rowNumber,
+      index,
+      budgetPeriod: period,
+      updatedRange: `${escapeSheetName(title)}!A${target.rowNumber}:${columnLetter(columns.lastColumn)}${target.rowNumber}`,
+    };
+  }
+
   const index = await nextIndexForSheet(title);
   const columns = await readWorkSheetSchema(title);
   const row: unknown[] = Array.from({ length: columns.lastColumn + 1 }, () => "");
@@ -442,7 +625,13 @@ async function addBudgetProject(payload: Record<string, unknown>) {
   if (columns.poNumber >= 0) row[columns.poNumber] = clean(project.poNumber, 120);
 
   const result = await appendBudgetRow(title, row, columns);
-  return { ok: true, mode: "appended", gid, sheet: title, updatedRange: result.updates?.updatedRange || "" };
+  return {
+    ok: true,
+    mode: "appended",
+    gid,
+    sheet: title,
+    updatedRange: result.updates?.updatedRange || "",
+  };
 }
 
 async function deleteBudgetProject(payload: Record<string, unknown>) {

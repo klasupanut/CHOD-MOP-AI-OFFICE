@@ -1,5 +1,8 @@
 import "server-only";
 import {
+  currentThailandBudgetYear,
+  defaultBudgetPeriod,
+  parseBudgetPeriodMarker,
   resolveWorkSheetColumns,
   type WorkSheetColumns,
   workCell,
@@ -24,6 +27,9 @@ export type BudgetUtilizeTask = {
   plan: string;
   owner: string;
   note: string;
+  budgetYear: number;
+  budgetPeriodKind: "annual" | "outside-plan";
+  budgetPeriodLabel: string;
   progress: {
     bid: number | null;
     pr: number | null;
@@ -260,7 +266,7 @@ function isWorkSummaryItem(index: string, item: string) {
   const text = clean(item);
   return !clean(index) && (
     text.includes("รวมจำนวนเงิน")
-    || /^(?:แผน)?งบประมาณปี/.test(text)
+    || /^(?:นอกแผน)?(?:แผน)?งบประมาณปี/.test(text)
   );
 }
 
@@ -269,10 +275,16 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
   const columns = resolveWorkSheetColumns(rows);
   const startIndex = columns.headerRow + 2;
   const tasks: BudgetUtilizeTask[] = [];
+  let budgetPeriod = defaultBudgetPeriod();
 
   rows.slice(startIndex).forEach((row, offset) => {
     const index = clean(workCell(row, columns.index));
     const item = clean(workCell(row, columns.item));
+    const periodMarker = parseBudgetPeriodMarker(index, item);
+    if (periodMarker) {
+      budgetPeriod = periodMarker;
+      return;
+    }
     if (!item || isWorkSummaryItem(index, item)) return;
 
     const status = clean(workCell(row, columns.status));
@@ -302,6 +314,9 @@ function parseLocationRows(sheet: (typeof BUDGET_UTILIZE_SHEETS)[number], rows: 
       owner: normalizeOwner(clean(workCell(row, columns.owner))),
       note: clean(workCell(row, columns.note)),
       poNumber: clean(workCell(row, columns.poNumber)),
+      budgetYear: budgetPeriod.year,
+      budgetPeriodKind: budgetPeriod.kind,
+      budgetPeriodLabel: budgetPeriod.label,
       progress,
       averageProgress: averageProgress(progress, statusKey),
     });
@@ -445,7 +460,10 @@ export async function getBudgetUtilizeData(): Promise<BudgetUtilizeData> {
       }),
     );
 
-    const tasks = sheetModels.flatMap((model) => model.tasks);
+    const currentBudgetYear = currentThailandBudgetYear();
+    const tasks = sheetModels
+      .flatMap((model) => model.tasks)
+      .filter((task) => task.budgetYear === currentBudgetYear);
     const remainingBudget = sheetModels.flatMap((model) => model.budgetRows).reduce((total, row) => total + row.total, 0);
 
     return {

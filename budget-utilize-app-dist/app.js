@@ -1,6 +1,16 @@
 const SPREADSHEET_ID = "1NmVPZkEGxeUvIQYsuoyF7L9Xhjn03zH5RZvDf8UJ2Po";
 const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit`;
 const SOURCE_MODIFIED = "2026-07-03T08:13:01.693Z";
+const CURRENT_BUDGET_YEAR = currentThailandBudgetYear();
+const NEXT_BUDGET_YEAR = CURRENT_BUDGET_YEAR + 1;
+const OUTSIDE_PLAN_VIEW = "outside-plan-current";
+const NEXT_YEAR_PLAN_VIEW = "next-year-plan";
+const PERIOD_AWARE_SITE_GIDS = new Set([
+  "1670988984",
+  "715191170",
+  "1288685133",
+  "1504272791"
+]);
 
 const SHEETS = [
   { tab: "โชติ 1", gid: "1670988984", group: "location", mode: "project-long" },
@@ -29,6 +39,7 @@ const state = {
     reason: "กำลังตรวจสอบ write mode"
   },
   writeBusy: false,
+  newProjectOriginView: "overview",
   selectedView: "overview",
   selectedPerspective: "location",
   selectedTaskId: null,
@@ -112,6 +123,7 @@ const els = {
   projectModal: document.getElementById("projectModal"),
   newProjectForm: document.getElementById("newProjectForm"),
   newProjectSite: document.getElementById("newProjectSite"),
+  newProjectPeriod: document.getElementById("newProjectPeriod"),
   newProjectStatus: document.getElementById("newProjectStatus"),
   newProjectStage: document.getElementById("newProjectStage"),
   newProjectOwner: document.getElementById("newProjectOwner"),
@@ -239,6 +251,8 @@ function bindEvents() {
     if (event.target === els.projectModal) closeProjectModal();
   });
   els.newProjectForm.addEventListener("submit", submitNewProject);
+  els.newProjectSite.addEventListener("change", syncNewProjectPeriodUi);
+  els.newProjectPeriod.addEventListener("change", syncNewProjectPeriodUi);
   els.searchInput.addEventListener("input", (event) => {
     state.filters.search = event.target.value.trim().toLowerCase();
     state.selectedTaskId = null;
@@ -330,7 +344,10 @@ async function loadData(options = {}) {
     state.tablePage = loadOptions.tablePage ?? 0;
     state.navSignature = "";
     state.actionQueueCount = buildActionQueue(
-      state.tasks.filter((task) => task.sourceGroup === "location"),
+      state.tasks.filter((task) =>
+        task.sourceGroup === "location"
+        && task.budgetYear === CURRENT_BUDGET_YEAR
+      ),
       state.budgetRows
     ).length;
 
@@ -395,9 +412,19 @@ function updateWriteModeUi() {
   els.writeModeBadge.classList.toggle("pending", !loaded);
   els.writeModeBadge.title = enabled ? (reason || "") : (deleteReason || reason || "");
   els.submitProjectButton.disabled = !enabled || state.writeBusy;
-  els.newProjectHelper.textContent = enabled
-    ? "เพิ่มเป็นแถวใหม่ท้ายชีทของ site ที่เลือกเท่านั้น ไม่แทรกหรือแก้ template เดิม"
-    : reason || "ยังไม่ได้เปิด write mode";
+  if (!enabled) {
+    els.newProjectHelper.textContent = reason || "ยังไม่ได้เปิด write mode";
+    return;
+  }
+  const siteGid = clean(els.newProjectSite.value);
+  if (!PERIOD_AWARE_SITE_GIDS.has(siteGid)) {
+    els.newProjectHelper.textContent = "Site นี้ยังใช้การเพิ่มท้ายชีตแบบเดิม จนกว่าจะเพิ่มหัวข้องบประมาณให้ครบ";
+    return;
+  }
+  const selectedPeriod = budgetPeriodFromValue(els.newProjectPeriod.value);
+  els.newProjectHelper.textContent = selectedPeriod
+    ? `ระบบจะบันทึกใต้หัวข้อ “${budgetPeriodLabel(selectedPeriod)}” และตรวจสอบแถวหลังเขียน`
+    : "กรุณาเลือก Budget period";
 }
 
 function parseCsv(text) {
@@ -543,11 +570,85 @@ function workCell(row, column) {
   return column >= 0 ? row[column] : "";
 }
 
+function currentThailandBudgetYear(now = new Date()) {
+  const gregorianYear = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric"
+    }).format(now)
+  );
+  return gregorianYear + 543;
+}
+
+function defaultBudgetPeriod(year = CURRENT_BUDGET_YEAR) {
+  return {
+    year,
+    kind: "annual",
+    label: `แผนงบประมาณปี ${year}`
+  };
+}
+
+function budgetPeriodValue(period) {
+  return `${period.kind}:${period.year}`;
+}
+
+function budgetPeriodFromValue(value) {
+  const [kind, rawYear] = clean(value).split(":");
+  const year = Number(rawYear);
+  if (
+    !Number.isInteger(year)
+    || !["annual", "outside-plan"].includes(kind)
+  ) {
+    return null;
+  }
+  return { kind, year };
+}
+
+function budgetPeriodLabel(period) {
+  return period.kind === "outside-plan"
+    ? `นอกแผนงบประมาณปี ${period.year}`
+    : `แผนงบประมาณปี ${period.year}`;
+}
+
+function budgetPeriodWriteOptions() {
+  return [
+    [
+      budgetPeriodValue({ kind: "annual", year: CURRENT_BUDGET_YEAR }),
+      `แผนงบประมาณปี ${CURRENT_BUDGET_YEAR}`
+    ],
+    [
+      budgetPeriodValue({ kind: "outside-plan", year: CURRENT_BUDGET_YEAR }),
+      `นอกแผนงบประมาณปี ${CURRENT_BUDGET_YEAR}`
+    ],
+    [
+      budgetPeriodValue({ kind: "annual", year: NEXT_BUDGET_YEAR }),
+      `แผนงบประมาณปี ${NEXT_BUDGET_YEAR}`
+    ]
+  ];
+}
+
+function parseBudgetPeriodMarker(index, item) {
+  if (clean(index)) return null;
+  const text = clean(item).replace(/\s+/g, " ");
+  const match = text.match(/^(นอกแผน)?(?:แผน)?งบประมาณปี\s*(\d{4})/);
+  if (!match) return null;
+  const year = Number(match[2]);
+  if (!Number.isInteger(year) || year < 2500 || year > 2999) return null;
+  const kind = match[1] ? "outside-plan" : "annual";
+  return {
+    year,
+    kind,
+    label: kind === "outside-plan"
+      ? `นอกแผนงบประมาณปี ${year}`
+      : `แผนงบประมาณปี ${year}`
+  };
+}
+
 function isWorkSummaryItem(index, item) {
   const text = clean(item);
   return !clean(index) && (
     text.includes("รวมจำนวนเงิน")
-    || /^(?:แผน)?งบประมาณปี/.test(text)
+    || /^(?:นอกแผน)?(?:แผน)?งบประมาณปี/.test(text)
   );
 }
 
@@ -556,10 +657,16 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
   const startIndex = columns.headerRow + 2;
   const tasks = [];
   let currentSection = extractSectionFromTitle(mainTitle);
+  let budgetPeriod = defaultBudgetPeriod();
 
   rows.slice(startIndex).forEach((row, offset) => {
     const index = clean(workCell(row, columns.index));
     const item = clean(workCell(row, columns.item));
+    const periodMarker = parseBudgetPeriodMarker(index, item);
+    if (periodMarker) {
+      budgetPeriod = periodMarker;
+      return;
+    }
     if (!item || isWorkSummaryItem(index, item)) return;
 
     const siteTitle = siteTitleFromSummaryRow(index, item);
@@ -609,7 +716,10 @@ function parseWorkRows(config, rows, mainTitle, ownerName) {
       sourceTitle: mainTitle,
       sourceGroup: config.group,
       sourceMode: config.mode,
-      section: currentSection || extractSectionFromTitle(mainTitle)
+      section: currentSection || extractSectionFromTitle(mainTitle),
+      budgetYear: budgetPeriod.year,
+      budgetPeriodKind: budgetPeriod.kind,
+      budgetPeriodLabel: budgetPeriod.label
     });
   });
 
@@ -676,6 +786,9 @@ function hydratePersonSummaryTask(task, source) {
   task.owner = source.owner || task.owner;
   task.note = source.note;
   task.issue = source.issue;
+  task.budgetYear = source.budgetYear;
+  task.budgetPeriodKind = source.budgetPeriodKind;
+  task.budgetPeriodLabel = source.budgetPeriodLabel;
   task.progress = { ...source.progress };
   task.averageProgress = source.averageProgress;
 }
@@ -892,10 +1005,12 @@ function syncFilters() {
       .filter((sheet) => sheet.group === "location")
       .map((sheet) => [sheet.gid, sheet.mainTitle || sheet.tab])
   );
+  fillSelect(els.newProjectPeriod, budgetPeriodWriteOptions());
   fillSelect(els.newProjectStatus, statusWriteOptions());
   fillSelect(els.newProjectStage, stageWriteOptions("Stage เริ่มต้น"));
   fillSelect(els.newProjectOwner, ownerWriteOptions());
   fillDatalist(els.budgetCodeSuggestions, codes.filter((code) => code !== "ไม่ระบุ"));
+  syncNewProjectPeriodUi();
 }
 
 function fillSelect(select, options) {
@@ -904,6 +1019,13 @@ function fillSelect(select, options) {
   if (options.some(([value]) => value === current)) {
     select.value = current;
   }
+}
+
+function syncNewProjectPeriodUi() {
+  const sectionAware = PERIOD_AWARE_SITE_GIDS.has(clean(els.newProjectSite.value));
+  els.newProjectPeriod.disabled = !sectionAware;
+  els.newProjectPeriod.required = sectionAware;
+  updateWriteModeUi();
 }
 
 function fillDatalist(datalist, options) {
@@ -1088,6 +1210,7 @@ function render() {
   const rows = getFilteredTasks(context.tasks, context);
   const budgetRows = getBudgetRowsForContext(context);
   const isBudgetMenu = context.viewType === "budget";
+  const isPlanningPeriod = context.viewType === "planningPeriod";
   const isActionCenter = context.viewType === "actionCenter";
   const isOverview = context.viewType === "overview";
   const showsCharts = !isOverview && !isActionCenter;
@@ -1105,7 +1228,7 @@ function render() {
   renderHeader(context, rows);
   renderActiveFilters(context);
 
-  if (isBudgetMenu) {
+  if (isBudgetMenu || isPlanningPeriod) {
     renderKpis(rows, context, budgetRows);
   }
   if (isOverview) {
@@ -1135,13 +1258,14 @@ function render() {
 
 function clearInactivePanels(context) {
   const isBudgetMenu = context.viewType === "budget";
+  const isPlanningPeriod = context.viewType === "planningPeriod";
   const isActionCenter = context.viewType === "actionCenter";
   const isOverview = context.viewType === "overview";
   const showsCharts = !isOverview && !isActionCenter;
   const showsTable = !isActionCenter;
   const showsBudgetRemaining = isBudgetMenu;
 
-  if (!isBudgetMenu) els.kpiGrid.innerHTML = "";
+  if (!isBudgetMenu && !isPlanningPeriod) els.kpiGrid.innerHTML = "";
   if (!isOverview) {
     els.overviewAnalysis.innerHTML = "";
     els.compareGrid.innerHTML = "";
@@ -1172,10 +1296,11 @@ function clearInactivePanels(context) {
 
 function syncViewPanels(context) {
   const isBudgetMenu = context.viewType === "budget";
+  const isPlanningPeriod = context.viewType === "planningPeriod";
   const isActionCenter = context.viewType === "actionCenter";
   const isOverview = context.viewType === "overview";
 
-  els.kpiGrid.classList.toggle("hidden", !isBudgetMenu);
+  els.kpiGrid.classList.toggle("hidden", !isBudgetMenu && !isPlanningPeriod);
   els.controlIntelligenceGrid.classList.toggle("hidden", !isActionCenter);
   els.budgetStatePanel.classList.add("hidden");
   els.executiveSummaryPanel.classList.toggle("hidden", !isActionCenter);
@@ -1195,15 +1320,50 @@ function syncViewPanels(context) {
   els.compareActionGrid.classList.toggle("single-panel", isActionCenter);
 }
 
+function tasksForBudgetPeriod(year, kind = "") {
+  return state.tasks.filter((task) =>
+    task.sourceGroup === "location"
+    && task.budgetYear === year
+    && (!kind || task.budgetPeriodKind === kind)
+  );
+}
+
+function currentBudgetTasks(group = "") {
+  return state.tasks.filter((task) =>
+    task.budgetYear === CURRENT_BUDGET_YEAR
+    && (!group || task.sourceGroup === group)
+  );
+}
+
 function getViewContext() {
   if (state.selectedView === "budget") {
     return {
       title: "งบประมาณคงเหลือ",
       kicker: "Budget remaining",
-      tasks: state.tasks.filter((task) => task.sourceGroup === "location"),
+      tasks: currentBudgetTasks("location"),
       sheet: state.sheets.find((sheet) => sheet.group === "budget"),
       viewType: "budget",
       budgetScope: "all"
+    };
+  }
+
+  if (state.selectedView === OUTSIDE_PLAN_VIEW) {
+    return {
+      title: `นอกแผนงบประมาณปี ${CURRENT_BUDGET_YEAR}`,
+      kicker: "งานนอกแผนรวมทุกสถานที่",
+      tasks: tasksForBudgetPeriod(CURRENT_BUDGET_YEAR, "outside-plan"),
+      viewType: "planningPeriod",
+      budgetScope: "tasks"
+    };
+  }
+
+  if (state.selectedView === NEXT_YEAR_PLAN_VIEW) {
+    return {
+      title: `แผนงบประมาณปี ${NEXT_BUDGET_YEAR}`,
+      kicker: "พื้นที่วิเคราะห์งานและงบประมาณล่วงหน้า",
+      tasks: tasksForBudgetPeriod(NEXT_BUDGET_YEAR, "annual"),
+      viewType: "planningPeriod",
+      budgetScope: "tasks"
     };
   }
 
@@ -1211,7 +1371,7 @@ function getViewContext() {
     return {
       title: "สรุปงานรายคน",
       kicker: "เลือกผู้รับผิดชอบจาก dropdown",
-      tasks: state.tasks.filter((task) => task.sourceGroup === "person"),
+      tasks: currentBudgetTasks("person"),
       viewType: "personSummary",
       budgetScope: "tasks"
     };
@@ -1221,7 +1381,7 @@ function getViewContext() {
     return {
       title: "Alert / Action Queue",
       kicker: "สรุปผู้บริหารและรายการที่ต้องไล่ต่อ",
-      tasks: state.tasks.filter((task) => task.sourceGroup === "location"),
+      tasks: currentBudgetTasks("location"),
       viewType: "actionCenter",
       budgetScope: "all"
     };
@@ -1237,7 +1397,7 @@ function getViewContext() {
     return {
       title: "Data Analyze",
       kicker: groupTitles[group],
-      tasks: state.tasks.filter((task) => task.sourceGroup === group),
+      tasks: currentBudgetTasks(group),
       viewType: "overview",
       budgetScope: "tasks"
     };
@@ -1247,7 +1407,7 @@ function getViewContext() {
   return {
     title: sheet?.mainTitle || "Budget Utilize",
     kicker: sheet?.tab || "Sheet",
-    tasks: sheet?.tasks || [],
+    tasks: (sheet?.tasks || []).filter((task) => task.budgetYear === CURRENT_BUDGET_YEAR),
     sheet,
     viewType: "sheet",
     budgetScope: sheet?.group === "budget" ? "all" : "tasks"
@@ -1430,10 +1590,29 @@ function renderNav() {
       ]
     },
     {
+      title: "แผนงบประมาณ",
+      items: [
+        {
+          id: OUTSIDE_PLAN_VIEW,
+          label: `นอกแผนงบประมาณปี ${CURRENT_BUDGET_YEAR}`,
+          count: tasksForBudgetPeriod(CURRENT_BUDGET_YEAR, "outside-plan").length
+        },
+        {
+          id: NEXT_YEAR_PLAN_VIEW,
+          label: `แผนงบประมาณปี ${NEXT_BUDGET_YEAR}`,
+          count: tasksForBudgetPeriod(NEXT_BUDGET_YEAR, "annual").length
+        }
+      ]
+    },
+    {
       title: "สถานที่",
       items: state.sheets
         .filter((sheet) => sheet.group === "location")
-        .map((sheet) => ({ id: sheet.gid, label: sheet.mainTitle, count: sheet.tasks.length }))
+        .map((sheet) => ({
+          id: sheet.gid,
+          label: sheet.mainTitle,
+          count: sheet.tasks.filter((task) => task.budgetYear === CURRENT_BUDGET_YEAR).length
+        }))
     },
     {
       title: "ผู้รับผิดชอบ",
@@ -1443,7 +1622,11 @@ function renderNav() {
       title: "SKW",
       items: state.sheets
         .filter((sheet) => sheet.group === "support")
-        .map((sheet) => ({ id: sheet.gid, label: sheet.mainTitle, count: sheet.tasks.length }))
+        .map((sheet) => ({
+          id: sheet.gid,
+          label: sheet.mainTitle,
+          count: sheet.tasks.filter((task) => task.budgetYear === CURRENT_BUDGET_YEAR).length
+        }))
     },
     {
       title: "Action Center",
@@ -1498,7 +1681,7 @@ function renderNav() {
 }
 
 function countByPerspective(group) {
-  return state.tasks.filter((task) => task.sourceGroup === group).length;
+  return currentBudgetTasks(group).length;
 }
 
 function renderHeader(context, rows) {
@@ -1512,35 +1695,51 @@ function renderHeader(context, rows) {
     : "-";
   const modified = new Date(SOURCE_MODIFIED).toLocaleDateString("th-TH", { dateStyle: "medium" });
   els.sourceStamp.textContent = `${rows.length} รายการ | อัปเดตไฟล์ ${modified} | โหลด ${fetched}`;
+  els.newProjectButton.classList.remove("hidden");
   els.sheetChartHint.textContent =
     context.viewType === "overview"
       ? "เทียบงบและงานค้างตาม main title ของแต่ละชีท"
       : context.viewType === "personSummary"
         ? "เลือกผู้รับผิดชอบจาก dropdown เพื่อแยกสรุปงานรายคน"
+      : context.viewType === "planningPeriod"
+        ? `จัดกลุ่มอัตโนมัติจากหัวข้อเดิมใน Google Sheet โดยไม่เปลี่ยน template`
       : context.sheet?.mainTitle
         ? `อ้างอิงจาก ${context.sheet.mainTitle}`
         : "อ้างอิงจาก main title ของแต่ละชีท";
 }
 
 function renderKpis(tasks, context, budgetRows) {
-  if (context.viewType !== "budget") {
+  let cards = [];
+  if (context.viewType === "planningPeriod") {
+    const budgetedTasks = tasks.filter((task) => task.budget > 0);
+    const missingBudgetTasks = tasks.filter((task) => task.budget <= 0);
+    const sites = new Set(tasks.map((task) => task.sourceTab).filter(Boolean));
+    const owners = new Set(tasks.map((task) => task.owner).filter(Boolean));
+    cards = [
+      ["งบประมาณรวม", formatMoney(sum(tasks, "budget")), context.title],
+      ["จำนวนงาน", numberFormatter.format(tasks.length), `${numberFormatter.format(sites.size)} สถานที่`],
+      ["มีงบประมาณแล้ว", numberFormatter.format(budgetedTasks.length), formatMoney(sum(budgetedTasks, "budget"))],
+      ["ยังไม่ระบุงบ", numberFormatter.format(missingBudgetTasks.length), "รายการที่ควรวิเคราะห์เพิ่มเติม"],
+      ["ผู้รับผิดชอบ", numberFormatter.format(owners.size), owners.size ? [...owners].join(", ") : "ยังไม่ระบุ"]
+    ];
+  } else if (context.viewType === "budget") {
+    const realizedTasks = getRealizedBudgetTasks(tasks);
+    const realizedBudget = sum(realizedTasks, "budget");
+    const remainingBudget = sumBudgetRows(budgetRows);
+    const overallBudget = realizedBudget + remainingBudget;
+    const done = tasks.filter((task) => task.statusKey === "done");
+    const watchItems = tasks.filter((task) => isWatchableTask(task) && task.budget > 0);
+    cards = [
+      ["งบประมาณรวม (คลังสินค้า)", formatMoney(overallBudget), `${formatMoney(realizedBudget)} ใช้จริง + ${formatMoney(remainingBudget)} คงเหลือคลังสินค้า`],
+      ["งบประมาณที่ใช้จริง", formatMoney(realizedBudget), `${numberFormatter.format(realizedTasks.length)} รายการ ไม่รวมไม่ดำเนินการ`],
+      ["งบประมาณคงเหลือ", formatMoney(remainingBudget), `${numberFormatter.format(budgetRows.length)} รายการจากชีทคลังสินค้า`],
+      ["อัตราการแล้วเสร็จ", formatPercent(ratio(done.length, tasks.length)), `${numberFormatter.format(done.length)} จาก ${numberFormatter.format(tasks.length)} รายการ`],
+      ["งานที่จ้องจับตา", numberFormatter.format(watchItems.length), formatMoney(sum(watchItems, "budget"))]
+    ];
+  } else {
     els.kpiGrid.innerHTML = "";
     return;
   }
-
-  const realizedTasks = getRealizedBudgetTasks(tasks);
-  const realizedBudget = sum(realizedTasks, "budget");
-  const remainingBudget = sumBudgetRows(budgetRows);
-  const overallBudget = realizedBudget + remainingBudget;
-  const done = tasks.filter((task) => task.statusKey === "done");
-  const watchItems = tasks.filter((task) => isWatchableTask(task) && task.budget > 0);
-  const cards = [
-    ["งบประมาณรวม (คลังสินค้า)", formatMoney(overallBudget), `${formatMoney(realizedBudget)} ใช้จริง + ${formatMoney(remainingBudget)} คงเหลือคลังสินค้า`],
-    ["งบประมาณที่ใช้จริง", formatMoney(realizedBudget), `${numberFormatter.format(realizedTasks.length)} รายการ ไม่รวมไม่ดำเนินการ`],
-    ["งบประมาณคงเหลือ", formatMoney(remainingBudget), `${numberFormatter.format(budgetRows.length)} รายการจากชีทคลังสินค้า`],
-    ["อัตราการแล้วเสร็จ", formatPercent(ratio(done.length, tasks.length)), `${numberFormatter.format(done.length)} จาก ${numberFormatter.format(tasks.length)} รายการ`],
-    ["งานที่จ้องจับตา", numberFormatter.format(watchItems.length), formatMoney(sum(watchItems, "budget"))]
-  ];
 
   els.kpiGrid.innerHTML = cards
     .map(
@@ -2173,8 +2372,14 @@ function renderSelectedDrilldown(tasks) {
 
   els.selectedPanel.innerHTML = `
     <div class="project-drilldown-head">
-      <p class="page-kicker">${escapeHtml(selected.sourceTitle)}</p>
-      <h3 class="selected-title">${escapeHtml(selected.item)}</h3>
+      <div class="project-drilldown-title">
+        <p class="page-kicker">${escapeHtml(selected.sourceTitle)}</p>
+        <h3 class="selected-title">${escapeHtml(selected.item)}</h3>
+      </div>
+      <button class="detail-nav-button" type="button" data-scroll-to-work-list>
+        <span aria-hidden="true">↑</span>
+        กลับไปรายการงาน
+      </button>
       <div class="selected-status-row">
         ${statusPill(selected)}
         <span>${escapeHtml(currentStage)}</span>
@@ -2189,6 +2394,7 @@ function renderSelectedDrilldown(tasks) {
       <div class="detail-item"><span>Budget code</span><strong>${escapeHtml(selected.budgetCode || "ไม่ระบุ")}</strong></div>
       <div class="detail-item"><span>PO Number</span><strong>${escapeHtml(selected.poNumber || "-")}</strong></div>
       <div class="detail-item"><span>Plan</span><strong>${escapeHtml(selected.plan || "-")}</strong></div>
+      <div class="detail-item"><span>Budget period</span><strong>${escapeHtml(selected.budgetPeriodLabel || `แผนงบประมาณปี ${CURRENT_BUDGET_YEAR}`)}</strong></div>
     </div>
 
     <div class="project-drilldown-block">
@@ -2227,6 +2433,7 @@ function renderSelectedDrilldown(tasks) {
   `;
   bindChartFilterButtons(els.selectedPanel);
   bindLiveEditForm(selected);
+  els.selectedPanel.querySelector("[data-scroll-to-work-list]")?.addEventListener("click", scrollToWorkList);
 }
 
 function renderLiveEditForm(task) {
@@ -2412,6 +2619,36 @@ async function runWriteAction(action) {
 }
 
 function openProjectModal() {
+  state.newProjectOriginView = state.selectedView;
+  const planningView = [OUTSIDE_PLAN_VIEW, NEXT_YEAR_PLAN_VIEW].includes(state.selectedView);
+  const locationSheets = state.sheets.filter((sheet) => sheet.group === "location");
+  const availableSites = planningView
+    ? locationSheets.filter((sheet) => PERIOD_AWARE_SITE_GIDS.has(sheet.gid))
+    : locationSheets;
+  fillSelect(
+    els.newProjectSite,
+    availableSites.map((sheet) => [sheet.gid, sheet.mainTitle || sheet.tab])
+  );
+  if (availableSites.some((sheet) => sheet.gid === state.selectedView)) {
+    els.newProjectSite.value = state.selectedView;
+  }
+  if (state.selectedView === OUTSIDE_PLAN_VIEW) {
+    els.newProjectPeriod.value = budgetPeriodValue({
+      kind: "outside-plan",
+      year: CURRENT_BUDGET_YEAR
+    });
+  } else if (state.selectedView === NEXT_YEAR_PLAN_VIEW) {
+    els.newProjectPeriod.value = budgetPeriodValue({
+      kind: "annual",
+      year: NEXT_BUDGET_YEAR
+    });
+  } else {
+    els.newProjectPeriod.value = budgetPeriodValue({
+      kind: "annual",
+      year: CURRENT_BUDGET_YEAR
+    });
+  }
+  syncNewProjectPeriodUi();
   updateWriteModeUi();
   els.projectModal.style.removeProperty("display");
   els.projectModal.classList.remove("hidden");
@@ -2435,6 +2672,12 @@ async function submitNewProject(event) {
   const formData = new FormData(els.newProjectForm);
   await runWriteAction(async () => {
     const selectedSiteGid = String(formData.get("site") || "");
+    const selectedPeriod = PERIOD_AWARE_SITE_GIDS.has(selectedSiteGid)
+      ? budgetPeriodFromValue(els.newProjectPeriod.value)
+      : null;
+    if (PERIOD_AWARE_SITE_GIDS.has(selectedSiteGid) && !selectedPeriod) {
+      throw new Error("กรุณาเลือก Budget period ก่อนเพิ่ม Project");
+    }
     const result = await postWrite("/api/add-project", {
       gid: selectedSiteGid,
       project: {
@@ -2446,7 +2689,9 @@ async function submitNewProject(event) {
         poNumber: formData.get("poNumber"),
         contractor: formData.get("contractor"),
         budget: formData.get("budget"),
-        note: formData.get("note")
+        note: formData.get("note"),
+        budgetYear: selectedPeriod?.year,
+        budgetPeriodKind: selectedPeriod?.kind
       }
     });
     scheduleProjectModalClose(2000);
@@ -2457,8 +2702,16 @@ async function submitNewProject(event) {
     }
     resetFilters();
     const newTaskId = taskIdFromWriteResult(selectedSiteGid, result);
+    const returnView = [OUTSIDE_PLAN_VIEW, NEXT_YEAR_PLAN_VIEW].includes(state.newProjectOriginView)
+      ? state.newProjectOriginView
+      : selectedSiteGid;
     els.newProjectForm.reset();
-    await returnToAppAfterWrite({ preferredTaskId: newTaskId, selectedView: selectedSiteGid, tablePage: 0, modalCloseDelayMs: 2000 });
+    await returnToAppAfterWrite({
+      preferredTaskId: newTaskId,
+      selectedView: returnView,
+      tablePage: 0,
+      modalCloseDelayMs: 2000
+    });
   });
 }
 
@@ -2817,14 +3070,23 @@ function renderTable(tasks) {
   els.taskTable.innerHTML = visibleTasks
     .map(
       (task) => `
-        <tr class="${task.id === state.selectedTaskId ? "selected" : ""}" data-task-id="${escapeHtml(task.id)}">
+        <tr
+          class="${task.id === state.selectedTaskId ? "selected" : ""}"
+          data-task-id="${escapeHtml(task.id)}"
+          tabindex="0"
+          aria-label="ดูรายละเอียด ${escapeHtml(task.item)}"
+        >
           <td>
             <div class="task-title">${escapeHtml(task.item)}</div>
             <div class="task-subtitle">${escapeHtml(task.note || task.plan || "")}</div>
           </td>
           <td>
             <strong>${escapeHtml(task.sourceTab)}</strong>
-            <div class="task-subtitle">${escapeHtml(task.section || task.sourceTitle)}</div>
+            <div class="task-subtitle">${escapeHtml(
+              [task.budgetPeriodLabel, task.section || task.sourceTitle]
+                .filter((value, index, values) => value && values.indexOf(value) === index)
+                .join(" • ")
+            )}</div>
           </td>
           <td>${statusPill(task)}</td>
           <td>${progressCell(task)}</td>
@@ -2840,12 +3102,33 @@ function renderTable(tasks) {
 
   els.taskTable.querySelectorAll("[data-task-id]").forEach((row) => {
     row.addEventListener("click", () => {
-      state.selectedTaskId = row.dataset.taskId;
-      renderSelected(tasks);
-      els.taskTable.querySelectorAll("tr").forEach((item) => item.classList.remove("selected"));
-      row.classList.add("selected");
+      selectTaskAndShowDetails(row, tasks);
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectTaskAndShowDetails(row, tasks);
     });
   });
+}
+
+function selectTaskAndShowDetails(row, tasks) {
+  state.selectedTaskId = row.dataset.taskId;
+  renderSelected(tasks);
+  els.taskTable.querySelectorAll("tr").forEach((item) => item.classList.remove("selected"));
+  row.classList.add("selected");
+  window.requestAnimationFrame(() => {
+    els.selectedPanel.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+}
+
+function scrollToWorkList() {
+  els.tablePanel.scrollIntoView({ block: "start", behavior: "smooth" });
+  window.setTimeout(() => {
+    const selectedRow = [...els.taskTable.querySelectorAll("[data-task-id]")]
+      .find((row) => row.dataset.taskId === state.selectedTaskId);
+    selectedRow?.focus({ preventScroll: true });
+  }, 420);
 }
 
 function renderTablePager(total, currentPage, pageCount) {

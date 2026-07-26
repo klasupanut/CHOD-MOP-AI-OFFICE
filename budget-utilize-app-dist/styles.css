@@ -2419,12 +2419,14 @@ button:disabled {
   grid-row: 1;
   padding: 0;
   overflow: hidden;
+  scroll-margin-top: 92px;
 }
 
 .project-detail-panel {
   grid-column: 1;
   grid-row: 2;
   min-width: 0;
+  scroll-margin-top: 92px;
 }
 
 .content-grid > .compare-panel {
@@ -2560,6 +2562,11 @@ tbody tr:hover,
 tbody tr.selected {
   background:
     linear-gradient(135deg, rgba(205, 238, 232, 0.9), rgba(241, 249, 247, 0.76));
+}
+
+tbody tr:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: -2px;
 }
 
 .task-title {
@@ -2701,10 +2708,43 @@ tbody tr.selected {
 
 .project-drilldown-head {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: start;
+}
+
+.project-drilldown-title {
+  min-width: 0;
+}
+
+.detail-nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--glass-bg-soft);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.detail-nav-button:hover {
+  background: var(--glass-bg-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.detail-nav-button span {
+  color: var(--teal);
+  font-size: 16px;
 }
 
 .selected-status-row {
+  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -3488,6 +3528,14 @@ tbody tr.selected {
 
   .timeline-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .project-drilldown-head {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-nav-button {
+    width: 100%;
   }
 
   .topbar h2 {

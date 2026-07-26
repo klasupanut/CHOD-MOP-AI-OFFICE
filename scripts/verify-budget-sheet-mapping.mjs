@@ -1,5 +1,7 @@
 import {
   columnLetter,
+  defaultBudgetPeriod,
+  parseBudgetPeriodMarker,
   resolveWorkSheetColumns,
   workCell,
 } from "../src/lib/budget-utilize/work-sheet-schema.ts";
@@ -61,6 +63,11 @@ function statusKey(value) {
   return "blank";
 }
 
+function amount(value) {
+  const parsed = Number(String(value || "").replace(/,/g, "").trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 for (const [name, gid] of sites) {
   const response = await fetch(
     `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`,
@@ -69,17 +76,29 @@ for (const [name, gid] of sites) {
   const rows = parseCsv(await response.text());
   const columns = resolveWorkSheetColumns(rows);
   const counts = { done: 0, active: 0, stopped: 0, blank: 0 };
+  const periodCounts = {};
+  const periodBudgets = {};
+  let budgetPeriod = defaultBudgetPeriod();
 
   for (const row of rows.slice(columns.headerRow + 2)) {
     const index = String(workCell(row, columns.index) || "").trim();
     const item = String(workCell(row, columns.item) || "").trim();
+    const periodMarker = parseBudgetPeriodMarker(index, item);
+    if (periodMarker) {
+      budgetPeriod = periodMarker;
+      continue;
+    }
     if (
       !item
-      || (!index && (item.includes("รวมจำนวนเงิน") || /^(?:แผน)?งบประมาณปี/.test(item)))
+      || (!index && (item.includes("รวมจำนวนเงิน") || /^(?:นอกแผน)?(?:แผน)?งบประมาณปี/.test(item)))
     ) {
       continue;
     }
     counts[statusKey(workCell(row, columns.status))] += 1;
+    const periodKey = `${budgetPeriod.kind}:${budgetPeriod.year}`;
+    periodCounts[periodKey] = (periodCounts[periodKey] || 0) + 1;
+    periodBudgets[periodKey] = (periodBudgets[periodKey] || 0)
+      + amount(workCell(row, columns.budget));
   }
 
   console.log(JSON.stringify({
@@ -88,5 +107,7 @@ for (const [name, gid] of sites) {
     procurementColumns: `${columnLetter(columns.bid)}-${columnLetter(columns.con)}`,
     budgetColumn: columnLetter(columns.budget),
     counts,
+    periodCounts,
+    periodBudgets,
   }));
 }
