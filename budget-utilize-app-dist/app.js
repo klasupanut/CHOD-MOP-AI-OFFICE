@@ -1132,14 +1132,28 @@ function renderProgressCheckboxes(task, disabled = "") {
 function renderStageEditor(task, disabled = "") {
   if (PERIOD_AWARE_SITE_GIDS.has(clean(task.gid))) {
     return `
-      <label>
-        <span>Project Stage</span>
-        <select name="stage" ${disabled}>
-          ${[["", "ยังไม่ระบุ"], ...projectStageOptions]
-            .map(([value, label]) => `<option value="${escapeHtml(value)}" ${task.stageKey === value ? "selected" : ""}>${escapeHtml(label)}</option>`)
+      <fieldset class="stage-checkbox-field stage-choice-field">
+        <legend>
+          Project Stage
+          <small>Select the latest completed stage</small>
+        </legend>
+        <div class="stage-checkbox-grid stage-choice-grid" role="radiogroup" aria-label="Project Stage">
+          ${projectStageOptions
+            .map(([value, label], index) => `
+              <label class="stage-checkbox stage-choice">
+                <input
+                  type="radio"
+                  name="stage"
+                  value="${escapeHtml(value)}"
+                  ${task.stageKey === value ? "checked" : ""}
+                  ${disabled}
+                />
+                <span class="stage-toggle-label stage-toggle-${escapeHtml(value)}">${String(index + 1).padStart(2, "0")} · ${escapeHtml(label)}</span>
+              </label>
+            `)
             .join("")}
-        </select>
-      </label>
+        </div>
+      </fieldset>
     `;
   }
   return `
@@ -2691,7 +2705,9 @@ function bindLiveEditForm(task) {
     const originalOwner = formData.get("ownerOriginal");
     const stageAware = PERIOD_AWARE_SITE_GIDS.has(clean(task.gid));
     const progress = stageAware ? task.progress : getProgressUpdateFromForm(form);
-    const selectedStage = stageAware ? formData.get("stage") : stageKeyFromProgress(progress);
+    const selectedStage = stageAware
+      ? (formData.get("stage") ?? task.stageKey ?? "")
+      : stageKeyFromProgress(progress);
     await runWriteAction(async () => {
       await postWrite("/api/update-task", {
         taskId: task.id,
@@ -2711,11 +2727,14 @@ function bindLiveEditForm(task) {
       await returnToAppAfterWrite({ preferredTaskId: task.id });
     });
   });
-  const stageSelect = form.querySelector('select[name="stage"]');
-  stageSelect?.addEventListener("change", () => {
-    const statusSelect = form.querySelector('select[name="statusKey"]');
-    if (!statusSelect) return;
-    statusSelect.value = statusKeyForSelectedStage(stageSelect.value, statusSelect.value);
+  const stageChoices = [...form.querySelectorAll('input[type="radio"][name="stage"]')];
+  stageChoices.forEach((stageChoice) => {
+    stageChoice.addEventListener("change", () => {
+      if (!stageChoice.checked) return;
+      const statusSelect = form.querySelector('select[name="statusKey"]');
+      if (!statusSelect) return;
+      statusSelect.value = statusKeyForSelectedStage(stageChoice.value, statusSelect.value);
+    });
   });
   const deleteButton = form.querySelector("[data-delete-project]");
   deleteButton?.addEventListener("click", async () => {

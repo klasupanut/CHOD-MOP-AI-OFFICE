@@ -82,6 +82,27 @@ test("stage-only CHOD sites never fall back to legacy procurement columns", () =
   assert.match(app, /stageOnly\s*\?\s*\(projectStageProgress\(stageKey\) \?\? 0\)/);
 });
 
+test("stage-only project details use six clickable single-choice stage cards", () => {
+  const editorFunction = app.match(
+    /function renderStageEditor\(task, disabled = ""\)\s*\{([\s\S]*?)\n\}/,
+  );
+
+  assert.ok(editorFunction, "renderStageEditor function must exist");
+  assert.match(editorFunction[1], /stage-checkbox-grid stage-choice-grid/);
+  assert.match(editorFunction[1], /type="radio"/);
+  assert.match(editorFunction[1], /name="stage"/);
+  assert.match(editorFunction[1], /projectStageOptions/);
+  assert.doesNotMatch(editorFunction[1], /<select name="stage"/);
+  assert.match(
+    app,
+    /form\.querySelectorAll\('input\[type="radio"\]\[name="stage"\]'\)/,
+  );
+  assert.match(
+    styles,
+    /\.stage-checkbox-grid\.stage-choice-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\);/,
+  );
+});
+
 test("six-step progress pipeline stays contained across desktop and mobile", () => {
   assert.match(
     styles,

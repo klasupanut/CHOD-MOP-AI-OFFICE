@@ -3021,6 +3021,36 @@ tbody tr:focus-visible {
   width: 100%;
 }
 
+.stage-choice-field {
+  grid-column: 1 / -1;
+}
+
+.stage-choice-field legend {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.stage-choice-field legend small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.stage-checkbox-grid.stage-choice-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.stage-choice-grid .stage-checkbox,
+.stage-choice-grid .stage-toggle-label {
+  min-height: 44px;
+}
+
+.stage-choice-grid .stage-toggle-label {
+  font-size: 12px !important;
+}
+
 .stage-checkbox {
   position: relative;
   box-sizing: border-box;
@@ -3521,6 +3551,10 @@ tbody tr:focus-visible {
   .stage-checkbox-grid,
   .project-form {
     grid-template-columns: 1fr;
+  }
+
+  .stage-checkbox-grid.stage-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .action-queue-pager {
