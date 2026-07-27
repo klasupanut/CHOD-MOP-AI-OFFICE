@@ -19,7 +19,7 @@ const SHEETS = [
   { tab: "โชติ 5", gid: "1504272791", group: "location", mode: "project-long" },
   { tab: "โชติ บิส กม.8", gid: "1651929286", group: "location", mode: "project-long" },
   { tab: "โชติ บิส แจ้งวัฒนะ", gid: "21424830", group: "location", mode: "project-long" },
-  { tab: "โชติ บิส สาย 4", gid: "603834483", group: "location", mode: "project-long" },
+  { tab: "โชติ บิส สาย 4", gid: "1042125038", group: "location", mode: "project-long" },
   { tab: "สรุปงานสากล", gid: "955484465", group: "support", mode: "support" },
   { tab: "งบประมาณคงเหลือ", gid: "1997687741", group: "budget", mode: "budget" },
   { tab: "สรุปงาน ฟิล์ม", gid: "449201554", group: "person", mode: "person" },
