@@ -2120,7 +2120,7 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 }
 
 .schedule-table .col-dependency {
-  width: 66px;
+  width: 184px;
 }
 
 .schedule-table .col-cost {
@@ -2208,6 +2208,48 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 .schedule-table input[type="number"]::-webkit-outer-spin-button {
   margin: 0;
   appearance: none;
+}
+
+.dependency-editor {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.dependency-editor select {
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+}
+
+.dependency-editor label {
+  display: grid;
+  grid-template-columns: auto 48px auto;
+  align-items: center;
+  justify-content: end;
+  gap: 5px;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+
+.dependency-editor label input {
+  height: 24px;
+  padding: 0 4px;
+  border-color: var(--line);
+  background: var(--surface);
+  text-align: center !important;
+}
+
+.dependency-editor label small {
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
+.dependency-editor input:disabled,
+.dependency-editor select:disabled {
+  cursor: not-allowed;
+  opacity: .58;
 }
 
 .date-pair,
@@ -2547,6 +2589,7 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     }
 
     .schedule-table td.cost-cell,
+    .schedule-table td.dependency-cell,
     .schedule-table td.metric-cell,
     .schedule-table td.action-cell {
       grid-column: 1 / -1;

@@ -19,6 +19,14 @@ import {
   type UsageLoadState,
   type WorkspaceUsagePayload,
 } from "./WorkspaceUsageDashboard";
+import {
+  buildTaskCodeIndex,
+  parseDependency,
+  rebaseDependencyReferences,
+  scheduleDependentActivities,
+  serializeDependency,
+  wouldCreateDependencyCycle,
+} from "@/lib/planner/dependency-scheduling";
 import type {
   Activity,
   ActualSnapshot,
@@ -133,10 +141,13 @@ function planSignature(plan: SavedPlan) {
 
 function normalizeSavedPlan(saved: SavedPlan): SavedPlan {
   const calendarMode = saved.calendarMode || "calendar";
+  const migratedActivities = Array.isArray(saved.activities)
+    ? migrateActivities(saved.activities, calendarMode)
+    : [];
   return {
     project: { ...initialProject, ...saved.project },
     company: saved.company,
-    activities: Array.isArray(saved.activities) ? migrateActivities(saved.activities, calendarMode) : [],
+    activities: scheduleDependentActivities(migratedActivities, calendarMode),
     actualSnapshots: Array.isArray(saved.actualSnapshots) ? saved.actualSnapshots : [],
     calendarMode,
     planningModel: saved.planningModel || "normal",
@@ -921,6 +932,17 @@ export default function TimelinePlannerWorkspace() {
 
   const groups = useMemo(() => activities.filter((activity) => activity.kind === "group"), [activities]);
   const tasks = useMemo(() => activities.filter((activity) => activity.kind === "task"), [activities]);
+  const taskCodeIndex = useMemo(() => buildTaskCodeIndex(activities), [activities]);
+  const taskDependencyOptions = useMemo(
+    () => tasks
+      .map((task) => ({
+        id: task.id,
+        code: taskCodeIndex.codeById.get(task.id) || "",
+        description: task.description,
+      }))
+      .filter((option) => option.code),
+    [tasks, taskCodeIndex],
+  );
   const taskWeights = useMemo(() => taskWeightMap(tasks, planningModel), [tasks, planningModel]);
   const actualProgressMap = useMemo(() => new Map(tasks.map((task) => [task.id, taskActualProgress(task, planningModel, project.statusDate, actualSnapshots, calendarMode)])), [tasks, planningModel, project.statusDate, actualSnapshots, calendarMode]);
   const invalidEarnedHistoryCount = useMemo(() => tasks.filter((task) => hasInvalidEarnedHistory(task, actualSnapshots)).length, [tasks, actualSnapshots]);
@@ -1154,7 +1176,50 @@ export default function TimelinePlannerWorkspace() {
   };
 
   const updateActivity = (id: string, field: keyof Activity, value: string | number | null) => {
-    setActivities((current) => current.map((activity) => activity.id === id ? { ...activity, [field]: value } : activity));
+    setActivities((current) => {
+      const next = current.map((activity) => activity.id === id ? { ...activity, [field]: value } : activity);
+      return field === "start" || field === "duration"
+        ? scheduleDependentActivities(next, calendarMode)
+        : next;
+    });
+  };
+
+  const updateDependency = (task: Activity, predecessorCode: string) => {
+    if (predecessorCode && wouldCreateDependencyCycle(activities, task.id, predecessorCode)) {
+      setSavedLabel("Dependency rejected — this link would create a scheduling cycle");
+      return;
+    }
+    const currentDependency = parseDependency(task.dependency);
+    const dependency = serializeDependency(
+      predecessorCode,
+      currentDependency?.lagDays ?? 0,
+    );
+    setActivities((current) => scheduleDependentActivities(
+      current.map((activity) => activity.id === task.id ? { ...activity, dependency } : activity),
+      calendarMode,
+    ));
+    setSavedLabel(predecessorCode
+      ? "Dependency updated — planned dates recalculated"
+      : "Dependency removed — planned dates are now editable");
+  };
+
+  const updateDependencyLag = (task: Activity, lagDays: number) => {
+    const currentDependency = parseDependency(task.dependency);
+    if (!currentDependency) return;
+    const dependency = serializeDependency(
+      currentDependency.predecessorCode,
+      lagDays,
+    );
+    setActivities((current) => scheduleDependentActivities(
+      current.map((activity) => activity.id === task.id ? { ...activity, dependency } : activity),
+      calendarMode,
+    ));
+    setSavedLabel("Dependency lag updated — planned dates recalculated");
+  };
+
+  const changeCalendarMode = (mode: CalendarMode) => {
+    setCalendarMode(mode);
+    setActivities((current) => scheduleDependentActivities(current, mode));
   };
 
   const updateEarnedValue = (task: Activity, rawValue: number) => {
@@ -1206,7 +1271,10 @@ export default function TimelinePlannerWorkspace() {
       budget: 0,
       earningMethod: "certified",
     };
-    setActivities((current) => [...current.slice(0, insertAfter + 1), newTask, ...current.slice(insertAfter + 1)]);
+    setActivities((current) => scheduleDependentActivities(
+      [...current.slice(0, insertAfter + 1), newTask, ...current.slice(insertAfter + 1)],
+      calendarMode,
+    ));
   };
 
   const addGroup = () => {
@@ -1216,7 +1284,13 @@ export default function TimelinePlannerWorkspace() {
 
   const removeActivity = (id: string) => {
     const removedIds = new Set(activities.filter((activity) => activity.id === id || activity.parentId === id).map((activity) => activity.id));
-    setActivities((current) => current.filter((activity) => !removedIds.has(activity.id)));
+    setActivities((current) => {
+      const remaining = current.filter((activity) => !removedIds.has(activity.id));
+      return scheduleDependentActivities(
+        rebaseDependencyReferences(current, remaining),
+        calendarMode,
+      );
+    });
     setActualSnapshots((current) => current.filter((snapshot) => !removedIds.has(snapshot.activityId)));
   };
 
@@ -1552,8 +1626,8 @@ export default function TimelinePlannerWorkspace() {
           <div className="calendar-control no-print">
             <span>Schedule calendar</span>
             <div className="segmented" role="group" aria-label="Schedule calendar mode">
-              <button type="button" className={calendarMode === "calendar" ? "active" : ""} onClick={() => setCalendarMode("calendar")}>Calendar</button>
-              <button type="button" className={calendarMode === "working" ? "active" : ""} onClick={() => setCalendarMode("working")}>Mon–Fri</button>
+              <button type="button" className={calendarMode === "calendar" ? "active" : ""} onClick={() => changeCalendarMode("calendar")}>Calendar</button>
+              <button type="button" className={calendarMode === "working" ? "active" : ""} onClick={() => changeCalendarMode("working")}>Mon–Fri</button>
             </div>
             <p>1-day tasks finish on their start date</p>
           </div>
@@ -1664,7 +1738,7 @@ export default function TimelinePlannerWorkspace() {
                   <th className="col-date-pair">Actual dates</th>
                   <th className="col-days">Days</th>
                   <th>Owner</th>
-                  <th className="col-dependency" title="Predecessor activity that must happen first">Depends</th>
+                  <th className="col-dependency" title="Choose the predecessor sub-plan and the delay after it finishes">Depends / lag</th>
                   {planningModel === "intensive" && <th className="col-cost">Budget / earned</th>}
                   <th className="col-progress">Auto weight / actual</th>
                   <th className="col-action no-print"><span className="sr-only">Actions</span></th>
@@ -1694,15 +1768,62 @@ export default function TimelinePlannerWorkspace() {
                   const siblings = activities.filter((item) => item.kind === "task" && item.parentId === activity.parentId);
                   const childIndex = siblings.findIndex((item) => item.id === activity.id) + 1;
                   const end = addDuration(activity.start, activity.duration, calendarMode);
+                  const dependency = parseDependency(activity.dependency);
+                  const predecessorExists = Boolean(
+                    dependency && taskCodeIndex.taskByCode.has(dependency.predecessorCode),
+                  );
+                  const legacyDependency = activity.dependency !== "-" && !dependency
+                    ? activity.dependency
+                    : "";
+                  const dependencyValue = legacyDependency
+                    ? "__legacy__"
+                    : dependency && !predecessorExists
+                      ? "__missing__"
+                      : dependency?.predecessorCode || "";
                   return (
                     <tr key={activity.id} className="task-row">
                       <td data-label="No.">{parentIndex}.{childIndex}</td>
                       <td data-label="Description"><div className="task-description"><span className="branch-mark" aria-hidden="true">↳</span><input value={activity.description} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "description", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} description`} /></div></td>
-                      <td data-label="Planned dates"><div className="date-pair editable-date-pair"><label><span>S</span><input type="date" value={activity.start} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "start", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned start date`} /></label><label><span>F</span><input type="date" value={end} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onInput={(event) => updateEndDate(activity, event.currentTarget.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned finish date`} /></label></div><div className="date-stack print-date-value"><span><b>S</b>{displayShortDate(activity.start)}</span><span><b>F</b>{displayShortDate(end)}</span></div></td>
+                      <td data-label="Planned dates"><div className="date-pair editable-date-pair"><label><span>S</span><input type="date" value={activity.start} readOnly={pdfPreview || predecessorExists} tabIndex={pdfPreview ? -1 : undefined} title={predecessorExists ? "Calculated automatically from the selected predecessor and lag" : undefined} onChange={(event) => updateActivity(activity.id, "start", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned start date`} /></label><label><span>F</span><input type="date" value={end} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onInput={(event) => updateEndDate(activity, event.currentTarget.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned finish date`} /></label></div><div className="date-stack print-date-value"><span><b>S</b>{displayShortDate(activity.start)}</span><span><b>F</b>{displayShortDate(end)}</span></div></td>
                       <td data-label="Actual dates"><div className="date-pair actual editable-date-pair"><label><span>S</span><input type="date" max={project.statusDate} value={activity.actualStart || ""} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "actualStart", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} actual start date`} /></label><label><span>F</span><input type="date" min={activity.actualStart || undefined} max={project.statusDate} value={activity.actualEnd || ""} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "actualEnd", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} actual finish date`} /></label></div>{activity.actualStart ? <div className="date-stack actual print-date-value"><span><b>S</b>{displayShortDate(activity.actualStart)}</span><span><b>{activity.actualEnd ? "F" : "@"}</b>{displayShortDate(actualBarEnd(activity, project.statusDate))}</span></div> : <span className="not-started print-date-value">Not started</span>}</td>
                       <td data-label="Days"><input type="number" min="1" value={activity.duration} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "duration", Math.max(1, Number(event.target.value)))} aria-label={`Activity ${parentIndex}.${childIndex} duration`} /></td>
                       <td data-label="Owner"><input value={activity.owner} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "owner", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} owner`} /></td>
-                      <td data-label="Depends"><input value={activity.dependency} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "dependency", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} dependency`} /></td>
+                      <td className="dependency-cell" data-label="Depends / lag">
+                        <div className="dependency-editor">
+                          <select
+                            value={dependencyValue}
+                            disabled={pdfPreview}
+                            tabIndex={pdfPreview ? -1 : undefined}
+                            onChange={(event) => updateDependency(activity, event.target.value)}
+                            aria-label={`Activity ${parentIndex}.${childIndex} predecessor sub-plan`}
+                          >
+                            <option value="">No dependency</option>
+                            {legacyDependency ? <option value="__legacy__" disabled>Legacy: {legacyDependency}</option> : null}
+                            {dependency && !predecessorExists ? <option value="__missing__" disabled>Missing: {dependency.predecessorCode}</option> : null}
+                            {taskDependencyOptions
+                              .filter((option) => option.id !== activity.id)
+                              .map((option) => (
+                                <option key={option.id} value={option.code}>
+                                  {option.code} — {option.description || "Untitled sub-plan"}
+                                </option>
+                              ))}
+                          </select>
+                          <label title="Extra delay after the predecessor finishes. Zero starts on the next available day.">
+                            <span>Lag</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="3650"
+                              value={dependency?.lagDays ?? 0}
+                              disabled={pdfPreview || !predecessorExists}
+                              tabIndex={pdfPreview ? -1 : undefined}
+                              onChange={(event) => updateDependencyLag(activity, Number(event.target.value))}
+                              aria-label={`Activity ${parentIndex}.${childIndex} dependency lag days`}
+                            />
+                            <small>days</small>
+                          </label>
+                        </div>
+                      </td>
                       {planningModel === "intensive" && <td className="cost-cell" data-label="Budget / earned"><div className="money-editor"><label className="earning-method-row"><span>Earn</span><select value={taskEarningMethod(activity)} disabled={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "earningMethod", event.target.value as EarningMethod)} aria-label={`Activity ${parentIndex}.${childIndex} earning method`}><option value="certified">Certified EV</option><option value="zero-hundred">0 / 100</option><option value="fifty-fifty">50 / 50</option><option value="level-of-effort">LOE linear</option></select></label><label><span>Budget</span><input type="number" min="0" step="1000" value={taskBudget(activity)} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateTaskBudget(activity, Number(event.target.value))} aria-label={`Activity ${parentIndex}.${childIndex} task budget`} /></label><label><span>EV @ {displayShortDate(project.statusDate)}</span><input type="number" min={taskEarningMethod(activity) === "certified" ? earnedValueBoundsAt(activity.id, actualSnapshots, project.statusDate, taskBudget(activity)).min : 0} max={taskEarningMethod(activity) === "certified" ? earnedValueBoundsAt(activity.id, actualSnapshots, project.statusDate, taskBudget(activity)).max : taskBudget(activity)} step="1000" value={taskEarnedValueAt(activity, actualSnapshots, project.statusDate, calendarMode)} readOnly={pdfPreview || taskEarningMethod(activity) !== "certified"} tabIndex={pdfPreview || taskEarningMethod(activity) !== "certified" ? -1 : undefined} onChange={(event) => updateEarnedValue(activity, Number(event.target.value))} aria-label={`Activity ${parentIndex}.${childIndex} ${taskEarningMethod(activity) === "certified" ? "certified" : "calculated"} earned value`} /></label></div></td>}
                       <td className="metric-cell" data-label="Auto weight / actual"><div className="auto-metrics"><span>W {(taskWeights.get(activity.id) ?? 0).toFixed(1)}%</span><strong>{Math.round(actualProgressMap.get(activity.id) ?? 0)}%</strong><i className="progress-track"><b style={{ width: `${actualProgressMap.get(activity.id) ?? 0}%` }} /></i></div></td>
                       <td className="no-print action-cell" data-label="Actions"><button type="button" className="row-action remove" title="Remove activity" aria-label={`Remove ${activity.description}`} onClick={() => removeActivity(activity.id)}>×</button></td>
