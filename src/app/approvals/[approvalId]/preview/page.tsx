@@ -9,17 +9,31 @@ type PreviewLineItem = {
   unit: string;
   unitPrice: number;
   total: number;
+  contractorUnitCost?: number;
+  contractorTotalCost?: number;
+  markupPercent?: number;
 };
 
 function money(value: number) {
-  return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency: "THB",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function percentage(value: number) {
+  return `${new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}%`;
 }
 
 export default async function QuotationApprovalPreviewPage({ params }: { params: Promise<{ approvalId: string }> }) {
-  await requireModule("Approvals");
+  const user = await requireModule("Approvals");
   const { approvalId } = await params;
   const approval = await findApprovalRow(approvalId);
   if (!approval) notFound();
+  const canViewContractorCost = user.quotationPermissions.includes("quotation.viewInternalCost");
+  const canViewMarkup = user.quotationPermissions.includes("quotation.viewMarkupProfit");
 
   const lineItems: PreviewLineItem[] =
     "quotationItems" in approval && Array.isArray(approval.quotationItems) && approval.quotationItems.length
@@ -55,10 +69,47 @@ export default async function QuotationApprovalPreviewPage({ params }: { params:
             <span>IN-HOUSE QUOTATION DATA</span>
             <strong>Important approval information</strong>
           </header>
+          <div className="approval-preview-pricing">
+            <article>
+              <span>Contractor Price</span>
+              <strong>
+                {!canViewContractorCost
+                  ? "Restricted"
+                  : approval.totalContractorCost === undefined
+                    ? "Not recorded"
+                    : money(approval.totalContractorCost)}
+              </strong>
+              <small>Net contractor cost</small>
+            </article>
+            <article>
+              <span>CHOD Offered Price</span>
+              <strong>{money(approval.totalSellingAmount ?? approval.amount)}</strong>
+              <small>Actual selling price, excl. VAT</small>
+            </article>
+            <article>
+              <span>Net Markup</span>
+              <strong>
+                {!canViewMarkup
+                  ? "Restricted"
+                  : approval.averageMarkupPercent === undefined
+                    ? "Not recorded"
+                    : percentage(approval.averageMarkupPercent)}
+              </strong>
+              <small>(Selling − contractor cost) ÷ contractor cost</small>
+            </article>
+          </div>
           <div className="approval-preview-table-wrap">
             <table className="quotation-document-table">
               <thead>
-                <tr><th>Scope / Description</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Total</th></tr>
+                <tr>
+                  <th>Scope / Description</th>
+                  <th>Qty</th>
+                  <th>Unit</th>
+                  <th>Contractor Total</th>
+                  <th>Markup</th>
+                  <th>CHOD Unit Price</th>
+                  <th>CHOD Total</th>
+                </tr>
               </thead>
               <tbody>
                 {lineItems.map((item, index) => (
@@ -66,13 +117,27 @@ export default async function QuotationApprovalPreviewPage({ params }: { params:
                     <td>{item.description}</td>
                     <td>{item.quantity}</td>
                     <td>{item.unit || "-"}</td>
+                    <td>
+                      {!canViewContractorCost
+                        ? "Restricted"
+                        : item.contractorTotalCost === undefined
+                          ? "—"
+                          : money(item.contractorTotalCost)}
+                    </td>
+                    <td>
+                      {!canViewMarkup
+                        ? "Restricted"
+                        : item.markupPercent === undefined
+                          ? "—"
+                          : percentage(item.markupPercent)}
+                    </td>
                     <td>{money(item.unitPrice)}</td>
                     <td>{money(item.total)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr><td colSpan={4}>Grand Total</td><td>{money(approval.amount)}</td></tr>
+                <tr><td colSpan={6}>Grand Total (incl. VAT)</td><td>{money(approval.amount)}</td></tr>
               </tfoot>
             </table>
           </div>

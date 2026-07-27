@@ -33,14 +33,22 @@ type QuotationBackendRow = {
   grandTotal?: number;
   totalAmount?: number;
   totalAfterDiscount?: number;
+  projectMarkupPercent?: number;
+  totalContractorCost?: number;
+  totalSellingAmount?: number;
+  averageMarkupPercent?: number;
   updatedAt?: string;
   createdAt?: string;
   items?: Array<{
     description?: string;
     quantity?: number;
     unit?: string;
+    contractorUnitCost?: number;
+    contractorTotalCost?: number;
+    markupPercent?: number;
     quotationUnitPrice?: number;
     quotationTotal?: number;
+    projectSellingTotal?: number;
     sellingUnitPrice?: number;
     sellingTotal?: number;
     itemType?: string;
@@ -59,6 +67,9 @@ export type ApprovalQuotationLineItem = {
   unit: string;
   unitPrice: number;
   total: number;
+  contractorUnitCost?: number;
+  contractorTotalCost?: number;
+  markupPercent?: number;
 };
 
 export type QuotationApprovalWithItems = QuotationApprovalItem & {
@@ -70,6 +81,9 @@ export type QuotationApprovalWithItems = QuotationApprovalItem & {
   clientSignedAt?: string;
   clientSignedByName?: string;
   internalApprovalStatus?: string;
+  totalContractorCost?: number;
+  totalSellingAmount: number;
+  averageMarkupPercent?: number;
 };
 
 function normalizeApprovalStatus(value?: string): QuotationApprovalStatus | null {
@@ -139,16 +153,65 @@ function amountFromQuotation(row: QuotationBackendRow) {
   return Number(row.grandTotal || row.totalAfterDiscount || row.totalAmount || 0);
 }
 
+function optionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
 function mapItems(row: QuotationBackendRow): ApprovalQuotationLineItem[] {
   return (row.items || [])
     .filter((item) => item.itemType !== "title" && String(item.description || "").trim())
-    .map((item) => ({
-      description: String(item.description || "Quotation item"),
-      quantity: Number(item.quantity || 0),
-      unit: String(item.unit || ""),
-      unitPrice: Number(item.quotationUnitPrice || item.sellingUnitPrice || 0),
-      total: Number(item.quotationTotal || item.sellingTotal || 0),
-    }));
+    .map((item) => {
+      const quantity = Number(item.quantity || 0);
+      const contractorUnitCost = optionalNumber(item.contractorUnitCost);
+      const contractorTotalCost = optionalNumber(item.contractorTotalCost)
+        ?? (contractorUnitCost !== undefined ? quantity * contractorUnitCost : undefined);
+      const total = optionalNumber(item.quotationTotal)
+        ?? optionalNumber(item.projectSellingTotal)
+        ?? optionalNumber(item.sellingTotal)
+        ?? 0;
+      const unitPrice = optionalNumber(item.quotationUnitPrice)
+        ?? (quantity > 0 ? total / quantity : optionalNumber(item.sellingUnitPrice))
+        ?? 0;
+      const markupPercent = optionalNumber(item.markupPercent)
+        ?? (contractorTotalCost !== undefined && contractorTotalCost > 0
+          ? ((total - contractorTotalCost) / contractorTotalCost) * 100
+          : undefined);
+
+      return {
+        description: String(item.description || "Quotation item"),
+        quantity,
+        unit: String(item.unit || ""),
+        unitPrice,
+        total,
+        contractorUnitCost,
+        contractorTotalCost,
+        markupPercent,
+      };
+    });
+}
+
+function pricingFromQuotation(row: QuotationBackendRow) {
+  const itemCosts = (row.items || [])
+    .filter((item) => item.itemType !== "title")
+    .map((item) => optionalNumber(item.contractorTotalCost)
+      ?? (optionalNumber(item.contractorUnitCost) !== undefined
+        ? Number(item.quantity || 0) * Number(item.contractorUnitCost)
+        : undefined))
+    .filter((value): value is number => value !== undefined);
+  const totalContractorCost = optionalNumber(row.totalContractorCost)
+    ?? (itemCosts.length ? itemCosts.reduce((total, value) => total + value, 0) : undefined);
+  const totalSellingAmount = optionalNumber(row.totalSellingAmount)
+    ?? optionalNumber(row.totalAfterDiscount)
+    ?? optionalNumber(row.totalAmount)
+    ?? 0;
+  const averageMarkupPercent = optionalNumber(row.averageMarkupPercent)
+    ?? (totalContractorCost !== undefined && totalContractorCost > 0
+      ? ((totalSellingAmount - totalContractorCost) / totalContractorCost) * 100
+      : undefined);
+
+  return { totalContractorCost, totalSellingAmount, averageMarkupPercent };
 }
 
 function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWithItems {
@@ -158,6 +221,7 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
   const amount = amountFromQuotation(row);
   const updatedAt = String(row.updatedAt || row.createdAt || new Date().toISOString());
   const pdfUrl = String(row.pdfUrl || "");
+  const pricing = pricingFromQuotation(row);
 
   return {
     approvalId: `APR-${quotationId}`,
@@ -191,6 +255,7 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
     clientSignedAt: row.signedAt || "",
     clientSignedByName: row.signedByName || "",
     internalApprovalStatus: row.approvalStatus || row.status || "",
+    ...pricing,
   };
 }
 

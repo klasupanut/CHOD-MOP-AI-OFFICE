@@ -18,6 +18,9 @@ type ApprovalLineItem = {
   unit: string;
   unitPrice: number;
   total: number;
+  contractorUnitCost?: number;
+  contractorTotalCost?: number;
+  markupPercent?: number;
 };
 
 type ApprovalRowWithItems = QuotationApprovalItem & {
@@ -26,10 +29,26 @@ type ApprovalRowWithItems = QuotationApprovalItem & {
   clientSignedAt?: string;
   clientSignedByName?: string;
   internalApprovalStatus?: string;
+  totalContractorCost?: number;
+  totalSellingAmount?: number;
+  averageMarkupPercent?: number;
 };
 
 function money(value: number) {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(value);
+}
+
+function preciseMoney(value: number) {
+  return new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency: "THB",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function percentage(value: number) {
+  return `${new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}%`;
 }
 
 function quotationTypeLabel(value: string) {
@@ -74,6 +93,8 @@ export function ApprovalsWorkspace({
   const selected = approvals.find((approval) => approval.approvalId === selectedId) ?? approvals[0];
   const selectedIsCancelled = selected?.status === "Cancelled";
   const permissionState = selected ? canUserApproveQuotation(currentUser, agentId, selected, approvalPermissions) : null;
+  const canViewContractorCost = currentUser.quotationPermissions.includes("quotation.viewInternalCost");
+  const canViewMarkup = currentUser.quotationPermissions.includes("quotation.viewMarkupProfit");
   const selectedPreviewUrl = selected ? `/approvals/${encodeURIComponent(selected.approvalId)}/preview` : "";
   const selectedLineItems = selected?.quotationItems?.length
     ? selected.quotationItems
@@ -285,6 +306,41 @@ export function ApprovalsWorkspace({
                 <div className="detail-kpi"><span>Validity</span><strong>{selected.validity}</strong></div>
                 <div className="detail-kpi"><span>Payment terms</span><strong>{selected.paymentTerms}</strong></div>
               </div>
+              <section className="approval-pricing-summary" aria-label="Internal quotation pricing">
+                <header>
+                  <span>INTERNAL PRICING</span>
+                  <strong>Contractor cost compared with the actual CHOD offer</strong>
+                </header>
+                <div>
+                  <article className="is-cost">
+                    <span>Contractor Price</span>
+                    <strong>
+                      {!canViewContractorCost
+                        ? "Restricted"
+                        : selected.totalContractorCost === undefined
+                          ? "Not recorded"
+                          : preciseMoney(selected.totalContractorCost)}
+                    </strong>
+                    <small>Net contractor cost</small>
+                  </article>
+                  <article className="is-selling">
+                    <span>CHOD Offered Price</span>
+                    <strong>{preciseMoney(selected.totalSellingAmount ?? selected.amount)}</strong>
+                    <small>Actual selling price, excl. VAT</small>
+                  </article>
+                  <article className="is-markup">
+                    <span>Net Markup</span>
+                    <strong>
+                      {!canViewMarkup
+                        ? "Restricted"
+                        : selected.averageMarkupPercent === undefined
+                          ? "Not recorded"
+                          : percentage(selected.averageMarkupPercent)}
+                    </strong>
+                    <small>(Selling − contractor cost) ÷ contractor cost</small>
+                  </article>
+                </div>
+              </section>
               <section className="approval-inhouse-table">
                 <header>
                   <div>
@@ -295,7 +351,15 @@ export function ApprovalsWorkspace({
                 <div className="approval-inhouse-scroll">
                   <table>
                     <thead>
-                      <tr><th>Scope / Description</th><th>Qty</th><th>Unit</th><th>Unit Price</th><th>Total</th></tr>
+                      <tr>
+                        <th>Scope / Description</th>
+                        <th>Qty</th>
+                        <th>Unit</th>
+                        <th>Contractor Total</th>
+                        <th>Markup</th>
+                        <th>CHOD Unit Price</th>
+                        <th>CHOD Total</th>
+                      </tr>
                     </thead>
                     <tbody>
                       {selectedLineItems.map((item, index) => (
@@ -303,13 +367,27 @@ export function ApprovalsWorkspace({
                           <td>{item.description}</td>
                           <td>{item.quantity}</td>
                           <td>{item.unit || "-"}</td>
-                          <td>{money(item.unitPrice)}</td>
-                          <td>{money(item.total)}</td>
+                          <td>
+                            {!canViewContractorCost
+                              ? "Restricted"
+                              : item.contractorTotalCost === undefined
+                                ? "—"
+                                : preciseMoney(item.contractorTotalCost)}
+                          </td>
+                          <td>
+                            {!canViewMarkup
+                              ? "Restricted"
+                              : item.markupPercent === undefined
+                                ? "—"
+                                : percentage(item.markupPercent)}
+                          </td>
+                          <td>{preciseMoney(item.unitPrice)}</td>
+                          <td>{preciseMoney(item.total)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr><td colSpan={4}>Grand Total</td><td>{money(selected.amount)}</td></tr>
+                      <tr><td colSpan={6}>Grand Total (incl. VAT)</td><td>{preciseMoney(selected.amount)}</td></tr>
                     </tfoot>
                   </table>
                 </div>

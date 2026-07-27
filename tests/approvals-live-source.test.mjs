@@ -26,6 +26,31 @@ test("Direct quotation list uses one read-only Sheets batch request", async () =
   );
 });
 
+test("Approval details use live contractor, offered-price, and markup fields", async () => {
+  const [sheetSource, approvalSource, approvalPage, workspace, preview] = await Promise.all([
+    read("../src/lib/quotations/google-sheet-extra-fields.ts"),
+    read("../src/lib/approvals/quotation-approval-source.ts"),
+    read("../src/app/approvals/page.tsx"),
+    read("../src/components/approvals/ApprovalsWorkspace.tsx"),
+    read("../src/app/approvals/[approvalId]/preview/page.tsx"),
+  ]);
+
+  assert.match(sheetSource, /totalContractorCost:\s*recordOptionalNumber/);
+  assert.match(sheetSource, /totalSellingAmount:\s*recordOptionalNumber/);
+  assert.match(sheetSource, /averageMarkupPercent:\s*recordOptionalNumber/);
+  assert.match(sheetSource, /contractorTotalCost:\s*recordOptionalNumber/);
+  assert.match(sheetSource, /markupPercent:\s*recordOptionalNumber/);
+  assert.match(approvalSource, /function pricingFromQuotation/);
+  assert.match(approvalSource, /\.\.\.pricing/);
+  assert.match(approvalPage, /quotation\.viewInternalCost/);
+  assert.match(approvalPage, /quotation\.viewMarkupProfit/);
+  assert.match(workspace, /Contractor Price/);
+  assert.match(workspace, /CHOD Offered Price/);
+  assert.match(workspace, /Net Markup/);
+  assert.match(preview, /Contractor Total/);
+  assert.match(preview, /CHOD Total/);
+});
+
 test("Approvals shows a visible load error instead of silently presenting an empty live list", async () => {
   const page = await read("../src/app/approvals/page.tsx");
   const workspace = await read("../src/components/approvals/ApprovalsWorkspace.tsx");

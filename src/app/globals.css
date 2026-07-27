@@ -4254,6 +4254,68 @@ html[data-theme="light"] .approval-detail-back:hover {
 .quotation-preview-card strong { color: white; font-size: 16px; }
 .quotation-preview-card span { color: #94abbf; font-size: 14px; }
 .quotation-preview-card em { color: var(--cyan); font-size: 24px; font-style: normal; font-weight: 900; }
+.approval-pricing-summary {
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(57, 208, 255, .24);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(57, 208, 255, .12), transparent 34%),
+    rgba(4, 18, 32, .78);
+}
+.approval-pricing-summary > header {
+  border-bottom: 1px solid rgba(82, 157, 204, .15);
+  padding: 12px 14px;
+}
+.approval-pricing-summary > header span {
+  display: block;
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+.approval-pricing-summary > header strong {
+  display: block;
+  margin-top: 5px;
+  color: #f5fbff;
+  font-size: 14px;
+}
+.approval-pricing-summary > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+.approval-pricing-summary article {
+  min-width: 0;
+  border: 1px solid rgba(82, 157, 204, .18);
+  border-radius: 12px;
+  background: rgba(9, 33, 55, .72);
+  padding: 13px;
+}
+.approval-pricing-summary article > span,
+.approval-pricing-summary article > small {
+  display: block;
+  color: #86a0b6;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.approval-pricing-summary article > strong {
+  display: block;
+  margin: 7px 0 4px;
+  overflow-wrap: anywhere;
+  color: #f5fbff;
+  font-size: clamp(17px, 1.35vw, 22px);
+}
+.approval-pricing-summary article.is-cost > strong { color: #b9d7e8; }
+.approval-pricing-summary article.is-selling > strong { color: #71e4ff; }
+.approval-pricing-summary article.is-markup > strong { color: #6ff0bd; }
+@media (max-width: 720px) {
+  .approval-pricing-summary > div,
+  .approval-preview-pricing {
+    grid-template-columns: 1fr;
+  }
+}
 .approval-inhouse-table {
   margin-top: 14px;
   overflow: hidden;
@@ -4284,7 +4346,7 @@ html[data-theme="light"] .approval-detail-back:hover {
 }
 .approval-inhouse-table table {
   width: 100%;
-  min-width: 560px;
+  min-width: 920px;
   border-collapse: collapse;
 }
 .approval-inhouse-table th,
@@ -4526,8 +4588,33 @@ html[data-theme="light"] .approval-detail-back:hover {
   overflow-x: auto;
 }
 .approval-preview-data-block .quotation-document-table {
-  min-width: 760px;
+  min-width: 920px;
   margin: 0;
+}
+.approval-preview-pricing {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  border-bottom: 1px solid #dbe5ef;
+  padding: 16px;
+}
+.approval-preview-pricing article {
+  border: 1px solid #dbe5ef;
+  border-radius: 12px;
+  background: white;
+  padding: 14px;
+}
+.approval-preview-pricing span,
+.approval-preview-pricing small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+.approval-preview-pricing strong {
+  display: block;
+  margin: 7px 0 4px;
+  color: #0f2f4d;
+  font-size: 20px;
 }
 .quotation-document-note {
   border: 1px solid #bae6fd;
@@ -6606,6 +6693,31 @@ html[data-theme="light"] .module-placeholder {
   background: rgba(255, 255, 255, .9);
   box-shadow: 0 18px 38px rgba(18, 70, 58, .08), inset 0 1px 0 rgba(255,255,255,.72);
 }
+
+html[data-theme="light"] .approval-pricing-summary {
+  border-color: rgba(0, 127, 121, .2);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(0, 159, 155, .1), transparent 34%),
+    rgba(247, 252, 249, .96);
+}
+html[data-theme="light"] .approval-pricing-summary > header {
+  border-bottom-color: rgba(29, 94, 82, .13);
+}
+html[data-theme="light"] .approval-pricing-summary > header strong,
+html[data-theme="light"] .approval-pricing-summary article > strong {
+  color: #10201e;
+}
+html[data-theme="light"] .approval-pricing-summary article {
+  border-color: rgba(29, 94, 82, .14);
+  background: rgba(255, 255, 255, .9);
+}
+html[data-theme="light"] .approval-pricing-summary article > span,
+html[data-theme="light"] .approval-pricing-summary article > small {
+  color: #526b63;
+}
+html[data-theme="light"] .approval-pricing-summary article.is-cost > strong { color: #355f5a; }
+html[data-theme="light"] .approval-pricing-summary article.is-selling > strong { color: #007b83; }
+html[data-theme="light"] .approval-pricing-summary article.is-markup > strong { color: #08784d; }
 
 html[data-theme="light"] .right-panel {
   background:

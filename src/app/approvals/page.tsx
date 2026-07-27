@@ -17,10 +17,23 @@ export default async function ApprovalsPage() {
       return [];
     }),
   ]);
+  const canViewContractorCost = user.quotationPermissions.includes("quotation.viewInternalCost");
+  const canViewMarkup = user.quotationPermissions.includes("quotation.viewMarkupProfit");
+  const visibleApprovals = approvals.map((approval) => ({
+    ...approval,
+    totalContractorCost: canViewContractorCost ? approval.totalContractorCost : undefined,
+    averageMarkupPercent: canViewMarkup ? approval.averageMarkupPercent : undefined,
+    quotationItems: approval.quotationItems?.map((item) => ({
+      ...item,
+      contractorUnitCost: canViewContractorCost ? item.contractorUnitCost : undefined,
+      contractorTotalCost: canViewContractorCost ? item.contractorTotalCost : undefined,
+      markupPercent: canViewMarkup ? item.markupPercent : undefined,
+    })),
+  }));
   return (
     <ApprovalsWorkspace
       currentUser={user}
-      initialApprovals={approvals}
+      initialApprovals={visibleApprovals}
       initialApprovalPermissions={approvalPermissions}
       initialLoadError={approvalLoadError}
     />

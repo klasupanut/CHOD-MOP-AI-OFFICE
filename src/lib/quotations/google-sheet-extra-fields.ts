@@ -50,14 +50,22 @@ export type GoogleSheetQuotationListRow = {
   grandTotal: number;
   totalAmount: number;
   totalAfterDiscount: number;
+  projectMarkupPercent?: number;
+  totalContractorCost?: number;
+  totalSellingAmount?: number;
+  averageMarkupPercent?: number;
   createdAt: string;
   updatedAt: string;
   items: Array<{
     description: string;
     quantity: number;
     unit: string;
+    contractorUnitCost?: number;
+    contractorTotalCost?: number;
+    markupPercent?: number;
     quotationUnitPrice: number;
     quotationTotal: number;
+    projectSellingTotal?: number;
     sellingUnitPrice: number;
     sellingTotal: number;
     itemType: string;
@@ -196,6 +204,13 @@ function recordNumber(record: Map<string, unknown>, aliases: string[]) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function recordOptionalNumber(record: Map<string, unknown>, aliases: string[]) {
+  const normalized = recordString(record, aliases).replace(/,/g, "");
+  if (!normalized) return undefined;
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 /**
  * Read-only quotation list used by server-rendered workspaces such as
  * Approvals. A single Sheets batchGet replaces the expensive Apps Script
@@ -228,8 +243,12 @@ export async function listQuotationsFromGoogleSheet(): Promise<GoogleSheetQuotat
       description: recordString(record, ["description"]),
       quantity: recordNumber(record, ["quantity"]),
       unit: recordString(record, ["unit"]),
+      contractorUnitCost: recordOptionalNumber(record, ["contractor_unit_cost", "contractorUnitCost"]),
+      contractorTotalCost: recordOptionalNumber(record, ["contractor_total_cost", "contractorTotalCost"]),
+      markupPercent: recordOptionalNumber(record, ["markup_percent", "markupPercent"]),
       quotationUnitPrice: recordNumber(record, ["quotation_unit_price", "quotationUnitPrice"]),
       quotationTotal: recordNumber(record, ["quotation_total", "quotationTotal"]),
+      projectSellingTotal: recordOptionalNumber(record, ["project_selling_total", "projectSellingTotal"]),
       sellingUnitPrice: recordNumber(record, ["selling_unit_price", "sellingUnitPrice"]),
       sellingTotal: recordNumber(record, ["selling_total", "sellingTotal"]),
       itemType: recordString(record, ["item_type", "itemType"]) || "item",
@@ -269,6 +288,10 @@ export async function listQuotationsFromGoogleSheet(): Promise<GoogleSheetQuotat
         grandTotal: recordNumber(record, ["grand_total", "grandTotal"]),
         totalAmount: recordNumber(record, ["total_amount", "totalAmount"]),
         totalAfterDiscount: recordNumber(record, ["total_after_discount", "totalAfterDiscount"]),
+        projectMarkupPercent: recordOptionalNumber(record, ["project_markup_percent", "projectMarkupPercent"]),
+        totalContractorCost: recordOptionalNumber(record, ["total_contractor_cost", "totalContractorCost"]),
+        totalSellingAmount: recordOptionalNumber(record, ["total_selling_amount", "totalSellingAmount"]),
+        averageMarkupPercent: recordOptionalNumber(record, ["average_markup_percent", "averageMarkupPercent"]),
         createdAt: recordString(record, ["created_at", "createdAt"]),
         updatedAt: recordString(record, ["updated_at", "updatedAt"]),
         items: itemsByQuotation.get(quotationId) || [],
