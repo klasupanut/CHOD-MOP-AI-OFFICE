@@ -352,42 +352,42 @@ export function ApprovalsWorkspace({
                   <table>
                     <thead>
                       <tr>
-                        <th>Scope / Description</th>
-                        <th>Qty</th>
-                        <th>Unit</th>
-                        <th>Contractor Total</th>
-                        <th>Markup</th>
-                        <th>CHOD Unit Price</th>
-                        <th>CHOD Total</th>
+                        <th className="approval-col-scope">Scope / Description</th>
+                        <th className="approval-col-qty">Qty</th>
+                        <th className="approval-col-unit">Unit</th>
+                        <th className="approval-col-cost">Contractor Total</th>
+                        <th className="approval-col-markup">Markup</th>
+                        <th className="approval-col-selling">CHOD Unit Price</th>
+                        <th className="approval-col-total">CHOD Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedLineItems.map((item, index) => (
                         <tr key={`${item.description}-${index}`}>
-                          <td>{item.description}</td>
-                          <td>{item.quantity}</td>
-                          <td>{item.unit || "-"}</td>
-                          <td>
+                          <td className="approval-col-scope">{item.description}</td>
+                          <td className="approval-col-qty">{item.quantity}</td>
+                          <td className="approval-col-unit">{item.unit || "-"}</td>
+                          <td className="approval-col-cost">
                             {!canViewContractorCost
                               ? "Restricted"
                               : item.contractorTotalCost === undefined
                                 ? "—"
                                 : preciseMoney(item.contractorTotalCost)}
                           </td>
-                          <td>
+                          <td className="approval-col-markup">
                             {!canViewMarkup
                               ? "Restricted"
                               : item.markupPercent === undefined
                                 ? "—"
                                 : percentage(item.markupPercent)}
                           </td>
-                          <td>{preciseMoney(item.unitPrice)}</td>
-                          <td>{preciseMoney(item.total)}</td>
+                          <td className="approval-col-selling">{preciseMoney(item.unitPrice)}</td>
+                          <td className="approval-col-total">{preciseMoney(item.total)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr><td colSpan={6}>Grand Total (incl. VAT)</td><td>{preciseMoney(selected.amount)}</td></tr>
+                      <tr><td className="approval-total-label" colSpan={6}>Grand Total (incl. VAT)</td><td className="approval-col-total">{preciseMoney(selected.amount)}</td></tr>
                     </tfoot>
                   </table>
                 </div>

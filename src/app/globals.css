@@ -6719,6 +6719,110 @@ html[data-theme="light"] .approval-pricing-summary article.is-cost > strong { co
 html[data-theme="light"] .approval-pricing-summary article.is-selling > strong { color: #007b83; }
 html[data-theme="light"] .approval-pricing-summary article.is-markup > strong { color: #08784d; }
 
+html[data-theme="light"] .approval-inhouse-table {
+  border-color: #b9d4cb;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(24, 76, 65, .08);
+}
+
+html[data-theme="light"] .approval-inhouse-table > header {
+  border-bottom-color: #c9ddd6;
+  background: linear-gradient(135deg, #f4faf7, #e9f5ef);
+}
+
+html[data-theme="light"] .approval-inhouse-table > header span {
+  color: #007c73;
+}
+
+html[data-theme="light"] .approval-inhouse-table > header strong {
+  color: #183a34;
+}
+
+html[data-theme="light"] .approval-inhouse-scroll {
+  background: #ffffff;
+}
+
+html[data-theme="light"] .approval-inhouse-table th {
+  border-bottom-color: #084c46;
+  color: #ffffff;
+  background: #0b5f57;
+  letter-spacing: .045em;
+}
+
+html[data-theme="light"] .approval-inhouse-table td {
+  border-bottom-color: #d9e8e2;
+  color: #24453f;
+  background: #ffffff;
+}
+
+html[data-theme="light"] .approval-inhouse-table tbody tr:nth-child(even) td {
+  background: #f5faf7;
+}
+
+html[data-theme="light"] .approval-inhouse-table tbody tr:hover td {
+  background: #e8f4ee;
+}
+
+html[data-theme="light"] .approval-inhouse-table tbody .approval-col-scope {
+  color: #12352f;
+  font-weight: 750;
+}
+
+html[data-theme="light"] .approval-inhouse-table tbody .approval-col-qty,
+html[data-theme="light"] .approval-inhouse-table tbody .approval-col-unit {
+  color: #48665f;
+}
+
+html[data-theme="light"] .approval-inhouse-table tbody .approval-col-cost {
+  color: #405f59;
+  font-weight: 700;
+}
+
+html[data-theme="light"] .approval-inhouse-table tbody .approval-col-markup {
+  color: #08784d;
+  font-weight: 850;
+}
+
+html[data-theme="light"] .approval-inhouse-table tbody .approval-col-selling,
+html[data-theme="light"] .approval-inhouse-table tbody .approval-col-total {
+  color: #006c73;
+  font-weight: 850;
+}
+
+html[data-theme="light"] .approval-inhouse-table td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-theme="light"] .approval-inhouse-table tfoot td {
+  border-top: 2px solid #79b6a4;
+  border-bottom: 0;
+  color: #0c352e;
+  background: #dff1e9;
+}
+
+html[data-theme="light"] .approval-inhouse-table tfoot .approval-total-label {
+  color: #173e36;
+}
+
+html[data-theme="light"] .approval-inhouse-table tfoot .approval-col-total {
+  color: #00645c;
+  font-size: 14px;
+}
+
+html[data-theme="light"] .approval-inhouse-meta {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  border-top-color: #c9ddd6;
+  background: #f7fbf9;
+}
+
+html[data-theme="light"] .approval-inhouse-meta span {
+  color: #48665f;
+}
+
+html[data-theme="light"] .approval-inhouse-meta strong {
+  color: #153a33;
+}
+
 html[data-theme="light"] .right-panel {
   background:
     radial-gradient(circle at 20% 0%, rgba(64, 221, 170, .22), transparent 35%),
