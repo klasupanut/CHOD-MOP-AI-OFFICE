@@ -4133,12 +4133,44 @@ a { color: inherit; text-decoration: none; }
 .approvals-list-card,
 .approvals-detail-panel {
   width: 100%;
+  scroll-margin-top: 84px;
 }
 .approvals-detail-panel {
   position: relative;
   top: auto;
   max-height: none;
   overflow: visible;
+}
+.approval-detail-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border: 1px solid rgba(57, 208, 255, .3);
+  border-radius: 10px;
+  color: #8ceaff;
+  background: rgba(9, 38, 59, .78);
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+.approval-detail-back:hover {
+  border-color: rgba(90, 225, 255, .68);
+  color: #fff;
+  background: rgba(14, 62, 86, .9);
+}
+html[data-theme="light"] .approval-detail-back {
+  border-color: rgba(0, 127, 121, .24);
+  color: #006c67;
+  background: rgba(232, 249, 245, .96);
+}
+html[data-theme="light"] .approval-detail-back:hover {
+  border-color: rgba(0, 127, 121, .48);
+  color: #004d49;
+  background: #dff5ef;
 }
 .approvals-table {
   width: 100%;

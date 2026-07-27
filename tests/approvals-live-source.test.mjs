@@ -34,6 +34,25 @@ test("Approvals shows a visible load error instead of silently presenting an emp
   assert.match(workspace, /initialLoadError \? <p className="approval-denied">/);
 });
 
+test("Approval rows scroll to details and details provide a return-to-list action", async () => {
+  const workspace = await read("../src/components/approvals/ApprovalsWorkspace.tsx");
+  const styles = await read("../src/app/globals.css");
+
+  assert.match(workspace, /approvalListRef = useRef<HTMLElement \| null>\(null\)/);
+  assert.match(workspace, /approvalDetailRef = useRef<HTMLElement \| null>\(null\)/);
+  assert.match(
+    workspace,
+    /approvalDetailRef\.current\?\.scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/,
+  );
+  assert.match(
+    workspace,
+    /approvalListRef\.current\?\.scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/,
+  );
+  assert.match(workspace, /className="approval-detail-back"/);
+  assert.match(workspace, /Back to approval list/);
+  assert.match(styles, /\.approval-detail-back\s*\{/);
+});
+
 test("Deep health monitors the same direct quotation source used by Approvals", async () => {
   const health = await read("../src/app/api/health/route.ts");
 

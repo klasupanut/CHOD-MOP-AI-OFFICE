@@ -1,8 +1,8 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, ExternalLink, MessageSquare, XCircle } from "lucide-react";
+import { ArrowUp, CheckCircle2, ExternalLink, MessageSquare, XCircle } from "lucide-react";
 import type { ApprovalPermission } from "@/data/approval-permissions";
 import type { QuotationApprovalItem, QuotationApprovalStatus } from "@/data/quotation-approvals";
 import { canUserApproveQuotation } from "@/lib/approvals/approval-utils";
@@ -67,6 +67,8 @@ export function ApprovalsWorkspace({
   const [note, setNote] = useState("");
   const [apiMessage, setApiMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const approvalListRef = useRef<HTMLElement | null>(null);
+  const approvalDetailRef = useRef<HTMLElement | null>(null);
 
   const agentId = userAgentId(currentUser);
   const selected = approvals.find((approval) => approval.approvalId === selectedId) ?? approvals[0];
@@ -104,6 +106,13 @@ export function ApprovalsWorkspace({
   function selectApproval(item: QuotationApprovalItem) {
     setSelectedId(item.approvalId);
     setApiMessage("");
+    window.requestAnimationFrame(() => {
+      approvalDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function scrollToApprovalList() {
+    approvalListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function updateStatus(status: QuotationApprovalStatus, actionNote?: string) {
@@ -175,7 +184,7 @@ export function ApprovalsWorkspace({
       </div>
 
       <div className="workspace-grid approvals-workspace-grid">
-        <section className="workspace-main-card approvals-list-card">
+        <section className="workspace-main-card approvals-list-card" ref={approvalListRef}>
           <div className="workspace-section-title">
             <div><span>REAL QUOTATION DATA</span><h2>Quotation approval requests</h2></div>
             <small>{filtered.length} live request{filtered.length === 1 ? "" : "s"} from Auto Quotation</small>
@@ -251,9 +260,13 @@ export function ApprovalsWorkspace({
           </div>
         </section>
 
-        <aside className="workspace-detail-panel approvals-detail-panel">
+        <aside className="workspace-detail-panel approvals-detail-panel" ref={approvalDetailRef}>
           {selected ? (
             <>
+              <button className="approval-detail-back" onClick={scrollToApprovalList} type="button">
+                <ArrowUp size={16} />
+                Back to approval list
+              </button>
               <div className="detail-heading">
                 <span>{quotationTypeLabel(selected.quotationType).toUpperCase()} QUOTATION</span>
                 <h2>{selected.quotationNo}</h2>

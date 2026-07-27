@@ -1139,7 +1139,7 @@ function renderStageEditor(task, disabled = "") {
         </legend>
         <div class="stage-checkbox-grid stage-choice-grid" role="radiogroup" aria-label="Project Stage">
           ${projectStageOptions
-            .map(([value, label], index) => `
+            .map(([value, label]) => `
               <label class="stage-checkbox stage-choice">
                 <input
                   type="radio"
@@ -1148,7 +1148,7 @@ function renderStageEditor(task, disabled = "") {
                   ${task.stageKey === value ? "checked" : ""}
                   ${disabled}
                 />
-                <span class="stage-toggle-label stage-toggle-${escapeHtml(value)}">${String(index + 1).padStart(2, "0")} · ${escapeHtml(label)}</span>
+                <span class="stage-toggle-label stage-toggle-${escapeHtml(value)}">${escapeHtml(label)}</span>
               </label>
             `)
             .join("")}

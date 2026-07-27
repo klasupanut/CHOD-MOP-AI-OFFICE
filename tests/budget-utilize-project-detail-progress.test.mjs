@@ -93,6 +93,7 @@ test("stage-only project details use six clickable single-choice stage cards", (
   assert.match(editorFunction[1], /name="stage"/);
   assert.match(editorFunction[1], /projectStageOptions/);
   assert.doesNotMatch(editorFunction[1], /<select name="stage"/);
+  assert.doesNotMatch(editorFunction[1], /String\(index \+ 1\)/);
   assert.match(
     app,
     /form\.querySelectorAll\('input\[type="radio"\]\[name="stage"\]'\)/,
