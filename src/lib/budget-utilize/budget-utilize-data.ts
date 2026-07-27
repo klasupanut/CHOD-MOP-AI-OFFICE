@@ -300,7 +300,9 @@ function normalizeOwner(value: string) {
 }
 
 function normalizedBudgetCode(task: Pick<BudgetUtilizeTask, "budgetCode">) {
-  return clean(task.budgetCode).toUpperCase() || "ไม่ระบุ";
+  const rawCode = clean(task.budgetCode).toUpperCase();
+  const exactCode = rawCode.match(/(?:^|[^A-Z0-9])(1[A-Z]\d{2})(?=$|[^A-Z0-9])/)?.[1];
+  return exactCode || rawCode || "ไม่ระบุ";
 }
 
 function isWatchable(task: Pick<BudgetUtilizeTask, "statusKey">) {

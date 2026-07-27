@@ -3174,8 +3174,9 @@ function buildRealizedCodeRows(tasks) {
 }
 
 function normalizedTaskBudgetCode(task) {
-  const code = clean(task.budgetCode).toUpperCase();
-  return code || "ไม่ระบุ";
+  const rawCode = clean(task.budgetCode).toUpperCase();
+  const exactCode = rawCode.match(/(?:^|[^A-Z0-9])(1[A-Z]\d{2})(?=$|[^A-Z0-9])/)?.[1];
+  return exactCode || rawCode || "ไม่ระบุ";
 }
 
 function renderBarList(container, data, type, maxValue) {

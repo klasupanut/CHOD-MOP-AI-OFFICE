@@ -140,6 +140,33 @@ test("annual total budget excludes outside-plan value without hiding outside-pla
   );
 });
 
+test("realized budgets normalize codes followed by multiline descriptions", () => {
+  const normalizerSource = embeddedApp.match(
+    /function normalizedTaskBudgetCode\(task\) \{[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(normalizerSource, "embedded budget-code normalizer must exist");
+
+  const normalizeBudgetCode = new Function(
+    "task",
+    `
+      const clean = (value) => String(value ?? "").trim();
+      ${normalizerSource}
+      return normalizedTaskBudgetCode(task);
+    `,
+  );
+
+  assert.equal(normalizeBudgetCode({ budgetCode: "1B02\nEmergency repairs" }), "1B02");
+  assert.equal(normalizeBudgetCode({ budgetCode: "1C01\nEnd-of-life repair" }), "1C01");
+  assert.equal(normalizeBudgetCode({ budgetCode: "1C02\nInvestment" }), "1C02");
+  assert.equal(normalizeBudgetCode({ budgetCode: "1B03\nTenant recharge" }), "1B03");
+
+  const serverNormalizer = serverDataSource.match(
+    /function normalizedBudgetCode\(task:[\s\S]*?\n\}/,
+  )?.[0] || "";
+  assert.match(serverNormalizer, /rawCode\.match/);
+  assert.match(serverNormalizer, /\?\.\[1\]/);
+});
+
 test("work rows navigate to details and details provide a return-to-list control", () => {
   assert.match(embeddedApp, /function selectTaskAndShowDetails\(row, tasks\)/);
   assert.match(
