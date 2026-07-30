@@ -3,8 +3,12 @@ import { getApiUser } from "@/lib/auth/api";
 import type { ApprovedUser } from "@/lib/auth/types";
 import type { QuotationPermission } from "@/lib/auth/permissions";
 import {
+  captureQuotationNumberSnapshot,
   enrichQuotationExtraFields,
+  listQuotationsFromGoogleSheet,
+  restoreQuotationNumberSnapshot,
   syncQuotationExtraFields,
+  type QuotationNumberSnapshot,
   updateQuotationSheetInternalApproval,
   updateQuotationSheetInternalVerification,
 } from "@/lib/quotations/google-sheet-extra-fields";
@@ -212,25 +216,77 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Apps Script's legacy save routine renumbers every quotation. Capture the
+  // live sequence before saving so a new REV-XX row can reuse its original
+  // quotation number without changing any unrelated historical record.
+  let quotationNumberSnapshot: QuotationNumberSnapshot | null = null;
+  if (action === "saveQuotation" || action === "deleteQuotation") {
+    try {
+      quotationNumberSnapshot = await captureQuotationNumberSnapshot();
+    } catch (error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: action === "deleteQuotation"
+            ? "Quotation numbering guard is temporarily unavailable. Nothing was deleted; retry."
+            : "Quotation numbering guard is temporarily unavailable. No quotation data was changed; retry Save Draft.",
+          detail: error instanceof Error ? error.message : "Unable to capture the live quotation sequence.",
+        },
+        { status: 503 },
+      );
+    }
+  }
+
   try {
     const { response, result } = await callQuotationAppsScript(action, body.payload);
     if (result.ok && action === "saveQuotation") {
+      let syncError: unknown = null;
       try {
         await syncQuotationExtraFields(body.payload);
       } catch (error) {
         console.error("Quotation extra field sync failed", error);
+        syncError = error;
+      }
+      try {
+        if (quotationNumberSnapshot) {
+          await restoreQuotationNumberSnapshot(quotationNumberSnapshot, body.payload);
+        }
+      } catch (error) {
+        console.error("Quotation numbering guard restore failed", error);
+        syncError ||= error;
+      }
+      if (syncError) {
         return NextResponse.json(
           {
             ok: false,
-            error: "Quotation was saved, but External Note could not be synchronized. Press Save Draft again.",
-            detail: error instanceof Error ? error.message : "Unknown External Note sync error.",
+            error: "Quotation was saved, but its revision metadata or numbering could not be synchronized. Press Save Draft again.",
+            detail: syncError instanceof Error ? syncError.message : "Unknown quotation synchronization error.",
           },
           { status: 502 },
         );
       }
     }
-    const resultData = action === "saveQuotation" ? withRequestedQuotationNo(result.data, body.payload) : result.data;
-    const enrichedData = result.ok && (action === "listQuotations" || action === "getQuotation" || action === "saveQuotation")
+    if (result.ok && action === "deleteQuotation" && quotationNumberSnapshot) {
+      try {
+        await restoreQuotationNumberSnapshot(quotationNumberSnapshot, body.payload);
+      } catch (error) {
+        console.error("Quotation numbering guard restore failed after delete", error);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Quotation was deleted, but the remaining quotation numbers could not be restored. Refresh and contact the administrator.",
+            detail: error instanceof Error ? error.message : "Unknown quotation numbering error.",
+          },
+          { status: 502 },
+        );
+      }
+    }
+    const resultData = action === "deleteQuotation" && result.ok
+      ? await listQuotationsFromGoogleSheet()
+      : action === "saveQuotation"
+        ? withRequestedQuotationNo(result.data, body.payload)
+        : result.data;
+    const enrichedData = result.ok && (action === "listQuotations" || action === "getQuotation" || action === "saveQuotation" || action === "deleteQuotation")
       ? await enrichQuotationExtraFields(resultData)
       : resultData;
     const safeResult = result.ok

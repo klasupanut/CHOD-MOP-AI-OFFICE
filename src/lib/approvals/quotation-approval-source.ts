@@ -7,10 +7,13 @@ import {
   updateQuotationSheetInternalApproval,
 } from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript } from "@/lib/quotations/apps-script-backend";
+import { normalizeQuotationRevision } from "@/lib/quotations/revision";
 
 type QuotationBackendRow = {
   quotationId?: string;
   quotationNo?: string;
+  revision?: string;
+  showRevisionOnPdf?: boolean;
   projectType?: string;
   quotationType?: string;
   date?: string;
@@ -84,6 +87,8 @@ export type QuotationApprovalWithItems = QuotationApprovalItem & {
   totalContractorCost?: number;
   totalSellingAmount: number;
   averageMarkupPercent?: number;
+  revision?: string;
+  showRevisionOnPdf?: boolean;
 };
 
 function normalizeApprovalStatus(value?: string): QuotationApprovalStatus | null {
@@ -222,11 +227,14 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
   const updatedAt = String(row.updatedAt || row.createdAt || new Date().toISOString());
   const pdfUrl = String(row.pdfUrl || "");
   const pricing = pricingFromQuotation(row);
+  const revision = normalizeQuotationRevision(row.revision);
 
   return {
     approvalId: `APR-${quotationId}`,
     quotationId,
     quotationNo,
+    revision,
+    showRevisionOnPdf: Boolean(row.showRevisionOnPdf),
     quotationType: quotationTypeFromRow(row),
     projectId: quotationId,
     projectName: subject,
@@ -261,7 +269,8 @@ function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWith
 
 function normalizedQuotationIdentity(row: QuotationBackendRow) {
   const quotationNo = String(row.quotationNo || "").trim().toUpperCase();
-  if (quotationNo) return `quotation-no:${quotationNo}`;
+  const revision = normalizeQuotationRevision(row.revision) || "ORIGINAL";
+  if (quotationNo) return `quotation-no:${quotationNo}:revision:${revision}`;
 
   const quotationId = String(row.quotationId || "").trim();
   if (quotationId) return `quotation-id:${quotationId}`;

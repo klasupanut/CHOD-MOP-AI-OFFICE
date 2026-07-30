@@ -2,6 +2,7 @@ import "server-only";
 
 import { createSign } from "node:crypto";
 import { asGooglePrivateKeyError, getGoogleServiceAccountConfig, googleSheetsScope } from "@/lib/google/service-account";
+import { normalizeQuotationRevision, quotationReference, sheetBoolean } from "@/lib/quotations/revision";
 
 type QuotationExtraFieldRow = {
   quotationId?: unknown;
@@ -10,6 +11,9 @@ type QuotationExtraFieldRow = {
   mainContractor?: unknown;
   contractorName?: unknown;
   externalNote?: unknown;
+  revision?: unknown;
+  showRevisionOnPdf?: unknown;
+  baseQuotationNo?: unknown;
   approvalStatus?: unknown;
   approvalAt?: unknown;
   approvalBy?: unknown;
@@ -26,6 +30,8 @@ type QuotationExtraFieldRow = {
 export type GoogleSheetQuotationListRow = {
   quotationId: string;
   quotationNo: string;
+  revision: string;
+  showRevisionOnPdf: boolean;
   projectType: string;
   mainContractor: string;
   date: string;
@@ -90,6 +96,9 @@ let cachedExtraMap: {
     signedByEmail: string;
     signedPdfUrl: string;
     internalVerifiedAt: string;
+    revision: string;
+    showRevisionOnPdf: boolean;
+    baseQuotationNo: string;
   }>;
   expiresAt: number;
 } | null = null;
@@ -211,6 +220,10 @@ function recordOptionalNumber(record: Map<string, unknown>, aliases: string[]) {
   return Number.isFinite(value) ? value : undefined;
 }
 
+function recordBoolean(record: Map<string, unknown>, aliases: string[]) {
+  return sheetBoolean(recordValue(record, aliases));
+}
+
 /**
  * Read-only quotation list used by server-rendered workspaces such as
  * Approvals. A single Sheets batchGet replaces the expensive Apps Script
@@ -220,7 +233,7 @@ function recordOptionalNumber(record: Map<string, unknown>, aliases: string[]) {
 export async function listQuotationsFromGoogleSheet(): Promise<GoogleSheetQuotationListRow[]> {
   if (!isConfigured()) throw new Error("Quotation Google Sheet read is not configured.");
 
-  const quotationRange = encodeURIComponent(`${QUOTATIONS_TAB}!A1:AZ`);
+  const quotationRange = encodeURIComponent(`${QUOTATIONS_TAB}!A1:BA`);
   const itemRange = encodeURIComponent("Quotation_Items!A1:U");
   const response = await sheetsFetch(`/values:batchGet?ranges=${quotationRange}&ranges=${itemRange}&majorDimension=ROWS`);
   const payload = (await response.json()) as {
@@ -261,9 +274,13 @@ export async function listQuotationsFromGoogleSheet(): Promise<GoogleSheetQuotat
     .map((row) => {
       const record = rowRecord(quotationHeaders, row);
       const quotationId = recordString(record, ["quotation_id", "quotationId"]);
+      const rawQuotationNo = recordString(record, ["quotation_no", "quotationNo"]);
+      const baseQuotationNo = recordString(record, ["base_quotation_no", "baseQuotationNo"]);
       return {
         quotationId,
-        quotationNo: recordString(record, ["quotation_no", "quotationNo"]),
+        quotationNo: baseQuotationNo || rawQuotationNo,
+        revision: normalizeQuotationRevision(recordValue(record, ["revision", "quotation_revision"])),
+        showRevisionOnPdf: recordBoolean(record, ["show_revision_on_pdf", "showRevisionOnPdf"]),
         projectType: recordString(record, ["project_type", "projectType"]),
         mainContractor: recordString(record, ["main_contractor", "mainContractor"]),
         date: recordString(record, ["date"]),
@@ -317,7 +334,7 @@ function asQuotationRow(value: unknown): QuotationExtraFieldRow | null {
 }
 
 async function ensureExtraHeaders() {
-  const range = encodeURIComponent(`${QUOTATIONS_TAB}!AQ1:AX1`);
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!AQ1:BA1`);
   await sheetsFetch(`/values/${range}?valueInputOption=RAW`, {
     method: "PUT",
     body: JSON.stringify({
@@ -330,6 +347,9 @@ async function ensureExtraHeaders() {
         "approval_note",
         "approval_updated_at",
         "external_note",
+        "revision",
+        "show_revision_on_pdf",
+        "base_quotation_no",
       ]],
     }),
   });
@@ -338,7 +358,7 @@ async function ensureExtraHeaders() {
 async function readExtraFieldMap() {
   if (cachedExtraMap && cachedExtraMap.expiresAt > Date.now()) return cachedExtraMap.value;
 
-  const headerRange = encodeURIComponent(`${QUOTATIONS_TAB}!A1:AZ1`);
+  const headerRange = encodeURIComponent(`${QUOTATIONS_TAB}!A1:BA1`);
   const headerResponse = await sheetsFetch(`/values/${headerRange}`);
   const headerPayload = (await headerResponse.json()) as { values?: unknown[][] };
   const headers = headerPayload.values?.[0] || [];
@@ -357,8 +377,11 @@ async function readExtraFieldMap() {
   const signedPdfUrlIndex = getHeaderIndex(["signed_pdf_url", "signedPdfUrl", "client_signed_pdf_url", "signed_pdf", "clientSignedPdfUrl"]);
   const internalVerifiedAtIndex = getHeaderIndex(["internal_verified_at", "internalVerifiedAt"]);
   const externalNoteIndex = getHeaderIndex(["external_note", "externalNote", "client_note"]);
+  const revisionIndex = getHeaderIndex(["revision", "quotation_revision"]);
+  const showRevisionOnPdfIndex = getHeaderIndex(["show_revision_on_pdf", "showRevisionOnPdf"]);
+  const baseQuotationNoIndex = getHeaderIndex(["base_quotation_no", "baseQuotationNo"]);
 
-  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:AZ`);
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:BA`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
   const map = new Map<string, {
@@ -376,6 +399,9 @@ async function readExtraFieldMap() {
     signedByEmail: string;
     signedPdfUrl: string;
     internalVerifiedAt: string;
+    revision: string;
+    showRevisionOnPdf: boolean;
+    baseQuotationNo: string;
   }>();
   for (const row of payload.values || []) {
     const quotationId = asString(row[0]);
@@ -395,6 +421,9 @@ async function readExtraFieldMap() {
       signedByEmail: signedByEmailIndex >= 0 ? asString(row[signedByEmailIndex]) : "",
       signedPdfUrl: signedPdfUrlIndex >= 0 ? asString(row[signedPdfUrlIndex]) : "",
       internalVerifiedAt: internalVerifiedAtIndex >= 0 ? asString(row[internalVerifiedAtIndex]) : "",
+      revision: revisionIndex >= 0 ? normalizeQuotationRevision(row[revisionIndex]) : "",
+      showRevisionOnPdf: showRevisionOnPdfIndex >= 0 ? sheetBoolean(row[showRevisionOnPdfIndex]) : false,
+      baseQuotationNo: baseQuotationNoIndex >= 0 ? asString(row[baseQuotationNoIndex]) : "",
     });
   }
   cachedExtraMap = { value: map, expiresAt: Date.now() + 30_000 };
@@ -427,11 +456,15 @@ export async function syncQuotationExtraFields(quotation: unknown) {
 
   const rowNumber = index + 2;
   const quotationNo = asString(row?.quotationNo);
+  const revision = normalizeQuotationRevision(row?.revision);
+  const showRevisionOnPdf = sheetBoolean(row?.showRevisionOnPdf);
   if (quotationNo) {
     const quotationNoRange = encodeURIComponent(`${QUOTATIONS_TAB}!B${rowNumber}:B${rowNumber}`);
     await sheetsFetch(`/values/${quotationNoRange}?valueInputOption=RAW`, {
       method: "PUT",
-      body: JSON.stringify({ values: [[quotationNo]] }),
+      body: JSON.stringify({
+        values: [[quotationReference(quotationNo, revision, showRevisionOnPdf)]],
+      }),
     });
   }
 
@@ -447,7 +480,120 @@ export async function syncQuotationExtraFields(quotation: unknown) {
     method: "PUT",
     body: JSON.stringify({ values: [[asExternalNote(row?.externalNote)]] }),
   });
+  const revisionRange = encodeURIComponent(`${QUOTATIONS_TAB}!AY${rowNumber}:BA${rowNumber}`);
+  await sheetsFetch(`/values/${revisionRange}?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({
+      values: [[
+        revision,
+        showRevisionOnPdf,
+        quotationNo,
+      ]],
+    }),
+  });
   cachedExtraMap = null;
+}
+
+export type QuotationNumberSnapshot = Map<string, string>;
+
+function findQuotationRowIndex(
+  rows: unknown[][],
+  quotationIdInput: string,
+  quotationNoInput: string,
+) {
+  const quotationId = asString(quotationIdInput);
+  if (quotationId) {
+    // Revisions intentionally share a quotation number, so an ID supplied by
+    // the authenticated UI must never fall through and match another revision.
+    return rows.findIndex((entry) => asString(entry[0]) === quotationId);
+  }
+  const quotationNo = asString(quotationNoInput);
+  return quotationNo
+    ? rows.findIndex((entry) => asString(entry[1]) === quotationNo)
+    : -1;
+}
+
+/**
+ * Apps Script still normalizes quotation numbers after every save. Capture the
+ * currently approved numbering before that mutation so revisions can share the
+ * original quotation number without renumbering unrelated historical rows.
+ */
+export async function captureQuotationNumberSnapshot(): Promise<QuotationNumberSnapshot> {
+  if (!isConfigured()) throw new Error("Quotation numbering guard is not configured.");
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:B`);
+  const response = await sheetsFetch(`/values/${range}`);
+  const payload = (await response.json()) as { values?: unknown[][] };
+  return new Map(
+    (payload.values || [])
+      .map((row) => [asString(row[0]), asString(row[1])] as const)
+      .filter(([quotationId, quotationNo]) => Boolean(quotationId && quotationNo)),
+  );
+}
+
+export async function restoreQuotationNumberSnapshot(
+  snapshot: QuotationNumberSnapshot,
+  quotation: unknown,
+) {
+  if (!isConfigured()) throw new Error("Quotation numbering guard is not configured.");
+  const row = asQuotationRow(quotation);
+  const currentQuotationId = asString(row?.quotationId);
+  const currentQuotationNo = quotationReference(
+    row?.quotationNo,
+    row?.revision,
+    sheetBoolean(row?.showRevisionOnPdf),
+  );
+  const desired = new Map(snapshot);
+  if (currentQuotationId && currentQuotationNo) desired.set(currentQuotationId, currentQuotationNo);
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const quotationRange = encodeURIComponent(`${QUOTATIONS_TAB}!A2:B`);
+      const pdfRange = encodeURIComponent("Pdf_Files!B2:C");
+      const response = await sheetsFetch(
+        `/values:batchGet?ranges=${quotationRange}&ranges=${pdfRange}&majorDimension=ROWS`,
+      );
+      const payload = (await response.json()) as {
+        valueRanges?: Array<{ values?: unknown[][] }>;
+      };
+      const quotationRows = payload.valueRanges?.[0]?.values || [];
+      const pdfRows = payload.valueRanges?.[1]?.values || [];
+      const quotationUpdates = quotationRows.flatMap((sheetRow, index) => {
+        const quotationId = asString(sheetRow[0]);
+        const existingQuotationNo = asString(sheetRow[1]);
+        const desiredQuotationNo = desired.get(quotationId);
+        if (!desiredQuotationNo || desiredQuotationNo === existingQuotationNo) return [];
+        return [{
+          range: `${QUOTATIONS_TAB}!B${index + 2}`,
+          values: [[desiredQuotationNo]],
+        }];
+      });
+      const pdfUpdates = pdfRows.flatMap((sheetRow, index) => {
+        const quotationId = asString(sheetRow[0]);
+        const existingQuotationNo = asString(sheetRow[1]);
+        const desiredQuotationNo = desired.get(quotationId);
+        if (!desiredQuotationNo || desiredQuotationNo === existingQuotationNo) return [];
+        return [{
+          range: `Pdf_Files!C${index + 2}`,
+          values: [[desiredQuotationNo]],
+        }];
+      });
+      const updates = [...quotationUpdates, ...pdfUpdates];
+      if (!updates.length) return;
+
+      await sheetsFetch("/values:batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({ valueInputOption: "RAW", data: updates }),
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Unable to restore quotation numbering.");
 }
 
 export async function updateQuotationSheetStatus(input: {
@@ -461,11 +607,7 @@ export async function updateQuotationSheetStatus(input: {
   const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:B`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
-  const index = (payload.values || []).findIndex((entry) => {
-    const quotationId = asString(entry[0]);
-    const quotationNo = asString(entry[1]);
-    return quotationId === input.quotationId || quotationNo === input.quotationNo;
-  });
+  const index = findQuotationRowIndex(payload.values || [], input.quotationId, input.quotationNo);
   if (index < 0) {
     return { ok: false, skipped: false as const, error: `Quotation ${input.quotationNo} was not found in the quotation sheet.` };
   }
@@ -498,11 +640,7 @@ export async function updateQuotationSheetInternalApproval(input: {
   const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:B`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
-  const index = (payload.values || []).findIndex((entry) => {
-    const quotationId = asString(entry[0]);
-    const quotationNo = asString(entry[1]);
-    return quotationId === input.quotationId || quotationNo === input.quotationNo;
-  });
+  const index = findQuotationRowIndex(payload.values || [], input.quotationId, input.quotationNo);
   if (index < 0) {
     return { ok: false, skipped: false as const, error: `Quotation ${input.quotationNo} was not found in the quotation sheet.` };
   }
@@ -536,7 +674,7 @@ export async function updateQuotationSheetInternalApproval(input: {
 }
 
 async function readQuotationHeaders() {
-  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A1:AZ1`);
+  const range = encodeURIComponent(`${QUOTATIONS_TAB}!A1:BA1`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
   const headers = payload.values?.[0] || [];
@@ -564,11 +702,7 @@ export async function updateQuotationSheetInternalVerification(input: {
   const range = encodeURIComponent(`${QUOTATIONS_TAB}!A2:B`);
   const response = await sheetsFetch(`/values/${range}`);
   const payload = (await response.json()) as { values?: unknown[][] };
-  const index = (payload.values || []).findIndex((entry) => {
-    const quotationId = asString(entry[0]);
-    const quotationNo = asString(entry[1]);
-    return quotationId === input.quotationId || quotationNo === input.quotationNo;
-  });
+  const index = findQuotationRowIndex(payload.values || [], input.quotationId, input.quotationNo);
   if (index < 0) {
     return { ok: false, skipped: false as const, error: `Quotation ${input.quotationNo} was not found in the quotation sheet.` };
   }
@@ -636,9 +770,12 @@ export async function enrichQuotationExtraFields<T>(data: T): Promise<T> {
         ...value as object,
         projectType: asString(row.projectType) || extra.projectType,
         mainContractor: asString(row.mainContractor) || extra.mainContractor,
+        quotationNo: extra.baseQuotationNo || asString(row.quotationNo),
         // AX is the authoritative optional note shown to the customer.
         // An empty value intentionally removes the block from the quotation.
         externalNote: extra.externalNote,
+        revision: normalizeQuotationRevision(row.revision) || extra.revision,
+        showRevisionOnPdf: extra.showRevisionOnPdf,
         // The dedicated sheet column is written by the internal approval flow
         // and is therefore authoritative over an older Apps Script payload.
         approvalStatus: extra.approvalStatus || asString(row.approvalStatus),

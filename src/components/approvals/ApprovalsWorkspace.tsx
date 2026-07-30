@@ -24,6 +24,8 @@ type ApprovalLineItem = {
 };
 
 type ApprovalRowWithItems = QuotationApprovalItem & {
+  revision?: string;
+  showRevisionOnPdf?: boolean;
   quotationItems?: ApprovalLineItem[];
   clientSigningStatus?: string;
   clientSignedAt?: string;
@@ -226,7 +228,7 @@ export function ApprovalsWorkspace({
                       key={item.approvalId}
                       onClick={() => selectApproval(item)}
                     >
-                      <td><strong className="approval-quotation-no">{item.quotationNo}</strong><small>{quotationTypeLabel(item.quotationType)}</small></td>
+                      <td><strong className="approval-quotation-no">{item.quotationNo}{item.revision ? ` ${item.revision}` : ""}</strong><small>{quotationTypeLabel(item.quotationType)}</small></td>
                       <td><strong className="approval-project-site">{item.projectName}</strong><small>{item.site}</small></td>
                       <td><strong>{item.requestedBy}</strong><small>{item.requestedAt}</small></td>
                       <td><strong className="approval-amount">{money(item.amount)}</strong></td>
@@ -255,7 +257,7 @@ export function ApprovalsWorkspace({
                   >
                     <button className="approval-mobile-select" onClick={() => selectApproval(item)} type="button">
                       <span className="approval-mobile-heading">
-                        <span><strong>{item.quotationNo}</strong><small>{quotationTypeLabel(item.quotationType)}</small></span>
+                        <span><strong>{item.quotationNo}{item.revision ? ` ${item.revision}` : ""}</strong><small>{quotationTypeLabel(item.quotationType)}</small></span>
                         <strong className="approval-amount">{money(item.amount)}</strong>
                       </span>
                       <span className="approval-mobile-project"><strong>{item.projectName}</strong><small>{item.site}</small></span>
@@ -290,14 +292,14 @@ export function ApprovalsWorkspace({
               </button>
               <div className="detail-heading">
                 <span>{quotationTypeLabel(selected.quotationType).toUpperCase()} QUOTATION</span>
-                <h2>{selected.quotationNo}</h2>
+                <h2>{selected.quotationNo}{selected.revision ? ` ${selected.revision}` : ""}</h2>
                 <p>{selected.remark}</p>
               </div>
               <div className="quotation-preview-card">
                 <strong>Online Quotation PDF</strong>
                 <span>{selected.customerName}</span>
                 <em>{money(selected.amount)}</em>
-                <small>{selected.quotationPdfUrl ? `Secure workspace preview ready: ${selected.quotationNo}` : "Live quotation data preview ready."}</small>
+                <small>{selected.quotationPdfUrl ? `Secure workspace preview ready: ${selected.quotationNo}${selected.revision ? ` ${selected.revision}` : ""}` : "Live quotation data preview ready."}</small>
               </div>
               <div className="detail-stack">
                 <div className="detail-kpi"><span>Project / Site</span><strong>{selected.projectName} / {selected.site}</strong></div>

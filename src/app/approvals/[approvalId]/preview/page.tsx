@@ -52,7 +52,7 @@ export default async function QuotationApprovalPreviewPage({ params }: { params:
               Google Drive remains private and does not require a separate access request.
             </p>
           </div>
-          <strong>{approval.quotationNo}</strong>
+          <strong>{approval.quotationNo}{"revision" in approval && approval.revision ? ` ${approval.revision}` : ""}</strong>
         </header>
 
         <div className="quotation-document-grid">
