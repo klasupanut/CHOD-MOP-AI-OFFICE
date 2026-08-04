@@ -20,6 +20,16 @@ test("Planner runtime is cloud-only and contains no production mock project", as
   assert.doesNotMatch(source, /activePage !== "projects" \|\| projectLibraryState !== "idle"/);
 });
 
+test("Planner serializes first cloud save and exposes confirmed project deletion", async () => {
+  const source = await read("../src/components/planner/TimelinePlannerWorkspace.tsx");
+  assert.match(source, /const planSaveQueueRef = useRef<Promise<void>>\(Promise\.resolve\(\)\)/);
+  assert.match(source, /body: JSON\.stringify\(\{ projectId: cloudProjectIdRef\.current, data: planPayload \}\)/);
+  assert.match(source, /Enter a project name to create this cloud project/);
+  assert.match(source, /Delete project \"\$\{projectName\}\" and all of its timeline data/);
+  assert.match(source, /method: "DELETE"/);
+  assert.match(source, /onDelete=\{\(projectId, projectName\) => void deleteCloudProject\(projectId, projectName\)\}/);
+});
+
 test("Planner organization is fixed to Timeline production tenant", async () => {
   const tenancy = await read("../src/lib/planner/tenancy.ts");
   assert.match(tenancy, /id:\s*"org-chod-ai-office"/);

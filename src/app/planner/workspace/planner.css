@@ -721,7 +721,7 @@ button {
 
 .project-library-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1.8fr) minmax(110px, .65fr) minmax(85px, .45fr) minmax(130px, .7fr) minmax(145px, .65fr);
+  grid-template-columns: minmax(260px, 1.8fr) minmax(110px, .65fr) minmax(85px, .45fr) minmax(130px, .7fr) minmax(220px, .9fr);
   gap: 18px;
   min-height: 82px;
   padding: 14px 16px;
@@ -782,6 +782,15 @@ button {
   color: var(--primary-deep);
   font-size: var(--text-caption);
   font-weight: 700;
+}
+
+.project-library-action .danger-button {
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--line));
+}
+
+.project-library-action .danger-button:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
 }
 
 .project-library-state,

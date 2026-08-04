@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   CHOD_ORGANIZATION,
   DEFAULT_LOCAL_PROJECT_ID,
@@ -163,15 +163,19 @@ function ProjectLibrary({
   projects,
   state,
   currentProjectId,
+  deletingProjectId,
   onNew,
   onOpen,
+  onDelete,
   onRefresh,
 }: {
   projects: TenantProjectSummary[];
   state: ProjectLibraryState;
   currentProjectId: string | null;
+  deletingProjectId: string | null;
   onNew: () => void;
   onOpen: (projectId: string) => void;
+  onDelete: (projectId: string, projectName: string) => void;
   onRefresh: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -195,13 +199,21 @@ function ProjectLibrary({
       <button type="button" className="button quiet" onClick={onRefresh} disabled={state === "loading"}>Refresh</button>
     </div>
     {state === "loading" ? <div className="project-library-state" role="status">Loading projects...</div> : state === "error" ? <div className="project-library-state" role="alert">Could not load the project library. <button type="button" onClick={onRefresh}>Try again</button></div> : filtered.length === 0 ? <div className="project-library-empty"><strong>{projects.length ? "No matching projects" : "No saved projects yet"}</strong><p>{projects.length ? "Try another project name, client or location." : "Create your first project. It will autosave to this workspace."}</p><button type="button" className="button primary" onClick={onNew}>Create project</button></div> : <div className="project-library-table" role="list">
-      {filtered.map((item) => <article className={`project-library-row ${item.id === currentProjectId ? "current" : ""}`} role="listitem" key={item.id}>
-        <div className="project-library-name"><strong>{item.name || "Untitled fit-out project"}</strong><span>{item.client || "No client"}{item.location ? ` · ${item.location}` : ""}</span></div>
-        <div><small>Baseline</small><strong>{displayDate(item.baselineDate)}</strong></div>
-        <div><small>Activities</small><strong>{item.activityCount}</strong></div>
-        <div><small>Last saved</small><strong>{new Date(item.updatedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</strong></div>
-        <div className="project-library-action">{item.id === currentProjectId && <span>Open now</span>}<button type="button" className="button quiet" onClick={() => onOpen(item.id)}>{item.id === currentProjectId ? "Return to plan" : "Open"}</button></div>
-      </article>)}
+      {filtered.map((item) => {
+        const projectName = item.name || "Untitled fit-out project";
+        const deleting = deletingProjectId === item.id;
+        return <article className={`project-library-row ${item.id === currentProjectId ? "current" : ""}`} role="listitem" key={item.id}>
+          <div className="project-library-name"><strong>{projectName}</strong><span>{item.client || "No client"}{item.location ? ` · ${item.location}` : ""}</span></div>
+          <div><small>Baseline</small><strong>{displayDate(item.baselineDate)}</strong></div>
+          <div><small>Activities</small><strong>{item.activityCount}</strong></div>
+          <div><small>Last saved</small><strong>{new Date(item.updatedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</strong></div>
+          <div className="project-library-action">
+            {item.id === currentProjectId && <span>Open now</span>}
+            <button type="button" className="button quiet" disabled={deleting} onClick={() => onOpen(item.id)}>{item.id === currentProjectId ? "Return to plan" : "Open"}</button>
+            <button type="button" className="button quiet danger-button" disabled={deleting} onClick={() => onDelete(item.id, projectName)} aria-label={`Delete ${projectName}`}>{deleting ? "Deleting..." : "Delete"}</button>
+          </div>
+        </article>;
+      })}
     </div>}
   </section>;
 }
@@ -681,6 +693,10 @@ export default function TimelinePlannerWorkspace() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [projectLibrary, setProjectLibrary] = useState<TenantProjectSummary[]>([]);
   const [projectLibraryState, setProjectLibraryState] = useState<ProjectLibraryState>("idle");
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const cloudProjectIdRef = useRef<string | null>(null);
+  const planSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const planSessionRef = useRef(0);
 
   useEffect(() => {
     const syncPageFromHash = () => {
@@ -757,6 +773,7 @@ export default function TimelinePlannerWorkspace() {
         };
         setCompany(cloudCompany);
         setSavedCompanySignature(companyProfileSignature(cloudCompany));
+        cloudProjectIdRef.current = record.projectId;
         setCloudProjectId(record.projectId);
         setPlanStorageMode("cloud");
         setSavedLabel(record.projectId ? "Cloud plan loaded" : "Cloud workspace ready");
@@ -794,39 +811,43 @@ export default function TimelinePlannerWorkspace() {
     if (!hydrated || planStorageMode !== "cloud") return;
     const planPayload: SavedPlan = { project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation };
     if (!cloudProjectId && isEmptyPlan(planPayload)) return;
+    if (!cloudProjectId && !project.name.trim()) {
+      setSavedLabel("Enter a project name to create this cloud project");
+      return;
+    }
     const signature = planSignature(planPayload);
     if (signature === savedPlanSignature) return;
+    const sessionId = planSessionRef.current;
 
-    const saving = window.setTimeout(
-      () => setSavedLabel("Syncing plan to Cloudflare..."),
-      0,
-    );
-    const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
-      try {
-        const response = await fetch("/api/planner/plan", {
-          method: "PUT",
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ projectId: cloudProjectId, data: planPayload }),
-          signal: controller.signal,
+      setSavedLabel("Syncing plan to Cloudflare...");
+      planSaveQueueRef.current = planSaveQueueRef.current
+        .then(async () => {
+          if (sessionId !== planSessionRef.current) return;
+          const response = await fetch("/api/planner/plan", {
+            method: "PUT",
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ projectId: cloudProjectIdRef.current, data: planPayload }),
+          });
+          if (!response.ok) throw new Error("Cloud sync failed.");
+          const record = (await response.json()) as TenantPlanRecord;
+          if (sessionId !== planSessionRef.current) return;
+          cloudProjectIdRef.current = record.projectId;
+          setCloudProjectId(record.projectId);
+          setSavedPlanSignature(signature);
+          setSavedLabel(`Cloud synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+          setUsageRefreshToken((value) => value + 1);
+        })
+        .catch(() => {
+          if (sessionId === planSessionRef.current) {
+            setSavedLabel("Connection error — cloud save failed; offline cache was updated");
+          }
         });
-        if (!response.ok) throw new Error("Cloud sync failed.");
-        const record = (await response.json()) as TenantPlanRecord;
-        setCloudProjectId(record.projectId);
-        setSavedPlanSignature(signature);
-        setSavedLabel(`Cloud synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
-        setUsageRefreshToken((value) => value + 1);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setSavedLabel("Connection error — cloud save failed; offline cache was updated");
-      }
     }, 650);
     return () => {
-      window.clearTimeout(saving);
       window.clearTimeout(timeout);
-      controller.abort();
     };
   }, [project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation, hydrated, planStorageMode, cloudProjectId, savedPlanSignature]);
 
@@ -1001,6 +1022,7 @@ export default function TimelinePlannerWorkspace() {
     setIncludeCurvePdf(saved.includeCurvePdf);
     setShowStatusDate(saved.showStatusDate !== false);
     setPdfOrientation(saved.pdfOrientation === "portrait" ? "portrait" : "landscape");
+    cloudProjectIdRef.current = record.projectId;
     setCloudProjectId(record.projectId);
     setSavedPlanSignature(planSignature(saved));
     return true;
@@ -1024,6 +1046,8 @@ export default function TimelinePlannerWorkspace() {
   };
 
   const createNewProject = () => {
+    planSessionRef.current += 1;
+    cloudProjectIdRef.current = null;
     setProject(createFreshProject());
     setActivities([]);
     setActualSnapshots([]);
@@ -1050,6 +1074,7 @@ export default function TimelinePlannerWorkspace() {
       const response = await fetch(`/api/planner/plan?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store", credentials: "same-origin" });
       if (!response.ok) throw new Error("Could not open this project");
       const record = await response.json() as TenantPlanRecord;
+      planSessionRef.current += 1;
       if (!applyProjectRecord(record)) throw new Error("Project has no plan data");
       setSavedLabel("Cloud project loaded");
       openWorkspacePage("plan");
@@ -1300,39 +1325,59 @@ export default function TimelinePlannerWorkspace() {
     setPendingDeleteGroup(null);
   };
 
-  const clearPlan = async () => {
-    if (!window.confirm("Clear this plan and remove its timeline data? This cannot be undone.")) return;
+  const resetProjectEditor = () => {
+    cloudProjectIdRef.current = null;
+    setProject(createFreshProject());
+    setActivities([]);
+    setActualSnapshots([]);
+    setCalendarMode("calendar");
+    setPlanningModel("normal");
+    setCurveView("compare");
+    setShowCurve(true);
+    setIncludeCurvePdf(true);
+    setShowStatusDate(true);
+    setPdfOrientation("landscape");
+    setCloudProjectId(null);
+    setSavedPlanSignature("");
+    window.localStorage.removeItem(STORAGE_KEY);
+  };
+
+  const deleteCloudProject = async (projectId: string, projectName: string) => {
+    if (!window.confirm(`Delete project "${projectName}" and all of its timeline data? This cannot be undone.`)) return;
     if (planStorageMode !== "cloud") {
-      setSavedLabel("Connection error — cloud plan was not changed");
+      setSavedLabel("Connection error — project was not deleted");
       return;
     }
+
+    const deletingCurrentProject = projectId === cloudProjectIdRef.current;
+    if (deletingCurrentProject) planSessionRef.current += 1;
+    setDeletingProjectId(projectId);
     try {
-      if (cloudProjectId) {
-        const response = await fetch(`/api/planner/plan?projectId=${encodeURIComponent(cloudProjectId)}`, {
-          method: "DELETE",
-          cache: "no-store",
-          credentials: "same-origin",
-        });
-        if (!response.ok) throw new Error("Could not remove this cloud plan.");
+      if (deletingCurrentProject) await planSaveQueueRef.current;
+      const response = await fetch(`/api/planner/plan?projectId=${encodeURIComponent(projectId)}`, {
+        method: "DELETE",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(detail?.error || "Could not delete this cloud project.");
       }
-      setProject(createFreshProject());
-      setActivities([]);
-      setActualSnapshots([]);
-      setCalendarMode("calendar");
-      setPlanningModel("normal");
-      setCurveView("compare");
-      setShowCurve(true);
-      setIncludeCurvePdf(true);
-      setShowStatusDate(true);
-      setPdfOrientation("landscape");
-      setCloudProjectId(null);
-      setSavedPlanSignature("");
-      setSavedLabel("Cloud plan cleared");
+      setProjectLibrary((current) => current.filter((item) => item.id !== projectId));
+      if (deletingCurrentProject) resetProjectEditor();
+      setSavedLabel(`Deleted ${projectName}`);
       setUsageRefreshToken((value) => value + 1);
-      if (activePage === "projects") void loadProjectLibrary();
+      if (deletingCurrentProject) openWorkspacePage("projects");
     } catch (error) {
-      setSavedLabel(error instanceof Error ? error.message : "Could not clear this cloud plan");
+      setSavedLabel(error instanceof Error ? error.message : "Could not delete this cloud project");
+    } finally {
+      setDeletingProjectId(null);
     }
+  };
+
+  const deleteCurrentProject = async () => {
+    if (!cloudProjectId) return;
+    await deleteCloudProject(cloudProjectId, project.name || "Untitled fit-out project");
   };
 
   const exportBackup = () => {
@@ -1576,14 +1621,14 @@ export default function TimelinePlannerWorkspace() {
           <div className="topbar-actions no-print">
             {activePage === "usage" ? <button type="button" className="button quiet" onClick={() => openWorkspacePage("plan")}>Back to plan</button> : activePage === "projects" ? <button type="button" className="button primary" onClick={createNewProject}>+ New project</button> : <>
               {!pdfPreview && <button type="button" className="button quiet" onClick={exportBackup}>Backup JSON</button>}
-              {!pdfPreview && cloudProjectId && <button type="button" className="button quiet danger-button" onClick={() => void clearPlan()}>Delete project</button>}
+              {!pdfPreview && cloudProjectId && <button type="button" className="button quiet danger-button" disabled={deletingProjectId === cloudProjectId} onClick={() => void deleteCurrentProject()}>{deletingProjectId === cloudProjectId ? "Deleting..." : "Delete project"}</button>}
               <button type="button" className="button quiet preview-toggle" aria-pressed={pdfPreview} aria-controls="pdf-preview-sheet" onClick={() => setPdfPreview((value) => !value)}>{pdfPreview ? "Exit preview" : "Preview PDF"}</button>
               <button type="button" className="button primary" onClick={printPlan}><span aria-hidden="true">⇩</span> Export PDF</button>
             </>}
           </div>
         </header>
 
-        {activePage === "usage" ? <WorkspaceUsageDashboard usageState={usageState} workspaceUsage={workspaceUsage} combinedLevel={combinedUsageLevel} combinedMessage={combinedUsageMessage} onRefresh={refreshWorkspaceUsage} /> : activePage === "projects" ? <ProjectLibrary projects={projectLibrary} state={projectLibraryState} currentProjectId={cloudProjectId} onNew={createNewProject} onOpen={(projectId) => void openSavedProject(projectId)} onRefresh={() => void loadProjectLibrary()} /> : <>
+        {activePage === "usage" ? <WorkspaceUsageDashboard usageState={usageState} workspaceUsage={workspaceUsage} combinedLevel={combinedUsageLevel} combinedMessage={combinedUsageMessage} onRefresh={refreshWorkspaceUsage} /> : activePage === "projects" ? <ProjectLibrary projects={projectLibrary} state={projectLibraryState} currentProjectId={cloudProjectId} deletingProjectId={deletingProjectId} onNew={createNewProject} onOpen={(projectId) => void openSavedProject(projectId)} onDelete={(projectId, projectName) => void deleteCloudProject(projectId, projectName)} onRefresh={() => void loadProjectLibrary()} /> : <>
 
         {usageState === "ready" && workspaceUsage && combinedUsageLevel !== "healthy" && <div className={`usage-banner no-print usage-${combinedUsageLevel}`} role={combinedUsageLevel === "critical" || combinedUsageLevel === "blocked" ? "alert" : "status"}>
           <span className="usage-banner-mark" aria-hidden="true">!</span>
