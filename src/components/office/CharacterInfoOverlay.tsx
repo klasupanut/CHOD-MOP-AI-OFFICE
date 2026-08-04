@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Activity, CheckCircle2 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 
 type Props = {
@@ -12,14 +12,12 @@ type Props = {
 };
 
 export function CharacterInfoOverlay({ agent, active, canFaceFront, online, onSelect }: Props) {
-  const critical = agent.id === "foreman";
-  const warning = agent.id === "kla" || agent.id === "moss";
-  const Icon = critical || warning ? AlertTriangle : agent.id === "tammasit" ? Activity : CheckCircle2;
+  const Icon = agent.id === "tammasit" ? Activity : CheckCircle2;
 
   return (
     <button
       type="button"
-      className={`character-info info-${agent.id} ${active ? "is-active" : ""} ${critical ? "is-critical" : warning ? "is-warning" : ""} ${online ? "is-online" : "is-offline"}`}
+      className={`character-info info-${agent.id} ${active ? "is-active" : ""} ${online ? "is-online" : "is-offline"}`}
       onClick={() => {
         if (canFaceFront) onSelect(agent.id);
       }}
