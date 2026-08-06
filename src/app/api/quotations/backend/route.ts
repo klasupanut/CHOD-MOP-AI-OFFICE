@@ -42,6 +42,7 @@ const actionPermissions: Record<string, QuotationPermission[]> = {
   listSignatures: ["quotation.view"],
   uploadSignature: ["quotation.manageSignatures"],
   uploadPdf: ["quotation.exportPdf"],
+  uploadInternalVerifiedPdf: ["quotation.createSigningLink"],
   createSigningLink: ["quotation.createSigningLink"],
   revokeSigningLink: ["quotation.createSigningLink"],
   internalVerifyQuotation: ["quotation.createSigningLink"],
@@ -238,7 +239,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { response, result } = await callQuotationAppsScript(action, body.payload);
+    const upstreamPayload = action === "uploadInternalVerifiedPdf" && body.payload && typeof body.payload === "object"
+      ? { ...body.payload as object, createdBy: user.email }
+      : body.payload;
+    const { response, result } = await callQuotationAppsScript(action, upstreamPayload);
     if (result.ok && action === "saveQuotation") {
       let syncError: unknown = null;
       try {
