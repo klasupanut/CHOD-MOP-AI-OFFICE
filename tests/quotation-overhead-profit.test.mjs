@@ -43,5 +43,5 @@ test("discount THB label stays on one line and total emphasis remains correct", 
 });
 
 test("quotation asset cache key is refreshed", () => {
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260806-pdf-summary-spacing/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260806-pdf-signature-gap/);
 });
