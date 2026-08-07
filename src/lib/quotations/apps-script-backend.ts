@@ -12,6 +12,7 @@ export type AppsScriptProbe = {
 };
 
 const DEFAULT_TIMEOUT_MS = 25_000;
+const PDF_UPLOAD_TIMEOUT_MS = 60_000;
 
 export function getQuotationAppsScriptUrl() {
   return process.env.QUOTATION_APPS_SCRIPT_URL?.trim() || "";
@@ -40,7 +41,10 @@ export async function callQuotationAppsScript(action: string, payload: unknown):
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeoutMs = action === "uploadPdf" || action === "uploadInternalVerifiedPdf"
+    ? PDF_UPLOAD_TIMEOUT_MS
+    : DEFAULT_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const internalApiSecret = getQuotationInternalApiSecret();
@@ -71,7 +75,7 @@ export async function callQuotationAppsScript(action: string, payload: unknown):
     return { response, result };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Auto Quotation Apps Script timed out after ${DEFAULT_TIMEOUT_MS / 1000}s.`);
+      throw new Error(`Auto Quotation Apps Script timed out after ${timeoutMs / 1000}s.`);
     }
     throw error;
   } finally {

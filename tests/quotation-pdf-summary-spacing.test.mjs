@@ -38,5 +38,5 @@ test("signature labels have a fixed gap below the optional note box", () => {
 });
 
 test("quotation asset cache key includes the latest PDF layout release", () => {
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260807-pdf-pagination/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260807-pdf-export-resilience/);
 });
