@@ -37,6 +37,6 @@ test("signature labels have a fixed gap below the optional note box", () => {
   assert.doesNotMatch(bundle, /pt-\[6mm\]/);
 });
 
-test("quotation asset cache key is refreshed for PDF spacing", () => {
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260806-pdf-signature-gap/);
+test("quotation asset cache key includes the latest PDF layout release", () => {
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260807-pdf-pagination/);
 });

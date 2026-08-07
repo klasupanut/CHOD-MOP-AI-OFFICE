@@ -22,9 +22,12 @@ test("internal verified export uses its protected signed-folder action", () => {
   assert.match(bundle, /uploadInternalVerifiedPdf:o=>Le\("uploadInternalVerifiedPdf",o\)/);
   assert.match(
     bundle,
-    /C\.internalVerified\?Ke\.uploadInternalVerifiedPdf\(F\):Ke\.uploadPdf\(F\)/,
+    /C\.internalVerified\?Ke\.uploadInternalVerifiedPdf\([A-Za-z_$][\w$]*\):Ke\.uploadPdf\([A-Za-z_$][\w$]*\)/,
   );
-  assert.match(bundle, /pdfUrl:Z\.signedPdfUrl\|\|Z\.pdfUrl/);
+  assert.match(
+    bundle,
+    /pdfUrl:[A-Za-z_$][\w$]*\.signedPdfUrl\|\|[A-Za-z_$][\w$]*\.pdfUrl/,
+  );
 });
 
 test("customer signing retains its OTP-protected signed PDF action", () => {
