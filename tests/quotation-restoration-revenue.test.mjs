@@ -161,10 +161,10 @@ test("server dashboards and embedded quotation analytics share the exclusion rul
   assert.match(bundle, /chodRestorationTitle/);
   assert.match(bundle, /,le=chodRecognizedQuotation\(oe\)/);
   assert.match(bundle, /conditional RESTORATION WORK categories are excluded/);
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260811-approval-currency-fix/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260811-quotation-creation-trend/);
 });
 
-test("Value Comparison uses signed value and approval comparison uses bars instead of donut", () => {
+test("Value Comparison uses signed value and the companion card shows quotation creation trend", () => {
   const bundle = fs.readFileSync(path.join(root, "quotation-app-dist/assets/index-HmUxnN6T.js"), "utf8");
   const reportStart = bundle.indexOf("function Fp({quotations:o})");
   const reportEnd = bundle.indexOf("function Qp(", reportStart);
@@ -178,12 +178,19 @@ test("Value Comparison uses signed value and approval comparison uses bars inste
   assert.match(report, /chodValueComparisonRows=\[\{status:"Total Quoted Value",value:v\.selling/);
   assert.match(report, /\{status:"Customer Approved",value:k\.selling/);
   assert.match(report, /\{status:"RESTORATION WORK",value:chodRestorationWorkValue/);
-  assert.match(report, /approvalComparisonRows=\[\{status:"Internal Approved",value:internalApprovedTotals\.selling/);
-  assert.match(report, /\{status:"Customer Signed \/ Internal Verified",value:k\.selling/);
-  assert.match(report, /\{status:"Waiting Customer Signature",value:h\.selling/);
   assert.match(report, /data-testid":"status-bar-chart"[^]*children:chodValueComparisonRows\.map/);
-  assert.match(report, /data-testid":"approval-status-bar-chart"[^]*children:approvalComparisonRows\.map/);
-  assert.match(report, /children:\["\\u0e3f",me\(oe\.value\)\]/);
+  assert.match(report, /i\.jsx\(QuotationCreationTrend,\{quotations:o\}\)/);
+  assert.match(bundle, /data-testid":"quotation-creation-trend"/);
+  assert.match(bundle, /data-testid":"quotation-trend-month"/);
+  assert.match(bundle, /data-testid":"quotation-trend-year"/);
+  assert.match(bundle, /data-testid":"quotation-creation-graph"/);
+  assert.match(bundle, /onMouseEnter:\(\)=>setHoveredTrendIndex/);
+  assert.match(bundle, /stopColor:"#24c8dc"/);
+  assert.match(bundle, /stopColor:"#08789e"/);
+  assert.match(bundle, /trendMode==="year"\?18\+\(u\+\.5\)\*\(284\/trendData\.length\)/);
+  assert.match(bundle, /x:f\.x-N\/2/);
+  assert.doesNotMatch(report, /Internal Approved vs Customer Signed/);
+  assert.doesNotMatch(report, /approval-status-bar-chart/);
   assert.doesNotMatch(report, /\u0e40\u0e18\u0e1f/);
   assert.doesNotMatch(report, /data-testid":"status-donut-chart"/);
   assert.match(scoreCards, /\["Actual Work Value \(signed\)",`฿\$\{me\(k\.selling\)\}`/);
