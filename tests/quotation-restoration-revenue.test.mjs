@@ -87,7 +87,7 @@ test("explicit parent title prevents reordered rows from being classified as RES
   assert.equal(result.recognizedRevenue, 1_000);
 });
 
-test("Value Comparison uses one active pool and counts approved union once", () => {
+test("Value Comparison keeps signed value separate from internal approval", () => {
   const comparison = quotationValueComparison([
     {
       status: "Approved",
@@ -138,9 +138,11 @@ test("Value Comparison uses one active pool and counts approved union once", () 
 
   assert.deepEqual(comparison, {
     quotationCount: 4,
-    customerApprovedCount: 4,
+    customerApprovedCount: 2,
     totalQuotedValue: 2_200,
-    customerApprovedValue: 2_200,
+    customerApprovedValue: 900,
+    internalApprovedValue: 1_700,
+    waitingCustomerSignatureValue: 1_300,
     restorationWorkValue: 200,
   });
 });
@@ -159,10 +161,10 @@ test("server dashboards and embedded quotation analytics share the exclusion rul
   assert.match(bundle, /chodRestorationTitle/);
   assert.match(bundle, /,le=chodRecognizedQuotation\(oe\)/);
   assert.match(bundle, /conditional RESTORATION WORK categories are excluded/);
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-value-comparison-fix/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-approval-bars-fix/);
 });
 
-test("Value Comparison shows quoted, approved union and RESTORATION WORK without changing score cards or donut", () => {
+test("Value Comparison uses signed value and approval comparison uses bars instead of donut", () => {
   const bundle = fs.readFileSync(path.join(root, "quotation-app-dist/assets/index-HmUxnN6T.js"), "utf8");
   const reportStart = bundle.indexOf("function Fp({quotations:o})");
   const reportEnd = bundle.indexOf("function Qp(", reportStart);
@@ -172,12 +174,16 @@ test("Value Comparison shows quoted, approved union and RESTORATION WORK without
   const scoreCards = report.slice(scoreCardsStart, scoreCardsEnd);
 
   assert.match(report, /isInternalApproved=/);
-  assert.match(report, /customerApprovedQuotations=N\.filter\(E=>isInternalApproved\(E\)\|\|isCustomerSigned\(E\)\)/);
   assert.match(report, /chodRestorationWorkValue=Rr\(N\)\.conditionalSelling/);
   assert.match(report, /chodValueComparisonRows=\[\{status:"Total Quoted Value",value:v\.selling/);
-  assert.match(report, /\{status:"Customer Approved",value:customerApprovedTotals\.selling/);
+  assert.match(report, /\{status:"Customer Approved",value:k\.selling/);
   assert.match(report, /\{status:"RESTORATION WORK",value:chodRestorationWorkValue/);
+  assert.match(report, /approvalComparisonRows=\[\{status:"Internal Approved",value:internalApprovedTotals\.selling/);
+  assert.match(report, /\{status:"Customer Signed \/ Internal Verified",value:k\.selling/);
+  assert.match(report, /\{status:"Waiting Customer Signature",value:h\.selling/);
   assert.match(report, /data-testid":"status-bar-chart"[^]*children:chodValueComparisonRows\.map/);
-  assert.match(report, /data-testid":"status-donut-chart"[^]*children:J\.map/);
+  assert.match(report, /data-testid":"approval-status-bar-chart"[^]*children:approvalComparisonRows\.map/);
+  assert.doesNotMatch(report, /data-testid":"status-donut-chart"/);
+  assert.match(scoreCards, /\["Actual Work Value \(signed\)",`฿\$\{me\(k\.selling\)\}`/);
   assert.doesNotMatch(scoreCards, /RESTORATION WORK/);
 });

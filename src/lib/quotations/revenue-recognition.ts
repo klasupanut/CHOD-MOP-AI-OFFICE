@@ -45,6 +45,8 @@ export type QuotationValueComparison = {
   customerApprovedCount: number;
   totalQuotedValue: number;
   customerApprovedValue: number;
+  internalApprovedValue: number;
+  waitingCustomerSignatureValue: number;
   restorationWorkValue: number;
 };
 
@@ -198,9 +200,10 @@ export function quotationRevenueBreakdown(input: QuotationRevenueInput): Quotati
 
 /**
  * Build the three Value Comparison metrics from one identical quotation pool.
- * Draft and cancelled quotations are excluded. Customer Approved is a union,
- * so a quotation that is both internally approved and customer signed is only
- * counted once. RESTORATION WORK means the item title, never the RN project type.
+ * Draft and cancelled quotations are excluded. Customer Approved is the same
+ * signed value used by Actual Work Value: customer-signed or internally
+ * verified hard-copy quotations only. Internal approval remains a separate
+ * operational stage. RESTORATION WORK means the item title, never RN type.
  */
 export function quotationValueComparison(
   quotations: QuotationValueComparisonInput[],
@@ -209,8 +212,10 @@ export function quotationValueComparison(
     !isCancelledQuotation(quotation)
     && normalizedStatus(quotation.status) !== "DRAFT"
   ));
-  const customerApproved = quoted.filter((quotation) => (
-    isInternallyApprovedQuotation(quotation) || isCustomerSignedQuotation(quotation)
+  const internallyApproved = quoted.filter(isInternallyApprovedQuotation);
+  const customerApproved = quoted.filter(isCustomerSignedQuotation);
+  const waitingCustomerSignature = internallyApproved.filter((quotation) => (
+    !isCustomerSignedQuotation(quotation)
   ));
 
   const aggregate = (rows: QuotationValueComparisonInput[]) => rows.reduce(
@@ -226,12 +231,16 @@ export function quotationValueComparison(
 
   const quotedTotals = aggregate(quoted);
   const approvedTotals = aggregate(customerApproved);
+  const internallyApprovedTotals = aggregate(internallyApproved);
+  const waitingTotals = aggregate(waitingCustomerSignature);
 
   return {
     quotationCount: quoted.length,
     customerApprovedCount: customerApproved.length,
     totalQuotedValue: quotedTotals.recognized,
     customerApprovedValue: approvedTotals.recognized,
+    internalApprovedValue: internallyApprovedTotals.recognized,
+    waitingCustomerSignatureValue: waitingTotals.recognized,
     restorationWorkValue: quotedTotals.restoration,
   };
 }

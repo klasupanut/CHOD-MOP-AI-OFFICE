@@ -82,6 +82,36 @@ if (report.includes(oldComparison)) {
   report = replaceOnce(report, oldComparison, newComparison, "value comparison metrics");
 }
 
+const currentComparison = 'isInternalApproved=E=>[E.status,E.approvalStatus,E.internalApprovalStatus].some(oe=>["APPROVED","INTERNAL_APPROVED","INTERNALLY_APPROVED"].includes(String(oe||"").trim().toUpperCase().replace(/[\\s-]+/g,"_"))),x=N.filter(isInternalApproved),S=N.filter(isCustomerSigned),k=Rr(S),m=N.filter(E=>isInternalApproved(E)&&!isCustomerSigned(E)),h=Rr(m),customerApprovedQuotations=N.filter(E=>isInternalApproved(E)||isCustomerSigned(E)),customerApprovedTotals=Rr(customerApprovedQuotations),O=N.filter(E=>!isInternalApproved(E)&&!isCustomerSigned(E)),z=Rr(O),_=v.selling>0?k.selling/v.selling*100:0,M=k.selling>0?k.profit/k.selling*100:0,J=[{status:"Internal Approved / Not Signed",value:h.selling,color:"#f59e0b",className:"bg-orange"},{status:"Customer Signed",value:k.selling,color:"#16a34a",className:"bg-success"}],chodRestorationWorkValue=Rr(N).conditionalSelling,chodValueComparisonRows=[{status:"Total Quoted Value",value:v.selling,color:"#2563eb",className:"bg-blue"},{status:"Customer Approved",value:customerApprovedTotals.selling,color:"#16a34a",className:"bg-success"},{status:"RESTORATION WORK",value:chodRestorationWorkValue,color:"#dc2626",className:"bg-red-600"}]';
+const correctedComparison = 'isInternalApproved=E=>[E.status,E.approvalStatus,E.internalApprovalStatus].some(oe=>["APPROVED","INTERNAL_APPROVED","INTERNALLY_APPROVED"].includes(String(oe||"").trim().toUpperCase().replace(/[\\s-]+/g,"_"))),x=N.filter(isInternalApproved),internalApprovedTotals=Rr(x),S=N.filter(isCustomerSigned),k=Rr(S),m=N.filter(E=>isInternalApproved(E)&&!isCustomerSigned(E)),h=Rr(m),O=N.filter(E=>!isInternalApproved(E)&&!isCustomerSigned(E)),z=Rr(O),_=v.selling>0?k.selling/v.selling*100:0,M=k.selling>0?k.profit/k.selling*100:0,approvalComparisonRows=[{status:"Internal Approved",value:internalApprovedTotals.selling,color:"#2563eb",className:"bg-blue"},{status:"Customer Signed / Internal Verified",value:k.selling,color:"#16a34a",className:"bg-success"},{status:"Waiting Customer Signature",value:h.selling,color:"#f59e0b",className:"bg-orange"}],chodRestorationWorkValue=Rr(N).conditionalSelling,chodValueComparisonRows=[{status:"Total Quoted Value",value:v.selling,color:"#2563eb",className:"bg-blue"},{status:"Customer Approved",value:k.selling,color:"#16a34a",className:"bg-success"},{status:"RESTORATION WORK",value:chodRestorationWorkValue,color:"#dc2626",className:"bg-red-600"}]';
+if (report.includes(currentComparison)) {
+  report = replaceOnce(report, currentComparison, correctedComparison, "signed customer approved metrics");
+}
+
+const oldApprovalChartSetup = 'let E=0;const Z=J.map(oe=>{const he=E,le=v.selling>0?oe.value/v.selling*100:0;return E+=le,`${oe.color} ${he}% ${E}%`}),ee=v.selling>0?`conic-gradient(${Z.join(", ")})`:"#e2e8f0",ae=Math.max(1,...chodValueComparisonRows.map(oe=>oe.value))';
+const newApprovalChartSetup = 'const approvalComparisonMax=Math.max(1,...approvalComparisonRows.map(oe=>oe.value)),ae=Math.max(1,...chodValueComparisonRows.map(oe=>oe.value))';
+if (report.includes(oldApprovalChartSetup)) {
+  report = replaceOnce(report, oldApprovalChartSetup, newApprovalChartSetup, "approval bar chart setup");
+}
+
+const oldApprovalDonut = 'i.jsxs("section",{className:"panel p-5",children:[i.jsx("h2",{className:"font-bold text-navy",children:"Internal Approved vs Customer Signed"}),i.jsxs("div",{className:"mt-5 flex items-center gap-6",children:[i.jsx("div",{"data-testid":"status-donut-chart",className:"relative shrink-0 rounded-full",style:{background:ee,width:144,height:144},children:i.jsxs("div",{className:"absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white",children:[i.jsx("span",{className:"text-[10px] uppercase text-slate-400",children:"Signed"}),i.jsxs("strong",{className:"mt-1 text-sm text-navy",children:["เธฟ",me(k.selling,0)]})]})}),i.jsx("div",{className:"min-w-0 flex-1 space-y-3",children:J.map(oe=>i.jsx("div",{children:i.jsxs("div",{className:"flex items-center gap-2 text-xs",children:[i.jsx("span",{className:"h-2.5 w-2.5 rounded-full",style:{backgroundColor:oe.color}}),i.jsx("span",{className:"text-slate-500",children:oe.status}),i.jsxs("strong",{className:"ml-auto text-navy",children:["เธฟ",me(oe.value)]})]})},oe.status))})]})]})';
+const newApprovalBars = 'i.jsxs("section",{className:"panel p-5",children:[i.jsx("h2",{className:"font-bold text-navy",children:"Internal Approved vs Customer Signed"}),i.jsx("p",{className:"mt-1 text-[11px] text-slate-400",children:"Signed includes customer e-signature and internal verification of an existing hard copy."}),i.jsx("div",{"data-testid":"approval-status-bar-chart",className:"mt-5 space-y-4",children:approvalComparisonRows.map(oe=>i.jsxs("div",{children:[i.jsxs("div",{className:"flex items-center gap-3 text-xs",children:[i.jsx("span",{className:"min-w-0 flex-1 text-slate-500",children:oe.status}),i.jsxs("strong",{className:"shrink-0 text-navy",children:["เธฟ",me(oe.value)]})]}),i.jsx("div",{className:"mt-2 overflow-hidden rounded-full bg-slate-100",style:{height:12},children:i.jsx("div",{className:`h-full rounded-full transition-all ${oe.className}`,style:{backgroundColor:oe.color,width:oe.value>0?`${Math.max(2,oe.value/approvalComparisonMax*100)}%`:"0%"}})})]},oe.status))})]})';
+if (report.includes(oldApprovalDonut)) {
+  report = replaceOnce(report, oldApprovalDonut, newApprovalBars, "approval donut to bar chart");
+}
+if (report.includes('data-testid":"status-donut-chart"')) {
+  const approvalTitle = 'i.jsx("h2",{className:"font-bold text-navy",children:"Internal Approved vs Customer Signed"})';
+  const valueTitle = 'i.jsx("h2",{className:"font-bold text-navy",children:"Value Comparison"})';
+  const approvalTitleIndex = report.indexOf(approvalTitle);
+  const valueTitleIndex = report.indexOf(valueTitle, approvalTitleIndex);
+  const approvalSectionStart = report.lastIndexOf('i.jsxs("section",{', approvalTitleIndex);
+  const valueSectionStart = report.lastIndexOf('i.jsxs("section",{', valueTitleIndex);
+  if (approvalSectionStart < 0 || valueSectionStart <= approvalSectionStart) {
+    throw new Error("approval donut section boundaries were not found");
+  }
+  report = `${report.slice(0, approvalSectionStart)}${newApprovalBars},${report.slice(valueSectionStart)}`;
+}
+
 report = report.replace(
   "Drafts and cancelled quotations are excluded. All values exclude VAT.",
   "Drafts and cancelled quotations are excluded. RESTORATION WORK categories are conditional and excluded from revenue, cost and profit recognition. All values exclude VAT.",
@@ -97,7 +127,7 @@ fs.writeFileSync(bundlePath, source, "utf8");
 let indexHtml = fs.readFileSync(indexPath, "utf8");
 indexHtml = indexHtml.replace(
   /index-HmUxnN6T\.js\?v=[A-Za-z0-9-]+/,
-  "index-HmUxnN6T.js?v=20260810-value-comparison-fix",
+  "index-HmUxnN6T.js?v=20260810-approval-bars-fix",
 );
 fs.writeFileSync(indexPath, indexHtml, "utf8");
 
