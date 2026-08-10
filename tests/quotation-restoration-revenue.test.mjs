@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   isConditionalRestorationTitle,
+  quotationValueComparison,
   quotationRevenueBreakdown,
 } from "../src/lib/quotations/revenue-recognition.ts";
 
@@ -66,6 +67,84 @@ test("legacy sequential items work when title relationship IDs are absent", () =
   assert.equal(result.recognizedContractorCost, 350);
 });
 
+test("explicit parent title prevents reordered rows from being classified as RESTORATION WORK", () => {
+  const result = quotationRevenueBreakdown({
+    totalSellingAmount: 1_000,
+    totalContractorCost: 500,
+    items: [
+      { itemId: "TITLE-GENERAL", itemType: "title", description: "GENERAL WORK" },
+      { itemId: "TITLE-RESTORE", itemType: "title", description: "RESTORATION WORK" },
+      {
+        itemType: "item",
+        parentTitleId: "TITLE-GENERAL",
+        quotationTotal: 1_000,
+        contractorTotalCost: 500,
+      },
+    ],
+  });
+
+  assert.equal(result.conditionalRestorationRevenue, 0);
+  assert.equal(result.recognizedRevenue, 1_000);
+});
+
+test("Value Comparison uses one active pool and counts approved union once", () => {
+  const comparison = quotationValueComparison([
+    {
+      status: "Approved",
+      totalSellingAmount: 1_200,
+      items: [
+        { itemId: "A", itemType: "title", description: "GENERAL WORK" },
+        { itemType: "item", parentTitleId: "A", quotationTotal: 1_000 },
+        { itemId: "B", itemType: "title", description: "RESTORATION WORK" },
+        { itemType: "item", parentTitleId: "B", quotationTotal: 200 },
+      ],
+    },
+    {
+      status: "Sent",
+      signingStatus: "SIGNED",
+      totalSellingAmount: 500,
+      items: [{ itemType: "item", quotationTotal: 500 }],
+    },
+    {
+      status: "Approved",
+      signingStatus: "SIGNED",
+      totalSellingAmount: 400,
+      items: [{ itemType: "item", quotationTotal: 400 }],
+    },
+    {
+      status: "Approved",
+      approvalStatus: "Cancelled",
+      totalSellingAmount: 1_000,
+      items: [
+        { itemType: "title", description: "RESTORATION WORK" },
+        { itemType: "item", quotationTotal: 1_000 },
+      ],
+    },
+    {
+      status: "Draft",
+      totalSellingAmount: 600,
+      items: [
+        { itemType: "title", description: "RESTORATION WORK" },
+        { itemType: "item", quotationTotal: 600 },
+      ],
+    },
+    {
+      status: "Approved",
+      projectType: "RESTORATION",
+      totalSellingAmount: 300,
+      items: [{ itemType: "item", quotationTotal: 300 }],
+    },
+  ]);
+
+  assert.deepEqual(comparison, {
+    quotationCount: 4,
+    customerApprovedCount: 4,
+    totalQuotedValue: 2_200,
+    customerApprovedValue: 2_200,
+    restorationWorkValue: 200,
+  });
+});
+
 test("server dashboards and embedded quotation analytics share the exclusion rule", () => {
   const approvalSource = fs.readFileSync(path.join(root, "src/lib/approvals/quotation-approval-source.ts"), "utf8");
   const dashboardSource = fs.readFileSync(path.join(root, "src/lib/dashboard/live-dashboard-data.ts"), "utf8");
@@ -80,10 +159,10 @@ test("server dashboards and embedded quotation analytics share the exclusion rul
   assert.match(bundle, /chodRestorationTitle/);
   assert.match(bundle, /,le=chodRecognizedQuotation\(oe\)/);
   assert.match(bundle, /conditional RESTORATION WORK categories are excluded/);
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-restoration-revenue-chart/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-value-comparison-fix/);
 });
 
-test("Value Comparison adds RESTORATION WORK last without adding a score card or donut segment", () => {
+test("Value Comparison shows quoted, approved union and RESTORATION WORK without changing score cards or donut", () => {
   const bundle = fs.readFileSync(path.join(root, "quotation-app-dist/assets/index-HmUxnN6T.js"), "utf8");
   const reportStart = bundle.indexOf("function Fp({quotations:o})");
   const reportEnd = bundle.indexOf("function Qp(", reportStart);
@@ -92,8 +171,12 @@ test("Value Comparison adds RESTORATION WORK last without adding a score card or
   const scoreCardsEnd = report.indexOf('className:"mt-2 text-right', scoreCardsStart);
   const scoreCards = report.slice(scoreCardsStart, scoreCardsEnd);
 
-  assert.match(report, /chodRestorationWorkValue=Rr\(qActive\)\.conditionalSelling/);
-  assert.match(report, /chodValueComparisonRows=\[\.\.\.J,\{status:"RESTORATION WORK \(Excluded\)"/);
+  assert.match(report, /isInternalApproved=/);
+  assert.match(report, /customerApprovedQuotations=N\.filter\(E=>isInternalApproved\(E\)\|\|isCustomerSigned\(E\)\)/);
+  assert.match(report, /chodRestorationWorkValue=Rr\(N\)\.conditionalSelling/);
+  assert.match(report, /chodValueComparisonRows=\[\{status:"Total Quoted Value",value:v\.selling/);
+  assert.match(report, /\{status:"Customer Approved",value:customerApprovedTotals\.selling/);
+  assert.match(report, /\{status:"RESTORATION WORK",value:chodRestorationWorkValue/);
   assert.match(report, /data-testid":"status-bar-chart"[^]*children:chodValueComparisonRows\.map/);
   assert.match(report, /data-testid":"status-donut-chart"[^]*children:J\.map/);
   assert.doesNotMatch(scoreCards, /RESTORATION WORK/);

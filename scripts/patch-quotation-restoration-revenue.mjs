@@ -26,6 +26,15 @@ if (source.includes(oldRecognizedSum)) {
   source = replaceOnce(source, oldRecognizedSum, recognizedSumWithConditional, "conditional restoration aggregate");
 }
 
+source = source.replace(
+  'const parentTitleId=String(h.parentTitleId||"").trim(),_=u.has(parentTitleId)||N;',
+  'const parentTitleId=String(h.parentTitleId||"").trim(),_=parentTitleId?u.has(parentTitleId):N;',
+);
+source = source.replace(
+  '_=u.has(String(h.parentTitleId||"").trim())||N;',
+  '_=String(h.parentTitleId||"").trim()?u.has(String(h.parentTitleId||"").trim()):N;',
+);
+
 const reportStart = source.indexOf("function Fp({quotations:o})");
 const reportEnd = source.indexOf("function Qp(", reportStart);
 if (reportStart < 0 || reportEnd < 0) throw new Error("Cost & Profit report section was not found");
@@ -66,6 +75,13 @@ if (!report.includes("chodValueComparisonRows=")) {
   );
 }
 
+
+const oldComparison = 'x=qActive.filter(E=>E.status==="Approved"),S=qActive.filter(isCustomerSigned),k=Rr(S),m=qActive.filter(E=>E.status==="Approved"&&!isCustomerSigned(E)),h=Rr(m),O=qActive.filter(E=>!isCustomerSigned(E)&&E.status!=="Draft"),z=Rr(O),_=v.selling>0?k.selling/v.selling*100:0,M=k.selling>0?k.profit/k.selling*100:0,J=[{status:"Internal Approved / Not Signed",value:h.selling,color:"#f59e0b",className:"bg-orange"},{status:"Customer Signed",value:k.selling,color:"#16a34a",className:"bg-success"}],chodRestorationWorkValue=Rr(qActive).conditionalSelling,chodValueComparisonRows=[...J,{status:"RESTORATION WORK (Excluded)",value:chodRestorationWorkValue,color:"#dc2626",className:"bg-red-600"}]';
+const newComparison = 'isInternalApproved=E=>[E.status,E.approvalStatus,E.internalApprovalStatus].some(oe=>["APPROVED","INTERNAL_APPROVED","INTERNALLY_APPROVED"].includes(String(oe||"").trim().toUpperCase().replace(/[\\s-]+/g,"_"))),x=N.filter(isInternalApproved),S=N.filter(isCustomerSigned),k=Rr(S),m=N.filter(E=>isInternalApproved(E)&&!isCustomerSigned(E)),h=Rr(m),customerApprovedQuotations=N.filter(E=>isInternalApproved(E)||isCustomerSigned(E)),customerApprovedTotals=Rr(customerApprovedQuotations),O=N.filter(E=>!isInternalApproved(E)&&!isCustomerSigned(E)),z=Rr(O),_=v.selling>0?k.selling/v.selling*100:0,M=k.selling>0?k.profit/k.selling*100:0,J=[{status:"Internal Approved / Not Signed",value:h.selling,color:"#f59e0b",className:"bg-orange"},{status:"Customer Signed",value:k.selling,color:"#16a34a",className:"bg-success"}],chodRestorationWorkValue=Rr(N).conditionalSelling,chodValueComparisonRows=[{status:"Total Quoted Value",value:v.selling,color:"#2563eb",className:"bg-blue"},{status:"Customer Approved",value:customerApprovedTotals.selling,color:"#16a34a",className:"bg-success"},{status:"RESTORATION WORK",value:chodRestorationWorkValue,color:"#dc2626",className:"bg-red-600"}]';
+if (report.includes(oldComparison)) {
+  report = replaceOnce(report, oldComparison, newComparison, "value comparison metrics");
+}
+
 report = report.replace(
   "Drafts and cancelled quotations are excluded. All values exclude VAT.",
   "Drafts and cancelled quotations are excluded. RESTORATION WORK categories are conditional and excluded from revenue, cost and profit recognition. All values exclude VAT.",
@@ -81,7 +97,7 @@ fs.writeFileSync(bundlePath, source, "utf8");
 let indexHtml = fs.readFileSync(indexPath, "utf8");
 indexHtml = indexHtml.replace(
   /index-HmUxnN6T\.js\?v=[A-Za-z0-9-]+/,
-  "index-HmUxnN6T.js?v=20260810-restoration-revenue-chart",
+  "index-HmUxnN6T.js?v=20260810-value-comparison-fix",
 );
 fs.writeFileSync(indexPath, indexHtml, "utf8");
 

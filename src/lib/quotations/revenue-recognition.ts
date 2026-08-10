@@ -19,6 +19,16 @@ export type QuotationRevenueInput = {
   totalContractorCost?: unknown;
 };
 
+export type QuotationValueComparisonInput = QuotationRevenueInput & {
+  status?: unknown;
+  approvalStatus?: unknown;
+  internalApprovalStatus?: unknown;
+  signingStatus?: unknown;
+  clientSigningStatus?: unknown;
+  signedPdfUrl?: unknown;
+  internalVerifiedAt?: unknown;
+};
+
 export type QuotationRevenueBreakdown = {
   hasConditionalRestoration: boolean;
   recognizedRevenue: number;
@@ -28,6 +38,14 @@ export type QuotationRevenueBreakdown = {
   recognizedProfit: number;
   conditionalRestorationProfit: number;
   recognizedRatio: number;
+};
+
+export type QuotationValueComparison = {
+  quotationCount: number;
+  customerApprovedCount: number;
+  totalQuotedValue: number;
+  customerApprovedValue: number;
+  restorationWorkValue: number;
 };
 
 function finiteNumber(value: unknown) {
@@ -66,6 +84,27 @@ function normalizedTitle(value: unknown) {
 export function isConditionalRestorationTitle(value: unknown) {
   const title = normalizedTitle(value);
   return title === "RESTORATION WORK" || title === "RESTORATION WORKS";
+}
+
+function normalizedStatus(value: unknown) {
+  return String(value ?? "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+}
+
+export function isCancelledQuotation(input: QuotationValueComparisonInput) {
+  return [input.status, input.approvalStatus, input.internalApprovalStatus]
+    .some((value) => ["CANCELLED", "CANCELED"].includes(normalizedStatus(value)));
+}
+
+export function isInternallyApprovedQuotation(input: QuotationValueComparisonInput) {
+  return [input.status, input.approvalStatus, input.internalApprovalStatus]
+    .some((value) => ["APPROVED", "INTERNAL_APPROVED", "INTERNALLY_APPROVED"].includes(normalizedStatus(value)));
+}
+
+export function isCustomerSignedQuotation(input: QuotationValueComparisonInput) {
+  const signingStatuses = [input.signingStatus, input.clientSigningStatus].map(normalizedStatus);
+  return Boolean(String(input.signedPdfUrl ?? "").trim())
+    || signingStatuses.some((status) => status === "SIGNED" || status === "INTERNAL_VERIFIED")
+    || Boolean(String(input.internalVerifiedAt ?? "").trim());
 }
 
 function isTitleItem(item: QuotationRevenueItem) {
@@ -114,7 +153,12 @@ export function quotationRevenueBreakdown(input: QuotationRevenueInput): Quotati
     const revenueWeight = itemRevenueWeight(item);
     const contractorCost = itemContractorCost(item);
     const parentTitleId = String(item.parentTitleId ?? "").trim();
-    const belongsToConditionalTitle = conditionalTitleIds.has(parentTitleId) || activeTitleIsConditional;
+    // Prefer the explicit relationship when present. Sequential title state is
+    // only a legacy fallback; combining both can incorrectly classify an item
+    // when rows are reordered by Google Sheets.
+    const belongsToConditionalTitle = parentTitleId
+      ? conditionalTitleIds.has(parentTitleId)
+      : activeTitleIsConditional;
 
     allRevenueWeight += revenueWeight;
     allItemCost += contractorCost;
@@ -149,5 +193,45 @@ export function quotationRevenueBreakdown(input: QuotationRevenueInput): Quotati
     recognizedProfit,
     conditionalRestorationProfit,
     recognizedRatio: fullRevenue > 0 ? recognizedRevenue / fullRevenue : 1,
+  };
+}
+
+/**
+ * Build the three Value Comparison metrics from one identical quotation pool.
+ * Draft and cancelled quotations are excluded. Customer Approved is a union,
+ * so a quotation that is both internally approved and customer signed is only
+ * counted once. RESTORATION WORK means the item title, never the RN project type.
+ */
+export function quotationValueComparison(
+  quotations: QuotationValueComparisonInput[],
+): QuotationValueComparison {
+  const quoted = quotations.filter((quotation) => (
+    !isCancelledQuotation(quotation)
+    && normalizedStatus(quotation.status) !== "DRAFT"
+  ));
+  const customerApproved = quoted.filter((quotation) => (
+    isInternallyApprovedQuotation(quotation) || isCustomerSignedQuotation(quotation)
+  ));
+
+  const aggregate = (rows: QuotationValueComparisonInput[]) => rows.reduce(
+    (total, quotation) => {
+      const breakdown = quotationRevenueBreakdown(quotation);
+      return {
+        recognized: roundMoney(total.recognized + breakdown.recognizedRevenue),
+        restoration: roundMoney(total.restoration + breakdown.conditionalRestorationRevenue),
+      };
+    },
+    { recognized: 0, restoration: 0 },
+  );
+
+  const quotedTotals = aggregate(quoted);
+  const approvedTotals = aggregate(customerApproved);
+
+  return {
+    quotationCount: quoted.length,
+    customerApprovedCount: customerApproved.length,
+    totalQuotedValue: quotedTotals.recognized,
+    customerApprovedValue: approvedTotals.recognized,
+    restorationWorkValue: quotedTotals.restoration,
   };
 }
