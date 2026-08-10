@@ -15,9 +15,15 @@ const replaceOnce = (source, oldValue, newValue, label) => {
 let source = fs.readFileSync(bundlePath, "utf8");
 
 const oldAggregate = 'const Rr=o=>o.reduce((f,u)=>({cost:f.cost+u.totalContractorCost,selling:f.selling+u.totalSellingAmount,profit:f.profit+u.totalGrossProfit}),{cost:0,selling:0,profit:0})';
-const recognizedAggregate = 'const chodRevenueNumber=o=>{if(o===null||o===void 0||o==="")return void 0;const f=Number(o);return Number.isFinite(f)?f:void 0},chodRevenueFirst=(...o)=>{for(const f of o){const u=chodRevenueNumber(f);if(u!==void 0)return u}return 0},chodRevenueRound=o=>Math.round((o+Number.EPSILON)*100)/100,chodRestorationTitle=o=>{const f=String(o??"").normalize("NFKC").trim().toUpperCase().replace(/[^A-Z0-9]+/g," ").replace(/\\s+/g," ").trim();return f==="RESTORATION WORK"||f==="RESTORATION WORKS"},chodRecognizedQuotation=o=>{const f=Array.isArray(o.items)?o.items:[],u=new Set(f.filter(h=>String(h.itemType||"").trim().toLowerCase()==="title"&&chodRestorationTitle(h.description)).map(h=>String(h.itemId||"").trim()).filter(Boolean));let N=!1,v=!1,x=0,S=0,k=0,m=0;for(const h of f){if(String(h.itemType||"").trim().toLowerCase()==="title"){N=chodRestorationTitle(h.description),v=v||N;continue}const O=Math.max(0,chodRevenueFirst(h.projectSellingTotal,h.quotationTotal,h.sellingTotal)),z=Math.max(0,chodRevenueFirst(h.contractorTotalCost,chodRevenueFirst(h.quantity)*chodRevenueFirst(h.contractorUnitCost))),_=u.has(String(h.parentTitleId||"").trim())||N;x+=O,k+=z,_&&(S+=O,m+=z)}const h=Math.max(0,chodRevenueFirst(o.totalSellingAmount,o.totalAfterDiscount,o.totalAmount)),O=Math.max(0,chodRevenueFirst(o.totalContractorCost,k)),z=v&&x>0?Math.min(1,S/x):0,_=v&&k>0?Math.min(1,m/k):z,M=chodRevenueRound(h*z),J=chodRevenueRound(O*_),E=chodRevenueRound(Math.max(0,h-M)),Z=chodRevenueRound(Math.max(0,O-J));return{cost:Z,selling:E,profit:chodRevenueRound(E-Z),conditionalSelling:M,conditionalCost:J,hasConditionalRestoration:v}},Rr=o=>o.reduce((f,u)=>{const N=chodRecognizedQuotation(u);return{cost:f.cost+N.cost,selling:f.selling+N.selling,profit:f.profit+N.profit}},{cost:0,selling:0,profit:0})';
+const recognizedAggregate = 'const chodRevenueNumber=o=>{if(o===null||o===void 0||o==="")return void 0;const f=Number(o);return Number.isFinite(f)?f:void 0},chodRevenueFirst=(...o)=>{for(const f of o){const u=chodRevenueNumber(f);if(u!==void 0)return u}return 0},chodRevenueRound=o=>Math.round((o+Number.EPSILON)*100)/100,chodRestorationTitle=o=>{const f=String(o??"").normalize("NFKC").trim().toUpperCase().replace(/[^A-Z0-9]+/g," ").replace(/\\s+/g," ").trim();return f==="RESTORATION WORK"||f==="RESTORATION WORKS"},chodRecognizedQuotation=o=>{const f=Array.isArray(o.items)?o.items:[],u=new Set(f.filter(h=>String(h.itemType||"").trim().toLowerCase()==="title"&&chodRestorationTitle(h.description)).map(h=>String(h.itemId||"").trim()).filter(Boolean));let N=!1,v=!1,x=0,S=0,k=0,m=0;for(const h of f){if(String(h.itemType||"").trim().toLowerCase()==="title"){N=chodRestorationTitle(h.description),v=v||N;continue}const O=Math.max(0,chodRevenueFirst(h.projectSellingTotal,h.quotationTotal,h.sellingTotal)),z=Math.max(0,chodRevenueFirst(h.contractorTotalCost,chodRevenueFirst(h.quantity)*chodRevenueFirst(h.contractorUnitCost))),_=u.has(String(h.parentTitleId||"").trim())||N;x+=O,k+=z,_&&(S+=O,m+=z)}const h=Math.max(0,chodRevenueFirst(o.totalSellingAmount,o.totalAfterDiscount,o.totalAmount)),O=Math.max(0,chodRevenueFirst(o.totalContractorCost,k)),z=v&&x>0?Math.min(1,S/x):0,_=v&&k>0?Math.min(1,m/k):z,M=chodRevenueRound(h*z),J=chodRevenueRound(O*_),E=chodRevenueRound(Math.max(0,h-M)),Z=chodRevenueRound(Math.max(0,O-J));return{cost:Z,selling:E,profit:chodRevenueRound(E-Z),conditionalSelling:M,conditionalCost:J,hasConditionalRestoration:v}},Rr=o=>o.reduce((f,u)=>{const N=chodRecognizedQuotation(u);return{cost:f.cost+N.cost,selling:f.selling+N.selling,profit:f.profit+N.profit,conditionalSelling:f.conditionalSelling+N.conditionalSelling}},{cost:0,selling:0,profit:0,conditionalSelling:0})';
 if (!source.includes("chodRecognizedQuotation=")) {
   source = replaceOnce(source, oldAggregate, recognizedAggregate, "recognized revenue aggregate");
+}
+
+const oldRecognizedSum = 'Rr=o=>o.reduce((f,u)=>{const N=chodRecognizedQuotation(u);return{cost:f.cost+N.cost,selling:f.selling+N.selling,profit:f.profit+N.profit}},{cost:0,selling:0,profit:0})';
+const recognizedSumWithConditional = 'Rr=o=>o.reduce((f,u)=>{const N=chodRecognizedQuotation(u);return{cost:f.cost+N.cost,selling:f.selling+N.selling,profit:f.profit+N.profit,conditionalSelling:f.conditionalSelling+N.conditionalSelling}},{cost:0,selling:0,profit:0,conditionalSelling:0})';
+if (source.includes(oldRecognizedSum)) {
+  source = replaceOnce(source, oldRecognizedSum, recognizedSumWithConditional, "conditional restoration aggregate");
 }
 
 const reportStart = source.indexOf("function Fp({quotations:o})");
@@ -25,7 +31,7 @@ const reportEnd = source.indexOf("function Qp(", reportStart);
 if (reportStart < 0 || reportEnd < 0) throw new Error("Cost & Profit report section was not found");
 
 let report = source.slice(reportStart, reportEnd);
-if (!report.includes("const le=chodRecognizedQuotation(oe)")) {
+if (!report.includes("le=chodRecognizedQuotation(oe)")) {
   report = replaceOnce(
     report,
     "o.map(oe=>{const he=isCustomerSigned(oe)&&!isQuotationCancelled(oe);return",
@@ -37,6 +43,27 @@ if (!report.includes("const le=chodRecognizedQuotation(oe)")) {
   report = replaceOnce(report, "he?me(oe.totalGrossProfit):\"-\"", "he?me(le.profit):\"-\"", "report recognized profit");
   report = replaceOnce(report, "oe.averageMarkupPercent.toFixed(2)", "(le.cost>0?(le.selling-le.cost)/le.cost*100:0).toFixed(2)", "report recognized markup");
   report = replaceOnce(report, "oe.grossMarginPercent.toFixed(2)", "(le.selling>0?le.profit/le.selling*100:0).toFixed(2)", "report recognized margin");
+}
+
+if (!report.includes("chodValueComparisonRows=")) {
+  report = replaceOnce(
+    report,
+    'J=[{status:"Internal Approved / Not Signed",value:h.selling,color:"#f59e0b",className:"bg-orange"},{status:"Customer Signed",value:k.selling,color:"#16a34a",className:"bg-success"}];let E=0;',
+    'J=[{status:"Internal Approved / Not Signed",value:h.selling,color:"#f59e0b",className:"bg-orange"},{status:"Customer Signed",value:k.selling,color:"#16a34a",className:"bg-success"}],chodRestorationWorkValue=Rr(qActive).conditionalSelling,chodValueComparisonRows=[...J,{status:"RESTORATION WORK (Excluded)",value:chodRestorationWorkValue,color:"#dc2626",className:"bg-red-600"}];let E=0;',
+    "restoration work comparison row",
+  );
+  report = replaceOnce(
+    report,
+    "ae=Math.max(1,...J.map(oe=>oe.value))",
+    "ae=Math.max(1,...chodValueComparisonRows.map(oe=>oe.value))",
+    "comparison chart maximum",
+  );
+  report = replaceOnce(
+    report,
+    'i.jsx("div",{"data-testid":"status-bar-chart",className:"mt-6 space-y-4",children:J.map(oe=>',
+    'i.jsx("div",{"data-testid":"status-bar-chart",className:"mt-6 space-y-4",children:chodValueComparisonRows.map(oe=>',
+    "comparison chart data rows",
+  );
 }
 
 report = report.replace(
@@ -54,7 +81,7 @@ fs.writeFileSync(bundlePath, source, "utf8");
 let indexHtml = fs.readFileSync(indexPath, "utf8");
 indexHtml = indexHtml.replace(
   /index-HmUxnN6T\.js\?v=[A-Za-z0-9-]+/,
-  "index-HmUxnN6T.js?v=20260810-restoration-revenue",
+  "index-HmUxnN6T.js?v=20260810-restoration-revenue-chart",
 );
 fs.writeFileSync(indexPath, indexHtml, "utf8");
 

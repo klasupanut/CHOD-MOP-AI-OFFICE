@@ -80,5 +80,21 @@ test("server dashboards and embedded quotation analytics share the exclusion rul
   assert.match(bundle, /chodRestorationTitle/);
   assert.match(bundle, /,le=chodRecognizedQuotation\(oe\)/);
   assert.match(bundle, /conditional RESTORATION WORK categories are excluded/);
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-restoration-revenue/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-restoration-revenue-chart/);
+});
+
+test("Value Comparison adds RESTORATION WORK last without adding a score card or donut segment", () => {
+  const bundle = fs.readFileSync(path.join(root, "quotation-app-dist/assets/index-HmUxnN6T.js"), "utf8");
+  const reportStart = bundle.indexOf("function Fp({quotations:o})");
+  const reportEnd = bundle.indexOf("function Qp(", reportStart);
+  const report = bundle.slice(reportStart, reportEnd);
+  const scoreCardsStart = report.indexOf('className:"mt-6 grid grid-cols-4');
+  const scoreCardsEnd = report.indexOf('className:"mt-2 text-right', scoreCardsStart);
+  const scoreCards = report.slice(scoreCardsStart, scoreCardsEnd);
+
+  assert.match(report, /chodRestorationWorkValue=Rr\(qActive\)\.conditionalSelling/);
+  assert.match(report, /chodValueComparisonRows=\[\.\.\.J,\{status:"RESTORATION WORK \(Excluded\)"/);
+  assert.match(report, /data-testid":"status-bar-chart"[^]*children:chodValueComparisonRows\.map/);
+  assert.match(report, /data-testid":"status-donut-chart"[^]*children:J\.map/);
+  assert.doesNotMatch(scoreCards, /RESTORATION WORK/);
 });
