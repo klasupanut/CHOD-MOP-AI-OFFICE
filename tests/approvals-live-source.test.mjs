@@ -19,7 +19,7 @@ test("Direct quotation list uses one read-only Sheets batch request", async () =
 
   assert.match(source, /export async function listQuotationsFromGoogleSheet/);
   assert.match(source, /values:batchGet/);
-  assert.match(source, /Quotation_Items!A1:U/);
+  assert.match(source, /Quotation_Items!A1:Z/);
   assert.doesNotMatch(
     source.slice(source.indexOf("export async function listQuotationsFromGoogleSheet"), source.indexOf("function columnLetter")),
     /method:\s*["'](?:POST|PUT|PATCH|DELETE)["']/,

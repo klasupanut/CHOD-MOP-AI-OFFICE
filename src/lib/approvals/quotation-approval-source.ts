@@ -7,6 +7,7 @@ import {
   updateQuotationSheetInternalApproval,
 } from "@/lib/quotations/google-sheet-extra-fields";
 import { callQuotationAppsScript } from "@/lib/quotations/apps-script-backend";
+import { quotationRevenueBreakdown } from "@/lib/quotations/revenue-recognition";
 import { normalizeQuotationRevision } from "@/lib/quotations/revision";
 
 type QuotationBackendRow = {
@@ -43,6 +44,8 @@ type QuotationBackendRow = {
   updatedAt?: string;
   createdAt?: string;
   items?: Array<{
+    itemId?: string;
+    parentTitleId?: string;
     description?: string;
     quantity?: number;
     unit?: string;
@@ -86,6 +89,11 @@ export type QuotationApprovalWithItems = QuotationApprovalItem & {
   internalApprovalStatus?: string;
   totalContractorCost?: number;
   totalSellingAmount: number;
+  recognizedRevenueAmount: number;
+  conditionalRestorationAmount: number;
+  recognizedContractorCost: number;
+  recognizedGrossProfit: number;
+  hasConditionalRestoration: boolean;
   averageMarkupPercent?: number;
   revision?: string;
   showRevisionOnPdf?: boolean;
@@ -216,7 +224,18 @@ function pricingFromQuotation(row: QuotationBackendRow) {
       ? ((totalSellingAmount - totalContractorCost) / totalContractorCost) * 100
       : undefined);
 
-  return { totalContractorCost, totalSellingAmount, averageMarkupPercent };
+  const recognized = quotationRevenueBreakdown(row);
+
+  return {
+    totalContractorCost,
+    totalSellingAmount,
+    averageMarkupPercent,
+    recognizedRevenueAmount: recognized.recognizedRevenue,
+    conditionalRestorationAmount: recognized.conditionalRestorationRevenue,
+    recognizedContractorCost: recognized.recognizedContractorCost,
+    recognizedGrossProfit: recognized.recognizedProfit,
+    hasConditionalRestoration: recognized.hasConditionalRestoration,
+  };
 }
 
 function mapQuotationToApproval(row: QuotationBackendRow): QuotationApprovalWithItems {

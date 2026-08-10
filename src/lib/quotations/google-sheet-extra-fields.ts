@@ -63,6 +63,8 @@ export type GoogleSheetQuotationListRow = {
   createdAt: string;
   updatedAt: string;
   items: Array<{
+    itemId: string;
+    parentTitleId: string;
     description: string;
     quantity: number;
     unit: string;
@@ -234,7 +236,7 @@ export async function listQuotationsFromGoogleSheet(): Promise<GoogleSheetQuotat
   if (!isConfigured()) throw new Error("Quotation Google Sheet read is not configured.");
 
   const quotationRange = encodeURIComponent(`${QUOTATIONS_TAB}!A1:BA`);
-  const itemRange = encodeURIComponent("Quotation_Items!A1:U");
+  const itemRange = encodeURIComponent("Quotation_Items!A1:Z");
   const response = await sheetsFetch(`/values:batchGet?ranges=${quotationRange}&ranges=${itemRange}&majorDimension=ROWS`);
   const payload = (await response.json()) as {
     valueRanges?: Array<{ values?: unknown[][] }>;
@@ -253,6 +255,8 @@ export async function listQuotationsFromGoogleSheet(): Promise<GoogleSheetQuotat
     if (!quotationId) continue;
     const items = itemsByQuotation.get(quotationId) || [];
     items.push({
+      itemId: recordString(record, ["item_id", "itemId"]),
+      parentTitleId: recordString(record, ["parent_title_id", "parentTitleId"]),
       description: recordString(record, ["description"]),
       quantity: recordNumber(record, ["quantity"]),
       unit: recordString(record, ["unit"]),

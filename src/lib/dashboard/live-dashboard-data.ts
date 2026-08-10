@@ -591,7 +591,9 @@ async function loadLiveDashboardData(): Promise<LiveDashboardData> {
     const date = parseDate(approval.clientSignedAt || approval.lastUpdate || approval.requestedAt);
     return !!date && date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
   });
-  const unsignedQuotations = liveApprovals.filter((approval) => !isCustomerSigned(approval));
+  const unsignedQuotations = liveApprovals.filter(
+    (approval) => approval.status !== "Cancelled" && !isCustomerSigned(approval),
+  );
   const internalApprovedNotSigned = unsignedQuotations.filter((approval) => approval.status === "Approved");
   const rejectedOrRevision = liveApprovals.filter((approval) => ["Rejected", "Revision Required"].includes(approval.status));
   const fitoutAnnual = currentYearFitoutRevenue(fitoutData);
@@ -833,8 +835,14 @@ async function loadLiveDashboardData(): Promise<LiveDashboardData> {
       signedThisMonth: signedThisMonth.length,
       rejectedOrRevision: rejectedOrRevision.length,
       totalPendingValue: pendingApprovals.reduce((sum, approval) => sum + approval.amount, 0),
-      actualWorkValue: customerSignedQuotations.reduce((sum, approval) => sum + approval.amount, 0),
-      notAcceptedValue: unsignedQuotations.reduce((sum, approval) => sum + approval.amount, 0),
+      actualWorkValue: customerSignedQuotations.reduce(
+        (sum, approval) => sum + approval.recognizedRevenueAmount,
+        0,
+      ),
+      notAcceptedValue: unsignedQuotations.reduce(
+        (sum, approval) => sum + approval.recognizedRevenueAmount,
+        0,
+      ),
       internalApprovedNotSigned: internalApprovedNotSigned.length,
       mainApprover: "Tammasit",
     },
