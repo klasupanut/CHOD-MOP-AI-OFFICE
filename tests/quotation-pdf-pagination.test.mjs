@@ -54,5 +54,5 @@ test("legacy whole-document one-page scaling is removed", () => {
 });
 
 test("quotation bundle cache key identifies pagination release", () => {
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-approval-bars-fix/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260811-approval-currency-fix/);
 });

@@ -161,7 +161,7 @@ test("server dashboards and embedded quotation analytics share the exclusion rul
   assert.match(bundle, /chodRestorationTitle/);
   assert.match(bundle, /,le=chodRecognizedQuotation\(oe\)/);
   assert.match(bundle, /conditional RESTORATION WORK categories are excluded/);
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260810-approval-bars-fix/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260811-approval-currency-fix/);
 });
 
 test("Value Comparison uses signed value and approval comparison uses bars instead of donut", () => {
@@ -183,6 +183,8 @@ test("Value Comparison uses signed value and approval comparison uses bars inste
   assert.match(report, /\{status:"Waiting Customer Signature",value:h\.selling/);
   assert.match(report, /data-testid":"status-bar-chart"[^]*children:chodValueComparisonRows\.map/);
   assert.match(report, /data-testid":"approval-status-bar-chart"[^]*children:approvalComparisonRows\.map/);
+  assert.match(report, /children:\["\\u0e3f",me\(oe\.value\)\]/);
+  assert.doesNotMatch(report, /\u0e40\u0e18\u0e1f/);
   assert.doesNotMatch(report, /data-testid":"status-donut-chart"/);
   assert.match(scoreCards, /\["Actual Work Value \(signed\)",`฿\$\{me\(k\.selling\)\}`/);
   assert.doesNotMatch(scoreCards, /RESTORATION WORK/);

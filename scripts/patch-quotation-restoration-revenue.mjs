@@ -95,7 +95,7 @@ if (report.includes(oldApprovalChartSetup)) {
 }
 
 const oldApprovalDonut = 'i.jsxs("section",{className:"panel p-5",children:[i.jsx("h2",{className:"font-bold text-navy",children:"Internal Approved vs Customer Signed"}),i.jsxs("div",{className:"mt-5 flex items-center gap-6",children:[i.jsx("div",{"data-testid":"status-donut-chart",className:"relative shrink-0 rounded-full",style:{background:ee,width:144,height:144},children:i.jsxs("div",{className:"absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white",children:[i.jsx("span",{className:"text-[10px] uppercase text-slate-400",children:"Signed"}),i.jsxs("strong",{className:"mt-1 text-sm text-navy",children:["เธฟ",me(k.selling,0)]})]})}),i.jsx("div",{className:"min-w-0 flex-1 space-y-3",children:J.map(oe=>i.jsx("div",{children:i.jsxs("div",{className:"flex items-center gap-2 text-xs",children:[i.jsx("span",{className:"h-2.5 w-2.5 rounded-full",style:{backgroundColor:oe.color}}),i.jsx("span",{className:"text-slate-500",children:oe.status}),i.jsxs("strong",{className:"ml-auto text-navy",children:["เธฟ",me(oe.value)]})]})},oe.status))})]})]})';
-const newApprovalBars = 'i.jsxs("section",{className:"panel p-5",children:[i.jsx("h2",{className:"font-bold text-navy",children:"Internal Approved vs Customer Signed"}),i.jsx("p",{className:"mt-1 text-[11px] text-slate-400",children:"Signed includes customer e-signature and internal verification of an existing hard copy."}),i.jsx("div",{"data-testid":"approval-status-bar-chart",className:"mt-5 space-y-4",children:approvalComparisonRows.map(oe=>i.jsxs("div",{children:[i.jsxs("div",{className:"flex items-center gap-3 text-xs",children:[i.jsx("span",{className:"min-w-0 flex-1 text-slate-500",children:oe.status}),i.jsxs("strong",{className:"shrink-0 text-navy",children:["เธฟ",me(oe.value)]})]}),i.jsx("div",{className:"mt-2 overflow-hidden rounded-full bg-slate-100",style:{height:12},children:i.jsx("div",{className:`h-full rounded-full transition-all ${oe.className}`,style:{backgroundColor:oe.color,width:oe.value>0?`${Math.max(2,oe.value/approvalComparisonMax*100)}%`:"0%"}})})]},oe.status))})]})';
+const newApprovalBars = 'i.jsxs("section",{className:"panel p-5",children:[i.jsx("h2",{className:"font-bold text-navy",children:"Internal Approved vs Customer Signed"}),i.jsx("p",{className:"mt-1 text-[11px] text-slate-400",children:"Signed includes customer e-signature and internal verification of an existing hard copy."}),i.jsx("div",{"data-testid":"approval-status-bar-chart",className:"mt-5 space-y-4",children:approvalComparisonRows.map(oe=>i.jsxs("div",{children:[i.jsxs("div",{className:"flex items-center gap-3 text-xs",children:[i.jsx("span",{className:"min-w-0 flex-1 text-slate-500",children:oe.status}),i.jsxs("strong",{className:"shrink-0 text-navy",children:["\\u0e3f",me(oe.value)]})]}),i.jsx("div",{className:"mt-2 overflow-hidden rounded-full bg-slate-100",style:{height:12},children:i.jsx("div",{className:`h-full rounded-full transition-all ${oe.className}`,style:{backgroundColor:oe.color,width:oe.value>0?`${Math.max(2,oe.value/approvalComparisonMax*100)}%`:"0%"}})})]},oe.status))})]})';
 if (report.includes(oldApprovalDonut)) {
   report = replaceOnce(report, oldApprovalDonut, newApprovalBars, "approval donut to bar chart");
 }
@@ -111,6 +111,10 @@ if (report.includes('data-testid":"status-donut-chart"')) {
   }
   report = `${report.slice(0, approvalSectionStart)}${newApprovalBars},${report.slice(valueSectionStart)}`;
 }
+report = report.replace(
+  'className:"shrink-0 text-navy",children:["เธฟ",me(oe.value)]',
+  'className:"shrink-0 text-navy",children:["\\u0e3f",me(oe.value)]',
+);
 
 report = report.replace(
   "Drafts and cancelled quotations are excluded. All values exclude VAT.",
@@ -127,7 +131,7 @@ fs.writeFileSync(bundlePath, source, "utf8");
 let indexHtml = fs.readFileSync(indexPath, "utf8");
 indexHtml = indexHtml.replace(
   /index-HmUxnN6T\.js\?v=[A-Za-z0-9-]+/,
-  "index-HmUxnN6T.js?v=20260810-approval-bars-fix",
+  "index-HmUxnN6T.js?v=20260811-approval-currency-fix",
 );
 fs.writeFileSync(indexPath, indexHtml, "utf8");
 
