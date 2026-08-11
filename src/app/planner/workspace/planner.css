@@ -4725,6 +4725,23 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     font-size: 5.8pt;
   }
 
+  /* The PDF uses the same Day/Week scale selected in the workspace. Keep the
+     complete day axis inside the printable chart instead of inheriting the
+     wide, horizontally scrollable screen layout. */
+  .timeline-scale-day .timeline-day-cell {
+    padding-inline: 0;
+    font-size: 5.2pt;
+    line-height: 1;
+  }
+
+  .timeline-scale-day .timeline-day-cell time {
+    display: none;
+  }
+
+  .timeline-scale-day .timeline-guides .day-guide {
+    border-left-color: color-mix(in oklab, var(--secondary) 22%, var(--line));
+  }
+
   .timeline-week-cell time {
     display: none;
   }

@@ -1736,7 +1736,7 @@ export default function TimelinePlannerWorkspace() {
                   {showStatusDate && <span><i className="legend-status" /> Status date</span>}
                 </div>
                 <div className="combined-chart-scroll">
-                  <IntegratedTimeline rows={pageRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} showStatusDate={showStatusDate} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} reportMode />
+                  <IntegratedTimeline rows={pageRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} showStatusDate={showStatusDate} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} scale={timelineScale} reportMode />
                 </div>
               </section>
               <footer className="print-page-footer">
