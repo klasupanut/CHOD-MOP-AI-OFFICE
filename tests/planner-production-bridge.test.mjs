@@ -38,14 +38,20 @@ test("Planner timeline separates package dates and supports day or week scale", 
   assert.match(source, /aria-label="Timeline time scale"/);
   assert.match(source, /scale=\{timelineScale\}/);
   assert.match(source, /scale=\{timelineScale\}\s+reportMode/);
-  assert.match(source, /buildTimelinePrintWindows\(/);
-  assert.match(source, /printTimelineWindows\.flatMap\(/);
+  assert.match(source, /printTimelinePages\.map\(\(rows, rowPageIndex\)/);
+  assert.doesNotMatch(source, /buildTimelinePrintWindows|printTimelineWindows\.flatMap/);
+  assert.match(source, /startMs:\s*printTimelineBounds\.startMs/);
+  assert.match(source, /endMs:\s*printTimelineBounds\.endMs/);
   assert.match(source, /viewStartMs=\{window\.startMs\}\s+viewEndMs=\{window\.endMs\}/);
   assert.match(source, /<strong>Work package<\/strong><span>Start<\/span><span>Finish<\/span>/);
   assert.match(source, /className="timeline-row-date"/);
+  assert.match(source, /timeline-label-extra-compact/);
   assert.doesNotMatch(source, /const rowDetails =/);
   assert.match(styles, /\.timeline-scale-switch/);
   assert.match(styles, /\.timeline-day-cell/);
+  assert.match(styles, /\.timeline-scale-day\.day-axis-ultra-dense \.timeline-day-cell/);
+  assert.match(styles, /-webkit-line-clamp:\s*2/);
+  assert.match(styles, /overflow-wrap:\s*anywhere/);
 });
 
 test("Planner organization is fixed to Timeline production tenant", async () => {

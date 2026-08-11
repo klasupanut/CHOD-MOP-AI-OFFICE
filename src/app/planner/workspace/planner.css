@@ -4666,7 +4666,7 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   }
 
   .combined-chart {
-    --timeline-label: 72mm;
+    --timeline-label: 82mm;
     display: flex;
     width: 100%;
     height: 100%;
@@ -4691,15 +4691,15 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
   .timeline-axis-label,
   .timeline-row-label {
-    --timeline-date-column: 16mm;
+    --timeline-date-column: 12mm;
     padding: 0;
   }
 
   .timeline-axis-label strong,
   .timeline-axis-label span,
   .timeline-row-package {
-    padding-right: 2mm;
-    padding-left: 2mm;
+    padding-right: 1.2mm;
+    padding-left: 1.2mm;
   }
 
   .timeline-row-date {
@@ -4736,6 +4736,14 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     padding-inline: 0;
     font-size: 5.2pt;
     line-height: 1;
+  }
+
+  .timeline-scale-day.day-axis-dense .timeline-day-cell {
+    font-size: 3.8pt;
+  }
+
+  .timeline-scale-day.day-axis-ultra-dense .timeline-day-cell {
+    font-size: 2.8pt;
   }
 
   .timeline-scale-day .timeline-day-cell time {
@@ -4797,11 +4805,31 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     overflow: hidden;
   }
 
+  .timeline-chart-row.task .timeline-row-package {
+    padding-left: 2.4mm;
+  }
+
+  .timeline-row-code {
+    width: 7.5mm;
+  }
+
   .timeline-row-label strong {
+    display: -webkit-box;
     overflow: hidden;
-    line-height: 1;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .timeline-row-package.timeline-label-compact strong {
+    font-size: 4.9pt;
+  }
+
+  .timeline-row-package.timeline-label-extra-compact strong {
+    font-size: 4.3pt;
   }
 
   .timeline-chart-row.group .timeline-row-label {
@@ -4812,6 +4840,14 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     color: var(--nav);
     font-size: 6.2pt;
     font-weight: 800;
+  }
+
+  .timeline-chart-row.group .timeline-row-package.timeline-label-compact strong {
+    font-size: 5.2pt;
+  }
+
+  .timeline-chart-row.group .timeline-row-package.timeline-label-extra-compact strong {
+    font-size: 4.6pt;
   }
 
   .timeline-chart-row.group .timeline-row-label small {
@@ -5065,7 +5101,7 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   }
 
   .pdf-orientation-portrait .combined-chart {
-    --timeline-label: 62mm;
+    --timeline-label: 72mm;
   }
 
   .pdf-orientation-portrait .chart-legend {

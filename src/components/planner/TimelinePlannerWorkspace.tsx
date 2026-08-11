@@ -27,7 +27,6 @@ import {
   serializeDependency,
   wouldCreateDependencyCycle,
 } from "@/lib/planner/dependency-scheduling";
-import { buildTimelinePrintWindows } from "@/lib/planner/timeline-print-pagination";
 import type {
   Activity,
   ActualSnapshot,
@@ -621,6 +620,9 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
   const screenMinWidth = scale === "day" && !reportMode
     ? Math.max(980, 500 + daySegments.length * 28)
     : undefined;
+  const dayAxisDensity = scale === "day"
+    ? daySegments.length > 120 ? "day-axis-ultra-dense" : daySegments.length > 45 ? "day-axis-dense" : ""
+    : "";
   const peak = plannedPeak(tasks, mode, planningModel);
   const peakInView = peak.dateMs >= startMs && peak.dateMs <= endMs;
   const peakRatio = clamp((peak.dateMs - startMs) / axisSpanMs, 0, 1);
@@ -641,7 +643,7 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
   };
 
   return (
-    <div className={`combined-chart timeline-scale-${scale} chart-view-${curveView} ${showStatusDate ? "show-status-date" : "hide-status-date"} ${statusInView ? "" : "status-outside-view"} ${reportMode ? "report-table-frame" : ""}`} style={{ "--timeline-row-count": Math.max(1, rows.length), minWidth: screenMinWidth } as CSSProperties}>
+    <div className={`combined-chart timeline-scale-${scale} ${dayAxisDensity} chart-view-${curveView} ${showStatusDate ? "show-status-date" : "hide-status-date"} ${statusInView ? "" : "status-outside-view"} ${reportMode ? "report-table-frame" : ""}`} style={{ "--timeline-row-count": Math.max(1, rows.length), minWidth: screenMinWidth } as CSSProperties}>
       <div className="timeline-axis-row">
         <div className="timeline-axis-label"><strong>Work package</strong><span>Start</span><span>Finish</span></div>
         <div className="timeline-axis-track" aria-label={`Shared project date axis grouped by month and ${scale === "day" ? "day" : "ISO week"}`}>
@@ -681,10 +683,15 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
           const keepProgressInside = actualGeometry
             ? actualGeometry.left + actualGeometry.width > 92
             : false;
+          const labelDensity = row.label.length > 72
+            ? "timeline-label-extra-compact"
+            : row.label.length > 42
+              ? "timeline-label-compact"
+              : "";
           return (
             <div className={`timeline-chart-row ${row.kind}`} key={row.id}>
               <div className="timeline-row-label">
-                <div className="timeline-row-package"><span className="timeline-row-code">{row.code}</span><strong>{row.label}</strong></div>
+                <div className={`timeline-row-package ${labelDensity}`}><span className="timeline-row-code">{row.code}</span><strong>{row.label}</strong></div>
                 <time className="timeline-row-date" title={displayDate(row.start)}>{displayShortDate(row.start)}</time>
                 <time className="timeline-row-date" title={displayDate(row.end)}>{displayShortDate(row.end)}</time>
               </div>
@@ -1507,9 +1514,9 @@ export default function TimelinePlannerWorkspace() {
   // Paginate by visible rows, not only activities. Package headings therefore
   // consume real space and the chart no longer needs vertical distortion.
   const isPortraitPdf = pdfOrientation === "portrait";
-  const firstPrintPageRowCapacity = isPortraitPdf ? 34 : 24;
-  const continuationPrintPageRowCapacity = isPortraitPdf ? 40 : 30;
-  const singlePrintPageRowCapacity = isPortraitPdf ? 38 : 28;
+  const firstPrintPageRowCapacity = isPortraitPdf ? 32 : 20;
+  const continuationPrintPageRowCapacity = isPortraitPdf ? 38 : 26;
+  const singlePrintPageRowCapacity = isPortraitPdf ? 34 : 20;
   const printTimelinePages: TimelineChartRow[][] = [];
   let printPageRows: TimelineChartRow[] = [];
   let activePrintGroup: TimelineChartRow | null = null;
@@ -1560,17 +1567,18 @@ export default function TimelinePlannerWorkspace() {
 
   const reportOutputActive = pdfPreview || printingPdf;
   const printTimelineBounds = timelineBounds(tasks, calendarMode, project.statusDate);
-  const printTimelineWindows = reportOutputActive
-    ? buildTimelinePrintWindows(
-      printTimelineBounds.startMs,
-      printTimelineBounds.endMs,
-      timelineScale,
-      pdfOrientation,
-    )
+  const printTimelineSheets = reportOutputActive
+    ? printTimelinePages.map((rows, rowPageIndex) => ({
+      window: {
+        startMs: printTimelineBounds.startMs,
+        endMs: printTimelineBounds.endMs,
+        index: 0,
+        total: 1,
+      },
+      rows,
+      rowPageIndex,
+    }))
     : [];
-  const printTimelineSheets = printTimelineWindows.flatMap((window) =>
-    printTimelinePages.map((rows, rowPageIndex) => ({ window, rows, rowPageIndex })),
-  );
 
   const measuredCurveLabel = planningModel === "intensive" ? "Earned progress" : "Completed progress";
   const measuredMetricLabel = planningModel === "intensive" ? "Earned" : "Completed";
@@ -1751,7 +1759,7 @@ export default function TimelinePlannerWorkspace() {
               ? pageIndex === 0 ? 182 : 234
               : pageIndex === 0 ? 112 : 148;
             const rowsHeightBudgetMm = baseRowsHeightBudgetMm - reportFrameGutterMm - reportFrameSafetyInsetMm;
-            const minimumRowHeightMm = isPortraitPdf ? 4.8 : pageIndex === 0 ? 4.25 : 4.8;
+            const minimumRowHeightMm = 5.2;
             const maximumRowHeightMm = isPortraitPdf ? 7.4 : pageIndex === 0 ? 6.4 : 7.4;
             const printRowHeightMm = clamp(rowsHeightBudgetMm / Math.max(1, pageRows.length), minimumRowHeightMm, maximumRowHeightMm);
 
@@ -1760,7 +1768,7 @@ export default function TimelinePlannerWorkspace() {
               {pageIndex > 0 && <header className="print-continuation-header">
                 <div className="print-continuation-company">
                   {company.logoDataUrl ? <Image src={company.logoDataUrl} width={90} height={36} unoptimized alt={`${company.name || "Company"} logo`} /> : <span className="print-continuation-mark">TP</span>}
-                  <div><strong>{company.name || "Company name"}</strong><span>{timelineScale === "day" ? `Day period ${window.index + 1} of ${window.total}` : "Timeline continuation"}</span></div>
+                  <div><strong>{company.name || "Company name"}</strong><span>Timeline continuation</span></div>
                 </div>
                 <div className="print-continuation-project"><span>{project.revision} · Issued {displayDate(project.issueDate)}</span><strong>{project.name || "Untitled project"}</strong><span>Page {pageIndex + 1} of {printTimelineSheets.length}</span></div>
               </header>}
