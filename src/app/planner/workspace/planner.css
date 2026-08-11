@@ -3141,6 +3141,10 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   display: none;
 }
 
+.combined-chart.status-outside-view .status-axis-chip {
+  display: none;
+}
+
 .timeline-bar-list {
   position: relative;
   isolation: isolate;

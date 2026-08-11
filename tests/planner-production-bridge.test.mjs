@@ -38,6 +38,9 @@ test("Planner timeline separates package dates and supports day or week scale", 
   assert.match(source, /aria-label="Timeline time scale"/);
   assert.match(source, /scale=\{timelineScale\}/);
   assert.match(source, /scale=\{timelineScale\}\s+reportMode/);
+  assert.match(source, /buildTimelinePrintWindows\(/);
+  assert.match(source, /printTimelineWindows\.flatMap\(/);
+  assert.match(source, /viewStartMs=\{window\.startMs\}\s+viewEndMs=\{window\.endMs\}/);
   assert.match(source, /<strong>Work package<\/strong><span>Start<\/span><span>Finish<\/span>/);
   assert.match(source, /className="timeline-row-date"/);
   assert.doesNotMatch(source, /const rowDetails =/);
