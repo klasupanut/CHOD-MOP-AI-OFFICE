@@ -30,6 +30,20 @@ test("Planner serializes first cloud save and exposes confirmed project deletion
   assert.match(source, /onDelete=\{\(projectId, projectName\) => void deleteCloudProject\(projectId, projectName\)\}/);
 });
 
+test("Planner timeline separates package dates and supports day or week scale", async () => {
+  const source = await read("../src/components/planner/TimelinePlannerWorkspace.tsx");
+  const styles = await read("../src/app/planner/workspace/planner.css");
+  assert.match(source, /type TimelineScale = "day" \| "week"/);
+  assert.match(source, /function timelineDaySegments\(/);
+  assert.match(source, /aria-label="Timeline time scale"/);
+  assert.match(source, /scale=\{timelineScale\}/);
+  assert.match(source, /<strong>Work package<\/strong><span>Start<\/span><span>Finish<\/span>/);
+  assert.match(source, /className="timeline-row-date"/);
+  assert.doesNotMatch(source, /const rowDetails =/);
+  assert.match(styles, /\.timeline-scale-switch/);
+  assert.match(styles, /\.timeline-day-cell/);
+});
+
 test("Planner organization is fixed to Timeline production tenant", async () => {
   const tenancy = await read("../src/lib/planner/tenancy.ts");
   assert.match(tenancy, /id:\s*"org-chod-ai-office"/);

@@ -2486,7 +2486,12 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 @media screen {
   @container (max-width: 880px) {
     .curve-panel .combined-chart {
-      --timeline-label: clamp(220px, 34cqw, 300px);
+      --timeline-label: clamp(360px, 52cqw, 450px);
+    }
+
+    .curve-panel .timeline-axis-label,
+    .curve-panel .timeline-row-label {
+      --timeline-date-column: 78px;
     }
 
     .curve-panel .timeline-week-cell time {
@@ -2665,7 +2670,12 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
   @container (max-width: 560px) {
     .curve-panel .combined-chart {
-      --timeline-label: clamp(150px, 40cqw, 210px);
+      --timeline-label: 292px;
+    }
+
+    .curve-panel .timeline-axis-label,
+    .curve-panel .timeline-row-label {
+      --timeline-date-column: 64px;
     }
 
     .curve-panel .timeline-week-cell:nth-child(even) strong {
@@ -2673,10 +2683,8 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     }
 
     .curve-panel .timeline-axis-label {
-      align-items: flex-start;
-      flex-direction: column;
-      justify-content: center;
-      gap: 1px;
+      align-items: stretch;
+      grid-template-columns: minmax(0, 1fr) repeat(2, var(--timeline-date-column));
     }
 
     .curve-panel .peak-axis-chip {
@@ -2689,12 +2697,21 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     }
 
     .curve-panel .timeline-row-label {
+      padding: 0;
+    }
+
+    .curve-panel .timeline-row-package {
       gap: var(--space-1);
       padding-inline: var(--space-2);
     }
 
-    .curve-panel .timeline-row-label > span {
+    .curve-panel .timeline-row-code {
       width: 22px;
+    }
+
+    .curve-panel .timeline-row-date {
+      padding-inline: 3px;
+      font-size: 9px;
     }
 
     .curve-panel .curve-overlay-scale {
@@ -2783,6 +2800,11 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   grid-template-columns: repeat(3, 1fr);
 }
 
+.timeline-scale-switch {
+  width: 124px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .pdf-orientation-switch {
   width: 176px;
   grid-template-columns: repeat(2, 1fr);
@@ -2851,7 +2873,7 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 }
 
 .combined-chart {
-  --timeline-label: clamp(300px, 30cqw, 380px);
+  --timeline-label: clamp(440px, 42cqw, 560px);
   --timeline-group-bar-height: 12px;
   --timeline-task-bar-height: 8px;
   width: 100%;
@@ -2892,16 +2914,15 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
 .timeline-axis-label,
 .timeline-row-label {
+  --timeline-date-column: 92px;
   border-right: 1px solid var(--line);
 }
 
 .timeline-axis-label {
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-3);
+  display: grid;
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) repeat(2, var(--timeline-date-column));
+  padding: 0;
   border-right-color: var(--nav-soft);
   background: var(--nav);
   color: var(--on-dark);
@@ -2909,11 +2930,19 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
 .timeline-axis-label strong,
 .timeline-axis-label span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 0 var(--space-3);
   font-size: var(--text-caption);
 }
 
 .timeline-axis-label span {
+  justify-content: center;
+  border-left: 1px solid oklch(1 0 0 / 0.18);
   color: var(--on-dark-subtle);
+  font-family: var(--font-geist-mono, Consolas, monospace);
+  font-weight: 700;
 }
 
 .timeline-axis-track {
@@ -2924,6 +2953,7 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
 .timeline-month-row,
 .timeline-week-row,
+.timeline-day-row,
 .timeline-axis-events {
   position: relative;
   min-width: 0;
@@ -2931,7 +2961,8 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 }
 
 .timeline-month-row,
-.timeline-week-row {
+.timeline-week-row,
+.timeline-day-row {
   border-bottom: 1px solid var(--line);
 }
 
@@ -2940,7 +2971,8 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   background: var(--nav);
 }
 
-.timeline-week-row {
+.timeline-week-row,
+.timeline-day-row {
   background: color-mix(in oklab, var(--secondary) 8%, var(--surface));
 }
 
@@ -2949,7 +2981,8 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 }
 
 .timeline-month-cell,
-.timeline-week-cell {
+.timeline-week-cell,
+.timeline-day-cell {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -2984,8 +3017,18 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   line-height: 1.05;
 }
 
+.timeline-day-cell {
+  flex-direction: column;
+  color: var(--nav);
+  font-family: var(--font-geist-mono, Consolas, monospace);
+  font-size: var(--text-caption);
+  line-height: 1.05;
+}
+
 .timeline-week-cell strong,
-.timeline-week-cell time {
+.timeline-week-cell time,
+.timeline-day-cell strong,
+.timeline-day-cell time {
   display: block;
   max-width: 100%;
   overflow: hidden;
@@ -2995,6 +3038,13 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 .timeline-week-cell time {
   margin-top: 1px;
   color: var(--muted);
+}
+
+.timeline-day-cell time {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 8px;
+  text-transform: uppercase;
 }
 
 .timeline-axis-track .peak-axis-chip {
@@ -3169,20 +3219,28 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 .timeline-row-label {
   position: relative;
   z-index: 4;
+  display: grid;
+  min-width: 0;
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) repeat(2, var(--timeline-date-column));
+  padding: 0;
+  background: var(--surface);
+}
+
+.timeline-chart-row.task .timeline-row-package {
+  padding-left: var(--space-5);
+  background: var(--surface);
+}
+
+.timeline-row-package {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-3);
-  background: var(--surface);
 }
 
-.timeline-chart-row.task .timeline-row-label {
-  padding-left: var(--space-5);
-  background: var(--surface);
-}
-
-.timeline-row-label > span {
+.timeline-row-code {
   width: 28px;
   flex: 0 0 auto;
   color: var(--primary-deep);
@@ -3191,12 +3249,12 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   font-weight: 700;
 }
 
-.timeline-row-label > div {
+.timeline-row-package > strong {
   min-width: 0;
 }
 
-.timeline-row-label strong,
-.timeline-row-label small {
+.timeline-row-package strong,
+.timeline-row-date {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3212,6 +3270,20 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
 .timeline-row-label strong {
   font-size: var(--text-secondary);
+}
+
+.timeline-row-date {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  border-left: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-family: var(--font-geist-mono, Consolas, monospace);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
 }
 
 .timeline-row-label small {
@@ -4023,6 +4095,10 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     width: 100%;
   }
 
+  .timeline-scale-switch {
+    width: 100%;
+  }
+
   .pdf-orientation-switch {
     width: 100%;
   }
@@ -4611,8 +4687,20 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
   .timeline-axis-label,
   .timeline-row-label {
+    --timeline-date-column: 16mm;
+    padding: 0;
+  }
+
+  .timeline-axis-label strong,
+  .timeline-axis-label span,
+  .timeline-row-package {
     padding-right: 2mm;
     padding-left: 2mm;
+  }
+
+  .timeline-row-date {
+    padding-right: 1mm;
+    padding-left: 1mm;
   }
 
   .timeline-axis-label strong,
@@ -4623,7 +4711,8 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
 
   .timeline-axis-events span,
   .timeline-row-label small,
-  .timeline-row-label > span,
+  .timeline-row-code,
+  .timeline-row-date,
   .timeline-bar > b {
     font-size: 4.7pt;
   }

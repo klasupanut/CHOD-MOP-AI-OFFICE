@@ -47,6 +47,7 @@ import type {
 type PlanStorageMode = "loading" | "cloud" | "error";
 type ActiveWorkspacePage = "plan" | "projects" | "usage";
 type ProjectLibraryState = "idle" | "loading" | "ready" | "error";
+type TimelineScale = "day" | "week";
 
 type TimelineChartRow = {
   id: string;
@@ -365,6 +366,27 @@ function timelineWeekSegments(startMs: number, endMs: number): TimelineAxisSegme
   return segments;
 }
 
+function timelineDaySegments(startMs: number, endMs: number): TimelineAxisSegment[] {
+  const axisEndMs = endMs + DAY_MS;
+  let cursor = startMs;
+  const segments: TimelineAxisSegment[] = [];
+
+  while (cursor <= endMs || segments.length === 0) {
+    const cursorDate = new Date(cursor);
+    const nextDay = cursor + DAY_MS;
+    const position = timelineSegmentPosition(cursor, Math.min(nextDay, axisEndMs), startMs, axisEndMs);
+    segments.push({
+      key: `day-${cursor}`,
+      label: String(cursorDate.getUTCDate()).padStart(2, "0"),
+      detail: cursorDate.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }),
+      ...position,
+    });
+    cursor = nextDay;
+  }
+
+  return segments;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -570,7 +592,7 @@ function Scurve({ tasks, mode, planningModel, statusDate, snapshots, curveView, 
   );
 }
 
-function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, showStatusDate, planningModel, statusDate, snapshots, curveView, reportMode = false }: { rows: TimelineChartRow[]; tasks: Activity[]; mode: CalendarMode; showCurve: boolean; includeCurvePdf: boolean; showStatusDate: boolean; planningModel: PlanningModel; statusDate: string; snapshots: ActualSnapshot[]; curveView: CurveView; reportMode?: boolean }) {
+function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, showStatusDate, planningModel, statusDate, snapshots, curveView, scale = "week", reportMode = false }: { rows: TimelineChartRow[]; tasks: Activity[]; mode: CalendarMode; showCurve: boolean; includeCurvePdf: boolean; showStatusDate: boolean; planningModel: PlanningModel; statusDate: string; snapshots: ActualSnapshot[]; curveView: CurveView; scale?: TimelineScale; reportMode?: boolean }) {
   if (tasks.length === 0) {
     return <div className="timeline-empty"><strong>No work packages yet</strong><span>Add a work package and its sub-plans to generate the timeline and S-curve.</span></div>;
   }
@@ -579,6 +601,11 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
   const spanMs = Math.max(DAY_MS, endMs - startMs);
   const monthSegments = timelineMonthSegments(startMs, endMs);
   const weekSegments = timelineWeekSegments(startMs, endMs);
+  const daySegments = scale === "day" ? timelineDaySegments(startMs, endMs) : [];
+  const scaleSegments = scale === "day" ? daySegments : weekSegments;
+  const screenMinWidth = scale === "day" && !reportMode
+    ? Math.max(980, 500 + daySegments.length * 28)
+    : undefined;
   const peak = plannedPeak(tasks, mode, planningModel);
   const peakRatio = clamp((peak.dateMs - startMs) / spanMs, 0, 1);
   const peakAnchor = peakRatio < 0.18 ? "anchor-start" : peakRatio > 0.82 ? "anchor-end" : "anchor-center";
@@ -586,18 +613,18 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
   const progressMetric = planningModel === "intensive" ? "earned" : "completed";
 
   return (
-    <div className={`combined-chart chart-view-${curveView} ${showStatusDate ? "show-status-date" : "hide-status-date"} ${reportMode ? "report-table-frame" : ""}`} style={{ "--timeline-row-count": Math.max(1, rows.length) } as CSSProperties}>
+    <div className={`combined-chart timeline-scale-${scale} chart-view-${curveView} ${showStatusDate ? "show-status-date" : "hide-status-date"} ${reportMode ? "report-table-frame" : ""}`} style={{ "--timeline-row-count": Math.max(1, rows.length), minWidth: screenMinWidth } as CSSProperties}>
       <div className="timeline-axis-row">
-        <div className="timeline-axis-label"><strong>Work package</strong><span>Month / ISO week</span></div>
-        <div className="timeline-axis-track" aria-label="Shared project date axis grouped by month and ISO week">
+        <div className="timeline-axis-label"><strong>Work package</strong><span>Start</span><span>Finish</span></div>
+        <div className="timeline-axis-track" aria-label={`Shared project date axis grouped by month and ${scale === "day" ? "day" : "ISO week"}`}>
           <div className="timeline-month-row">
             {monthSegments.map((segment) => (
-              <span className="timeline-month-cell" key={segment.key} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={`${segment.label} · ${segment.detail}`}><span className="month-label-full">{segment.label}</span><span className="month-label-short">{segment.shortLabel}</span></span>
+              <span className="timeline-month-cell" key={segment.key} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={`${segment.label} — ${segment.detail}`}><span className="month-label-full">{segment.label}</span><span className="month-label-short">{segment.shortLabel}</span></span>
             ))}
           </div>
-          <div className="timeline-week-row">
-            {weekSegments.map((segment) => (
-              <span className="timeline-week-cell" key={segment.key} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={`${segment.label} · ${segment.detail}`}><strong>{segment.label}</strong><time>{segment.detail}</time></span>
+          <div className={scale === "day" ? "timeline-day-row" : "timeline-week-row"}>
+            {scaleSegments.map((segment) => (
+              <span className={scale === "day" ? "timeline-day-cell" : "timeline-week-cell"} key={segment.key} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={`${segment.label} — ${segment.detail}`}><strong>{segment.label}</strong><time>{segment.detail}</time></span>
             ))}
           </div>
           <div className="timeline-axis-events">
@@ -626,20 +653,16 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
           const actualWidth = row.actualStart && row.actualEnd ? Math.max(1.2, ((actualEndMs - actualStartMs + DAY_MS) / (spanMs + DAY_MS)) * 100) : 0;
           const boundedActualWidth = Math.min(actualWidth, 100 - actualLeft);
           const keepProgressInside = actualLeft + boundedActualWidth > 92;
-          const owner = row.owner.trim();
-          const reportOwner = owner && !/^(?:owner\s+)?tbc$/i.test(owner) ? owner : "";
-          const rowDetails = reportMode
-            ? [displayDate(row.start) + " - " + displayDate(row.end), `${row.duration} days`, reportOwner].filter(Boolean).join(" · ")
-            : `${displayDate(row.start)} - ${displayDate(row.end)} · ${row.duration} days · ${owner || "Owner TBC"}${row.dependency && row.dependency !== "-" ? ` · Depends ${row.dependency}` : ""}`;
           return (
             <div className={`timeline-chart-row ${row.kind}`} key={row.id}>
               <div className="timeline-row-label">
-                <span>{row.code}</span>
-                <div><strong>{row.label}</strong><small>{rowDetails}</small></div>
+                <div className="timeline-row-package"><span className="timeline-row-code">{row.code}</span><strong>{row.label}</strong></div>
+                <time className="timeline-row-date" title={displayDate(row.start)}>{displayShortDate(row.start)}</time>
+                <time className="timeline-row-date" title={displayDate(row.end)}>{displayShortDate(row.end)}</time>
               </div>
               <div className="timeline-row-track">
                 <div className="timeline-guides" aria-hidden="true">
-                  {weekSegments.slice(1).map((segment) => <i className="week-guide" key={segment.key} style={{ left: `${segment.left}%` }} />)}
+                  {scaleSegments.slice(1).map((segment) => <i className={scale === "day" ? "day-guide" : "week-guide"} key={segment.key} style={{ left: `${segment.left}%` }} />)}
                   {monthSegments.slice(1).map((segment) => <i className="month-guide" key={segment.key} style={{ left: `${segment.left}%` }} />)}
                 </div>
                 {showStatusDate && <i className="timeline-status-guide" style={{ left: `${statusRatio * 100}%` }} aria-hidden="true" />}
@@ -674,6 +697,7 @@ export default function TimelinePlannerWorkspace() {
   const [showStatusDate, setShowStatusDate] = useState(true);
   const [pdfOrientation, setPdfOrientation] = useState<PdfOrientation>("landscape");
   const [showTimelineSubplans, setShowTimelineSubplans] = useState(false);
+  const [timelineScale, setTimelineScale] = useState<TimelineScale>("week");
   const [pdfPreview, setPdfPreview] = useState(false);
   const [printingPdf, setPrintingPdf] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(true);
@@ -1734,6 +1758,10 @@ export default function TimelinePlannerWorkspace() {
                 <button type="button" className={curveView === "plan" ? "active" : ""} onClick={() => setCurveView("plan")}>Plan</button>
                 <button type="button" className={curveView === "actual" ? "active" : ""} onClick={() => setCurveView("actual")}>{measuredMetricLabel}</button>
               </div>
+              <div className="segmented timeline-scale-switch" role="group" aria-label="Timeline time scale">
+                <button type="button" className={timelineScale === "day" ? "active" : ""} aria-pressed={timelineScale === "day"} onClick={() => setTimelineScale("day")}>Day</button>
+                <button type="button" className={timelineScale === "week" ? "active" : ""} aria-pressed={timelineScale === "week"} onClick={() => setTimelineScale("week")}>Week</button>
+              </div>
               <div className="segmented pdf-orientation-switch" role="group" aria-label="PDF page orientation">
                 <button type="button" className={pdfOrientation === "landscape" ? "active" : ""} aria-pressed={pdfOrientation === "landscape"} onClick={() => setPdfOrientation("landscape")}>Landscape</button>
                 <button type="button" className={pdfOrientation === "portrait" ? "active" : ""} aria-pressed={pdfOrientation === "portrait"} onClick={() => setPdfOrientation("portrait")}>Portrait</button>
@@ -1752,7 +1780,7 @@ export default function TimelinePlannerWorkspace() {
             {showStatusDate && <span><i className="legend-status" /> Status date</span>}
           </div>
           <div className="combined-chart-scroll">
-            <IntegratedTimeline rows={timelineRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} showStatusDate={showStatusDate} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} />
+            <IntegratedTimeline rows={timelineRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} showStatusDate={showStatusDate} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} scale={timelineScale} />
           </div>
           <div className="timeline-facts">
             <div><span>{measuredMetricLabel} at data date</span><strong>{projectSummary.progress}%</strong></div>
