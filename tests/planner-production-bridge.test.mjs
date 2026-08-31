@@ -35,6 +35,12 @@ test("Planner timeline separates package dates and supports day or week scale", 
   const styles = await read("../src/app/planner/workspace/planner.css");
   assert.match(source, /type TimelineScale = "day" \| "week"/);
   assert.match(source, /function timelineDaySegments\(/);
+  assert.match(source, /function timelineDayLabelStep\(dayCount: number\)/);
+  assert.match(source, /dayCount <= 31\) return 1/);
+  assert.match(source, /dayCount <= 217\) return 7/);
+  assert.match(source, /const dayLabelStep = reportMode \? timelineDayLabelStep\(daySegments\.length\) : 1/);
+  assert.match(source, /day-label-visible/);
+  assert.match(source, /day-week-boundary/);
   assert.match(source, /aria-label="Timeline time scale"/);
   assert.match(source, /scale=\{timelineScale\}/);
   assert.match(source, /scale=\{timelineScale\}\s+reportMode/);
@@ -50,6 +56,8 @@ test("Planner timeline separates package dates and supports day or week scale", 
   assert.match(styles, /\.timeline-scale-switch/);
   assert.match(styles, /\.timeline-day-cell/);
   assert.match(styles, /\.timeline-scale-day\.day-axis-ultra-dense \.timeline-day-cell/);
+  assert.match(styles, /\.screen-timeline-panel \.combined-chart-scroll\.day-scroll/);
+  assert.match(styles, /width:\s*var\(--day-label-width, 100%\)/);
   assert.match(styles, /-webkit-line-clamp:\s*2/);
   assert.match(styles, /overflow-wrap:\s*anywhere/);
 });

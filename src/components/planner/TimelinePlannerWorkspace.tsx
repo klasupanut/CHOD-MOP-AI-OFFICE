@@ -390,6 +390,15 @@ function timelineDaySegments(startMs: number, endMs: number): TimelineAxisSegmen
   return segments;
 }
 
+function timelineDayLabelStep(dayCount: number) {
+  if (dayCount <= 31) return 1;
+  if (dayCount <= 62) return 2;
+  if (dayCount <= 93) return 3;
+  if (dayCount <= 217) return 7;
+  if (dayCount <= 434) return 14;
+  return 30;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -617,6 +626,7 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
   const weekSegments = timelineWeekSegments(startMs, endMs);
   const daySegments = scale === "day" ? timelineDaySegments(startMs, endMs) : [];
   const scaleSegments = scale === "day" ? daySegments : weekSegments;
+  const dayLabelStep = reportMode ? timelineDayLabelStep(daySegments.length) : 1;
   const screenMinWidth = scale === "day" && !reportMode
     ? Math.max(980, 500 + daySegments.length * 28)
     : undefined;
@@ -653,9 +663,29 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
             ))}
           </div>
           <div className={scale === "day" ? "timeline-day-row" : "timeline-week-row"}>
-            {scaleSegments.map((segment) => (
-              <span className={scale === "day" ? "timeline-day-cell" : "timeline-week-cell"} key={segment.key} style={{ left: `${segment.left}%`, width: `${segment.width}%` }} title={`${segment.label} — ${segment.detail}`}><strong>{segment.label}</strong><time>{segment.detail}</time></span>
-            ))}
+            {scaleSegments.map((segment, index) => {
+              const isDay = scale === "day";
+              const showDayLabel = !isDay || index % dayLabelStep === 0;
+              const labelSpan = isDay ? Math.min(dayLabelStep, scaleSegments.length - index) : 1;
+              const segmentDate = isDay ? new Date(startMs + index * DAY_MS) : null;
+              const isWeekBoundary = segmentDate?.getUTCDay() === 1;
+              const isMonthBoundary = segmentDate?.getUTCDate() === 1;
+              const cellClassName = isDay
+                ? `timeline-day-cell ${showDayLabel ? "day-label-visible" : "day-label-hidden"} ${isWeekBoundary ? "day-week-boundary" : ""} ${isMonthBoundary ? "day-month-boundary" : ""}`
+                : "timeline-week-cell";
+              const cellStyle = {
+                left: `${segment.left}%`,
+                width: `${segment.width}%`,
+                "--day-label-width": `${labelSpan * 100}%`,
+              } as CSSProperties;
+
+              return (
+                <span className={cellClassName} key={segment.key} style={cellStyle} title={`${segment.label} — ${segment.detail}`}>
+                  <strong aria-hidden={isDay && !showDayLabel}>{showDayLabel ? segment.label : ""}</strong>
+                  <time>{segment.detail}</time>
+                </span>
+              );
+            })}
           </div>
           <div className="timeline-axis-events">
             {curveView !== "actual" && peakInView && <span className={`peak-axis-chip ${peakAnchor} ${showCurve ? "" : "curve-hidden-screen"} ${includeCurvePdf ? "" : "exclude-curve-print"}`} style={{ left: `${clamp(peakRatio * 100, 1, 99)}%` }} aria-label={`Peak planned workload ${peak.label}`}>
@@ -1828,7 +1858,7 @@ export default function TimelinePlannerWorkspace() {
             {curveView !== "plan" && <span className={`${showCurve ? "" : "curve-hidden-screen"} ${includeCurvePdf ? "" : "exclude-curve-print"}`}><i className="legend-line actual" /> {measuredCurveLabel} S-curve</span>}
             {showStatusDate && <span><i className="legend-status" /> Status date</span>}
           </div>
-          <div className="combined-chart-scroll">
+          <div className={`combined-chart-scroll ${timelineScale === "day" ? "day-scroll" : ""}`}>
             <IntegratedTimeline rows={timelineRows} tasks={tasks} mode={calendarMode} showCurve={showCurve} includeCurvePdf={includeCurvePdf} showStatusDate={showStatusDate} planningModel={planningModel} statusDate={project.statusDate} snapshots={actualSnapshots} curveView={curveView} scale={timelineScale} />
           </div>
           <div className="timeline-facts">

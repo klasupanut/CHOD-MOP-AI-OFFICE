@@ -2872,6 +2872,23 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
   overflow: hidden;
 }
 
+.screen-timeline-panel .combined-chart-scroll.day-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+}
+
+.screen-timeline-panel .combined-chart-scroll.day-scroll .timeline-axis-label,
+.screen-timeline-panel .combined-chart-scroll.day-scroll .timeline-row-label {
+  position: sticky;
+  left: 0;
+}
+
+.screen-timeline-panel .combined-chart-scroll.day-scroll .timeline-axis-label {
+  z-index: 8;
+}
+
 .combined-chart {
   --timeline-label: clamp(440px, 42cqw, 560px);
   --timeline-group-bar-height: 12px;
@@ -4738,12 +4755,41 @@ main.app-shell.pdf-orientation-portrait .summary-strip.report-summary-strip.repo
     line-height: 1;
   }
 
-  .timeline-scale-day.day-axis-dense .timeline-day-cell {
-    font-size: 3.8pt;
+  .report-table-frame.timeline-scale-day .timeline-day-cell {
+    overflow: visible;
   }
 
-  .timeline-scale-day.day-axis-ultra-dense .timeline-day-cell {
-    font-size: 2.8pt;
+  .report-table-frame.timeline-scale-day .timeline-day-cell.day-label-visible strong {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    display: flex;
+    width: var(--day-label-width, 100%);
+    max-width: none;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+    color: var(--nav);
+    font-size: 5pt;
+    font-weight: 800;
+    text-align: center;
+  }
+
+  .report-table-frame.timeline-scale-day .timeline-day-cell.day-label-hidden strong {
+    display: none;
+  }
+
+  .report-table-frame.timeline-scale-day.day-axis-dense .timeline-day-cell,
+  .report-table-frame.timeline-scale-day.day-axis-ultra-dense .timeline-day-cell {
+    border-right-color: color-mix(in oklab, var(--secondary) 13%, var(--line));
+  }
+
+  .report-table-frame.timeline-scale-day .timeline-day-cell.day-week-boundary {
+    border-left: 0.2mm solid color-mix(in oklab, var(--secondary) 38%, var(--line-strong));
+  }
+
+  .report-table-frame.timeline-scale-day .timeline-day-cell.day-month-boundary {
+    border-left: 0.35mm solid var(--secondary);
   }
 
   .timeline-scale-day .timeline-day-cell time {
