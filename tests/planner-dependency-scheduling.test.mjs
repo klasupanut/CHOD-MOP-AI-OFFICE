@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  isValidPlannerDate,
   parseDependency,
   rebaseDependencyReferences,
   scheduleDependentActivities,
@@ -49,6 +50,14 @@ test("dependency text stays backward-compatible while persisting lag days", () =
   assert.equal(serializeDependency("", 3), "-");
 });
 
+test("planner date validation rejects transient and impossible input values", () => {
+  assert.equal(isValidPlannerDate("2026-09-01"), true);
+  assert.equal(isValidPlannerDate("2028-02-29"), true);
+  assert.equal(isValidPlannerDate(""), false);
+  assert.equal(isValidPlannerDate("2026-02-31"), false);
+  assert.equal(isValidPlannerDate("2026-9-1"), false);
+});
+
 test("calendar dependencies cascade start dates through multiple sub-plans", () => {
   const scheduled = scheduleDependentActivities([
     group("g-1"),
@@ -71,6 +80,17 @@ test("working-day dependencies skip weekends and honor extra lag", () => {
 
   assert.equal(scheduled.find((item) => item.id === "t-2")?.start, "2026-07-06");
   assert.equal(scheduled.find((item) => item.id === "t-3")?.start, "2026-07-08");
+});
+
+test("an incomplete predecessor date never cascades an epoch date", () => {
+  const scheduled = scheduleDependentActivities([
+    group("g-1"),
+    task("t-1", "g-1", "", 1),
+    task("t-2", "g-1", "2026-07-10", 1, "1.1"),
+  ], "calendar");
+
+  assert.equal(scheduled.find((item) => item.id === "t-2")?.start, "2026-07-10");
+  assert.equal(scheduled.some((item) => item.start.startsWith("1970-")), false);
 });
 
 test("dependency cycle validation rejects direct and chained loops", () => {
@@ -114,6 +134,9 @@ test("Planner renders a predecessor selector and lag control instead of free-tex
   assert.match(source, /dependency lag days/);
   assert.match(source, /scheduleDependentActivities/);
   assert.match(source, /wouldCreateDependencyCycle/);
+  assert.match(source, /field === "start" && !isValidPlannerDate\(value\)/);
+  assert.match(source, /Date change paused — choose a complete valid date/);
+  assert.match(source, /MAX_DAY_AXIS_CELLS/);
   assert.match(source, /activities:\s*scheduleDependentActivities\(migratedActivities,\s*calendarMode\)/);
   assert.doesNotMatch(source, /onChange=\{\(event\) => updateActivity\(activity\.id, "dependency"/);
 });

@@ -1,6 +1,7 @@
 import type { Activity, CalendarMode } from "@/lib/planner/plan-contract";
 
 const DEPENDENCY_PATTERN = /^(\d+\.\d+)(?:\s*\+\s*(\d+)\s*d(?:ays?)?)?$/i;
+const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MAX_LAG_DAYS = 3_650;
 
 export type ParsedDependency = {
@@ -12,6 +13,27 @@ export type TaskCodeIndex = {
   codeById: Map<string, string>;
   taskByCode: Map<string, Activity>;
 };
+
+/**
+ * Validate a planner date without letting JavaScript normalize impossible dates.
+ * Native date inputs can briefly emit an empty string while the user is editing;
+ * that transient value must never reach dependency or timeline calculations.
+ */
+export function isValidPlannerDate(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = value.match(ISO_DATE_PATTERN);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return Number.isFinite(date.getTime())
+    && date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
 
 export function parseDependency(value: string | null | undefined): ParsedDependency | null {
   const normalized = String(value || "").trim();
@@ -97,6 +119,13 @@ export function scheduleDependentActivities(
         visiting.delete(task.id);
         return false;
       }
+      // Preserve the last valid dependent date when a browser date input is
+      // temporarily empty. Never cascade an invalid/epoch date through a plan.
+      if (!isValidPlannerDate(predecessor.start)) {
+        visiting.delete(task.id);
+        complete.add(task.id);
+        return true;
+      }
       const predecessorFinish = addDuration(
         predecessor.start,
         predecessor.duration,
@@ -152,6 +181,7 @@ function startAfterPredecessor(
   calendarMode: CalendarMode,
 ) {
   const date = parseDate(predecessorFinish);
+  if (!date) return predecessorFinish;
   let remaining = clampLagDays(lagDays) + 1;
 
   while (remaining > 0) {
@@ -163,8 +193,10 @@ function startAfterPredecessor(
 }
 
 function addDuration(start: string, rawDuration: number, mode: CalendarMode) {
+  if (!isValidPlannerDate(start)) return start;
   const duration = Math.max(1, Number(rawDuration) || 1);
   const date = parseDate(start);
+  if (!date) return start;
   if (mode === "calendar") {
     date.setUTCDate(date.getUTCDate() + duration - 1);
     return toISO(date);
@@ -179,6 +211,7 @@ function addDuration(start: string, rawDuration: number, mode: CalendarMode) {
 }
 
 function parseDate(value: string) {
+  if (!isValidPlannerDate(value)) return null;
   const [year, month, day] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }

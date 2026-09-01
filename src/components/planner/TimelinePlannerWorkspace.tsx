@@ -21,6 +21,7 @@ import {
 } from "./WorkspaceUsageDashboard";
 import {
   buildTaskCodeIndex,
+  isValidPlannerDate,
   parseDependency,
   rebaseDependencyReferences,
   scheduleDependentActivities,
@@ -140,6 +141,17 @@ function planSignature(plan: SavedPlan) {
   });
 }
 
+function hasValidPlanDates(project: ProjectMeta, activities: Activity[]) {
+  return isValidPlannerDate(project.baselineDate)
+    && isValidPlannerDate(project.statusDate)
+    && isValidPlannerDate(project.issueDate)
+    && activities.every((activity) => (
+      isValidPlannerDate(activity.start)
+      && (!activity.actualStart || isValidPlannerDate(activity.actualStart))
+      && (!activity.actualEnd || isValidPlannerDate(activity.actualEnd))
+    ));
+}
+
 function normalizeSavedPlan(saved: SavedPlan): SavedPlan {
   const calendarMode = saved.calendarMode || "calendar";
   const migratedActivities = Array.isArray(saved.activities)
@@ -236,14 +248,16 @@ const usageLevelRank: Record<UsageLevel, number> = {
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
+const MAX_DAY_AXIS_CELLS = 1_500;
 
 function parseDate(value: string) {
-  if (!value) return new Date(0);
+  if (!isValidPlannerDate(value)) return new Date(Number.NaN);
   const [year, month, day] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
 }
 
 function toISO(date: Date) {
+  if (!Number.isFinite(date.getTime())) return "";
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 
@@ -253,6 +267,7 @@ function isWorkday(date: Date) {
 }
 
 function addDuration(start: string, rawDuration: number, mode: CalendarMode) {
+  if (!isValidPlannerDate(start)) return "";
   const duration = Math.max(1, Number(rawDuration) || 1);
   const date = parseDate(start);
   if (mode === "calendar") {
@@ -268,6 +283,7 @@ function addDuration(start: string, rawDuration: number, mode: CalendarMode) {
 }
 
 function durationBetween(start: string, end: string, mode: CalendarMode) {
+  if (!isValidPlannerDate(start) || !isValidPlannerDate(end)) return 1;
   const from = parseDate(start);
   const to = parseDate(end);
   if (to < from) return 1;
@@ -284,12 +300,12 @@ function durationBetween(start: string, end: string, mode: CalendarMode) {
 }
 
 function displayDate(value: string) {
-  if (!value) return "—";
+  if (!isValidPlannerDate(value)) return "—";
   return parseDate(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 function displayShortDate(value: string) {
-  if (!value) return "—";
+  if (!isValidPlannerDate(value)) return "—";
   return parseDate(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
 }
 
@@ -300,6 +316,7 @@ type TimelineAxisSegment = {
   detail: string;
   left: number;
   width: number;
+  dateMs?: number;
 };
 
 function isoWeekNumber(date: Date) {
@@ -370,18 +387,25 @@ function timelineWeekSegments(startMs: number, endMs: number): TimelineAxisSegme
 }
 
 function timelineDaySegments(startMs: number, endMs: number): TimelineAxisSegment[] {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return [];
   const axisEndMs = endMs + DAY_MS;
+  const totalDays = Math.max(1, Math.floor((endMs - startMs) / DAY_MS) + 1);
+  const strideDays = Math.max(1, Math.ceil(totalDays / MAX_DAY_AXIS_CELLS));
   let cursor = startMs;
   const segments: TimelineAxisSegment[] = [];
 
   while (cursor <= endMs || segments.length === 0) {
     const cursorDate = new Date(cursor);
-    const nextDay = cursor + DAY_MS;
-    const position = timelineSegmentPosition(cursor, Math.min(nextDay, axisEndMs), startMs, axisEndMs);
+    const nextDay = Math.min(cursor + strideDays * DAY_MS, axisEndMs);
+    const lastDate = new Date(Math.max(cursor, nextDay - DAY_MS));
+    const position = timelineSegmentPosition(cursor, nextDay, startMs, axisEndMs);
     segments.push({
       key: `day-${cursor}`,
       label: String(cursorDate.getUTCDate()).padStart(2, "0"),
-      detail: cursorDate.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }),
+      detail: strideDays === 1
+        ? cursorDate.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })
+        : `${displayShortDate(toISO(cursorDate))} - ${displayShortDate(toISO(lastDate))}`,
+      dateMs: cursor,
       ...position,
     });
     cursor = nextDay;
@@ -518,8 +542,20 @@ function actualBarEnd(task: Activity, statusDate: string) {
 }
 
 function timelineBounds(tasks: Activity[], mode: CalendarMode, statusDate: string) {
-  const values = tasks.flatMap((task) => [task.start, addDuration(task.start, task.duration, mode), task.actualStart || "", actualBarEnd(task, statusDate)]).filter(Boolean);
-  values.push(statusDate);
+  const values = tasks.flatMap((task) => {
+    if (!isValidPlannerDate(task.start)) return [];
+    return [
+      task.start,
+      addDuration(task.start, task.duration, mode),
+      task.actualStart || "",
+      actualBarEnd(task, statusDate),
+    ].filter(isValidPlannerDate);
+  });
+  if (isValidPlannerDate(statusDate)) values.push(statusDate);
+  if (values.length === 0) {
+    const fallback = Date.now();
+    return { startMs: fallback, endMs: fallback };
+  }
   return {
     startMs: Math.min(...values.map((value) => parseDate(value).getTime())),
     endMs: Math.max(...values.map((value) => parseDate(value).getTime())),
@@ -626,6 +662,9 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
   const weekSegments = timelineWeekSegments(startMs, endMs);
   const daySegments = scale === "day" ? timelineDaySegments(startMs, endMs) : [];
   const scaleSegments = scale === "day" ? daySegments : weekSegments;
+  const rowGuideSegments = scale === "day" && daySegments.length > 120
+    ? weekSegments
+    : scaleSegments;
   const dayLabelStep = reportMode ? timelineDayLabelStep(daySegments.length) : 1;
   const screenMinWidth = scale === "day" && !reportMode
     ? Math.max(980, 500 + daySegments.length * 28)
@@ -667,7 +706,7 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
               const isDay = scale === "day";
               const showDayLabel = !isDay || index % dayLabelStep === 0;
               const labelSpan = isDay ? Math.min(dayLabelStep, scaleSegments.length - index) : 1;
-              const segmentDate = isDay ? new Date(startMs + index * DAY_MS) : null;
+              const segmentDate = isDay ? new Date(segment.dateMs ?? startMs + index * DAY_MS) : null;
               const isWeekBoundary = segmentDate?.getUTCDay() === 1;
               const isMonthBoundary = segmentDate?.getUTCDate() === 1;
               const cellClassName = isDay
@@ -727,7 +766,7 @@ function IntegratedTimeline({ rows, tasks, mode, showCurve, includeCurvePdf, sho
               </div>
               <div className="timeline-row-track">
                 <div className="timeline-guides" aria-hidden="true">
-                  {scaleSegments.slice(1).map((segment) => <i className={scale === "day" ? "day-guide" : "week-guide"} key={segment.key} style={{ left: `${segment.left}%` }} />)}
+                  {rowGuideSegments.slice(1).map((segment) => <i className={scale === "day" ? "day-guide" : "week-guide"} key={segment.key} style={{ left: `${segment.left}%` }} />)}
                   {monthSegments.slice(1).map((segment) => <i className="month-guide" key={segment.key} style={{ left: `${segment.left}%` }} />)}
                 </div>
                 {showStatusDate && statusInView && <i className="timeline-status-guide" style={{ left: `${statusRatio * 100}%` }} aria-hidden="true" />}
@@ -899,6 +938,10 @@ export default function TimelinePlannerWorkspace() {
   useEffect(() => {
     if (!hydrated || planStorageMode !== "cloud") return;
     const planPayload: SavedPlan = { project, activities, actualSnapshots, calendarMode, planningModel, curveView, showCurve, includeCurvePdf, showStatusDate, pdfOrientation };
+    if (!hasValidPlanDates(project, activities)) {
+      setSavedLabel("Date change paused — choose a complete valid date");
+      return;
+    }
     if (!cloudProjectId && isEmptyPlan(planPayload)) return;
     if (!cloudProjectId && !project.name.trim()) {
       setSavedLabel("Enter a project name to create this cloud project");
@@ -1096,7 +1139,13 @@ export default function TimelinePlannerWorkspace() {
     return { start, end, duration: durationBetween(start, end, calendarMode), totalWeight, totalBudget, totalEarned, progress: Math.round(progress), plannedAtStatus: Math.round(plannedAtStatus), variance: Math.round(progress - plannedAtStatus) };
   }, [tasks, calendarMode, project.baselineDate, project.statusDate, taskWeights, actualProgressMap, actualSnapshots]);
 
-  const updateProject = (field: keyof ProjectMeta, value: string) => setProject((current) => ({ ...current, [field]: value }));
+  const updateProject = (field: keyof ProjectMeta, value: string) => {
+    if ((field === "baselineDate" || field === "statusDate" || field === "issueDate") && !isValidPlannerDate(value)) {
+      setSavedLabel("Choose a complete valid project date");
+      return;
+    }
+    setProject((current) => current[field] === value ? current : { ...current, [field]: value });
+  };
 
   const applyProjectRecord = (record: TenantPlanRecord) => {
     if (!record.data) return false;
@@ -1290,7 +1339,17 @@ export default function TimelinePlannerWorkspace() {
   };
 
   const updateActivity = (id: string, field: keyof Activity, value: string | number | null) => {
+    if (field === "start" && !isValidPlannerDate(value)) {
+      setSavedLabel("Choose a complete valid planned start date");
+      return;
+    }
+    if ((field === "actualStart" || field === "actualEnd") && value !== "" && !isValidPlannerDate(value)) {
+      setSavedLabel("Choose a complete valid actual date");
+      return;
+    }
     setActivities((current) => {
+      const existing = current.find((activity) => activity.id === id);
+      if (!existing || existing[field] === value) return current;
       const next = current.map((activity) => activity.id === id ? { ...activity, [field]: value } : activity);
       return field === "start" || field === "duration"
         ? scheduleDependentActivities(next, calendarMode)
@@ -1361,7 +1420,13 @@ export default function TimelinePlannerWorkspace() {
     updateActivity(task.id, "budget", budget);
   };
 
-  const updateEndDate = (task: Activity, end: string) => updateActivity(task.id, "duration", durationBetween(task.start, end, calendarMode));
+  const updateEndDate = (task: Activity, end: string) => {
+    if (!isValidPlannerDate(end)) {
+      setSavedLabel("Choose a complete valid planned finish date");
+      return;
+    }
+    updateActivity(task.id, "duration", durationBetween(task.start, end, calendarMode));
+  };
 
   const addTask = (parentId: string) => {
     const groupTasks = tasks.filter((task) => task.parentId === parentId);
@@ -1936,7 +2001,7 @@ export default function TimelinePlannerWorkspace() {
                     <tr key={activity.id} className="task-row">
                       <td data-label="No.">{parentIndex}.{childIndex}</td>
                       <td data-label="Description"><div className="task-description"><span className="branch-mark" aria-hidden="true">↳</span><input value={activity.description} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "description", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} description`} /></div></td>
-                      <td data-label="Planned dates"><div className="date-pair editable-date-pair"><label><span>S</span><input type="date" value={activity.start} readOnly={pdfPreview || predecessorExists} tabIndex={pdfPreview ? -1 : undefined} title={predecessorExists ? "Calculated automatically from the selected predecessor and lag" : undefined} onChange={(event) => updateActivity(activity.id, "start", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned start date`} /></label><label><span>F</span><input type="date" value={end} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onInput={(event) => updateEndDate(activity, event.currentTarget.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned finish date`} /></label></div><div className="date-stack print-date-value"><span><b>S</b>{displayShortDate(activity.start)}</span><span><b>F</b>{displayShortDate(end)}</span></div></td>
+                      <td data-label="Planned dates"><div className="date-pair editable-date-pair"><label><span>S</span><input type="date" value={activity.start} readOnly={pdfPreview || predecessorExists} tabIndex={pdfPreview ? -1 : undefined} title={predecessorExists ? "Calculated automatically from the selected predecessor and lag" : undefined} onChange={(event) => updateActivity(activity.id, "start", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned start date`} /></label><label><span>F</span><input type="date" value={end} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateEndDate(activity, event.currentTarget.value)} aria-label={`Activity ${parentIndex}.${childIndex} planned finish date`} /></label></div><div className="date-stack print-date-value"><span><b>S</b>{displayShortDate(activity.start)}</span><span><b>F</b>{displayShortDate(end)}</span></div></td>
                       <td data-label="Actual dates"><div className="date-pair actual editable-date-pair"><label><span>S</span><input type="date" max={project.statusDate} value={activity.actualStart || ""} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "actualStart", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} actual start date`} /></label><label><span>F</span><input type="date" min={activity.actualStart || undefined} max={project.statusDate} value={activity.actualEnd || ""} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "actualEnd", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} actual finish date`} /></label></div>{activity.actualStart ? <div className="date-stack actual print-date-value"><span><b>S</b>{displayShortDate(activity.actualStart)}</span><span><b>{activity.actualEnd ? "F" : "@"}</b>{displayShortDate(actualBarEnd(activity, project.statusDate))}</span></div> : <span className="not-started print-date-value">Not started</span>}</td>
                       <td data-label="Days"><input type="number" min="1" value={activity.duration} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "duration", Math.max(1, Number(event.target.value)))} aria-label={`Activity ${parentIndex}.${childIndex} duration`} /></td>
                       <td data-label="Owner"><input value={activity.owner} readOnly={pdfPreview} tabIndex={pdfPreview ? -1 : undefined} onChange={(event) => updateActivity(activity.id, "owner", event.target.value)} aria-label={`Activity ${parentIndex}.${childIndex} owner`} /></td>
