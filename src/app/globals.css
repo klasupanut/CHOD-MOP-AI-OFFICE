@@ -2409,6 +2409,13 @@ a { color: inherit; text-decoration: none; }
   background: rgba(15,58,83,.86);
   box-shadow: 0 0 16px rgba(57,208,255,.12);
 }
+.schedule-month-controls button:disabled {
+  opacity: .62;
+  cursor: wait;
+}
+.schedule-refresh-button .is-spinning {
+  animation: spin .8s linear infinite;
+}
 .schedule-month-weekdays {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -2468,6 +2475,25 @@ a { color: inherit; text-decoration: none; }
   margin: 0;
   color: #7892a8;
   font-size: 13px;
+}
+.schedule-more-button {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px dashed rgba(57,208,255,.28);
+  border-radius: 9px;
+  color: #aeeeff;
+  background: rgba(9,39,60,.48);
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.schedule-more-button:hover,
+.schedule-more-button:focus-visible {
+  border-color: rgba(57,208,255,.62);
+  color: #effcff;
+  background: rgba(15,58,83,.78);
+  outline: none;
 }
 .schedule-event-pill {
   width: 100%;
@@ -6869,6 +6895,7 @@ html[data-theme="light"] .workspace-create-actions button:last-child,
 html[data-theme="light"] .admin-secondary,
 html[data-theme="light"] .schedule-detail-actions button,
 html[data-theme="light"] .schedule-month-controls button,
+html[data-theme="light"] .schedule-more-button,
 html[data-theme="light"] .schedule-common-types button,
 html[data-theme="light"] .schedule-attendee-picker button,
 html[data-theme="light"] .quotation-module-actions button,

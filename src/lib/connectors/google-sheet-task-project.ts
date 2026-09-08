@@ -494,7 +494,7 @@ export async function listTaskProjectScheduleData(options: { forceRefresh?: bool
   if (!options.forceRefresh && taskProjectScheduleCache && taskProjectScheduleCache.expiresAt > Date.now()) {
     return taskProjectScheduleCache.data;
   }
-  if (!options.forceRefresh && taskProjectSchedulePromise) return taskProjectSchedulePromise;
+  if (taskProjectSchedulePromise) return taskProjectSchedulePromise;
 
   taskProjectSchedulePromise = fetchTaskProjectScheduleData()
     .then((data) => {
@@ -520,8 +520,8 @@ export async function listTaskProjectScheduleData(options: { forceRefresh?: bool
   return taskProjectSchedulePromise;
 }
 
-export async function listScheduleData(): Promise<ScheduleData> {
-  const data = await listTaskProjectScheduleData();
+export async function listScheduleData(options: { forceRefresh?: boolean } = {}): Promise<ScheduleData> {
+  const data = await listTaskProjectScheduleData(options);
   const derivedEvents = deriveScheduleEventsFromTasksProjects(data.tasks, data.projects);
   return {
     mode: data.mode,

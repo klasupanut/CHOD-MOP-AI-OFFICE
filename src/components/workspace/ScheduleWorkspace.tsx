@@ -14,6 +14,7 @@ import {
   MapPin,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   ShieldAlert,
   SunMedium,
@@ -23,7 +24,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { scheduleEventTypes, scheduleLocations, scheduleStatuses, type ScheduleEvent, type ScheduleEventType } from "@/data/schedule";
 import type { ApprovedUser } from "@/lib/auth/types";
 
@@ -37,6 +38,7 @@ const characterNameMap = {
   moss: "Moss",
   foreman: "Foreman",
 } as const;
+const scheduleRefreshIntervalMs = 60_000;
 
 const eventIconMap: Record<ScheduleEventType, LucideIcon> = {
   Meeting: Users,
@@ -146,6 +148,11 @@ function monthStartKey(date = new Date()) {
   return localDateKey(month);
 }
 
+function monthStartKeyForValue(value: string) {
+  const parsed = new Date(`${dateKey(value)}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? monthStartKey() : monthStartKey(parsed);
+}
+
 function monthFromKey(value: string) {
   const parsed = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return new Date();
@@ -215,9 +222,13 @@ export function ScheduleWorkspace({
   const [editor, setEditor] = useState(() => newDefaultEvent(currentUser));
   const [monthCursor, setMonthCursor] = useState(() => monthStartKey());
   const [selectedEventId, setSelectedEventId] = useState("");
+  const [expandedDayKey, setExpandedDayKey] = useState("");
   const [editEvent, setEditEvent] = useState<ScheduleEvent | null>(null);
   const [notice, setNotice] = useState(dataMessage || "");
   const [statusUpdatingEventId, setStatusUpdatingEventId] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshPromiseRef = useRef<Promise<boolean> | null>(null);
+  const lastRefreshAtRef = useRef(Date.now());
   const [isPending, startTransition] = useTransition();
   const currentMonth = useMemo(() => monthFromKey(monthCursor), [monthCursor]);
   const days = useMemo(() => monthDays(currentMonth), [currentMonth]);
@@ -245,6 +256,59 @@ export function ScheduleWorkspace({
     const key = dateKey(event.startAt);
     return days.some((day) => day.isCurrentMonth && day.key === key);
   }).length;
+
+  const refreshEvents = useCallback((options: { force?: boolean; announce?: boolean } = {}) => {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+
+    const request = (async () => {
+      setIsRefreshing(true);
+      try {
+        const response = await fetch(`/api/schedule${options.force ? "?refresh=1" : ""}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const payload = (await response.json()) as { events?: ScheduleEvent[]; error?: string; message?: string };
+        if (!response.ok) throw new Error(payload.error || "Unable to refresh calendar events.");
+        setEvents(Array.isArray(payload.events) ? payload.events : []);
+        lastRefreshAtRef.current = Date.now();
+        if (options.announce) {
+          setNotice(payload.message || "Calendar refreshed from Google Sheet.");
+        }
+        return true;
+      } catch (error) {
+        if (options.announce) {
+          setNotice(error instanceof Error ? error.message : "Unable to refresh calendar events.");
+        }
+        return false;
+      } finally {
+        setIsRefreshing(false);
+        refreshPromiseRef.current = null;
+      }
+    })();
+
+    refreshPromiseRef.current = request;
+    return request;
+  }, []);
+
+  useEffect(() => {
+    setEvents(initialEvents);
+  }, [initialEvents]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefreshAtRef.current < scheduleRefreshIntervalMs) return;
+      void refreshEvents({ force: true });
+    };
+    const timer = window.setInterval(refreshWhenVisible, scheduleRefreshIntervalMs);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshEvents]);
 
   function toggleAttendee(name: string) {
     setEditor((event) => ({
@@ -289,10 +353,14 @@ export function ScheduleWorkspace({
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Unable to create schedule event.");
-        setEvents((current) => [payload.event, ...current]);
-        setSelectedEventId(payload.event.eventId);
+        const createdEvent = payload.event as ScheduleEvent;
+        setEvents((current) => [createdEvent, ...current.filter((event) => event.eventId !== createdEvent.eventId)]);
+        setSelectedEventId(createdEvent.eventId);
+        setExpandedDayKey(dateKey(createdEvent.startAt));
+        setMonthCursor(monthStartKeyForValue(createdEvent.startAt));
         setEditor(newDefaultEvent(currentUser));
         setNotice("Schedule event saved to Google Sheet.");
+        window.setTimeout(() => void refreshEvents({ force: true }), 750);
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "Unable to create schedule event.");
       }
@@ -408,6 +476,9 @@ export function ScheduleWorkspace({
             <div><span>MONTHLY CALENDAR</span><h2>{monthLabel(currentMonth)}</h2></div>
             <div className="schedule-month-controls">
               <small>{monthEventCount} event{monthEventCount === 1 ? "" : "s"} this month</small>
+              <button className="schedule-refresh-button" disabled={isRefreshing} onClick={() => void refreshEvents({ force: true, announce: true })} type="button">
+                <RefreshCw className={isRefreshing ? "is-spinning" : ""} size={15} /> {isRefreshing ? "Refreshing" : "Refresh"}
+              </button>
               <button aria-label="Previous month" onClick={() => changeMonth(-1)} type="button"><ChevronLeft size={16} /></button>
               <button onClick={() => setMonthCursor(monthStartKey())} type="button">Today</button>
               <button aria-label="Next month" onClick={() => changeMonth(1)} type="button"><ChevronRight size={16} /></button>
@@ -419,11 +490,13 @@ export function ScheduleWorkspace({
           <div className="schedule-month-grid">
             {days.map((day) => {
               const dayEvents = visibleEvents.filter((event) => dateKey(event.startAt) === day.key);
+              const dayExpanded = expandedDayKey === day.key;
+              const shownEvents = dayExpanded ? dayEvents : dayEvents.slice(0, 5);
               return (
                 <article className={`${day.key === today ? "today" : ""} ${day.isCurrentMonth ? "" : "outside-month"}`} key={day.key}>
                   <header><strong>{day.day}</strong><span>{day.weekday} · {day.month}</span></header>
                   <div className="schedule-day-events">
-                    {dayEvents.slice(0, 5).map((event) => (
+                    {shownEvents.map((event) => (
                       <button
                         className={`schedule-event-pill ${selectedEventId === event.eventId ? "selected" : ""} status-${visualStatus(event).toLowerCase().replace(/\s+/g, "-")} type-${event.eventType.toLowerCase().replace(/\s+/g, "-")}`}
                         key={event.eventId}
@@ -435,7 +508,15 @@ export function ScheduleWorkspace({
                         {visualStatus(event) === "Delayed" ? <em>+{delayDays(event.startAt)}D</em> : null}
                       </button>
                     ))}
-                    {dayEvents.length > 5 ? <p>+{dayEvents.length - 5} more</p> : null}
+                    {dayEvents.length > 5 ? (
+                      <button
+                        className="schedule-more-button"
+                        onClick={() => setExpandedDayKey(dayExpanded ? "" : day.key)}
+                        type="button"
+                      >
+                        {dayExpanded ? "Show less" : `+${dayEvents.length - 5} more`}
+                      </button>
+                    ) : null}
                     {!dayEvents.length ? <p>No schedule</p> : null}
                   </div>
                 </article>

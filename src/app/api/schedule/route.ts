@@ -59,6 +59,37 @@ function dateOnly(value?: string) {
   return String(value || "").slice(0, 10);
 }
 
+function canAccessSchedule(user: { modulePermissions: string[] }) {
+  return user.modulePermissions.some((permission) =>
+    permission === "Calendar / Schedule" || permission === "Tasks" || permission === "Projects",
+  );
+}
+
+export async function GET(request: Request) {
+  const user = await getApiUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canAccessSchedule(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  try {
+    const forceRefresh = new URL(request.url).searchParams.get("refresh") === "1";
+    const schedule = await listScheduleData({ forceRefresh });
+    return NextResponse.json(
+      {
+        events: schedule.events,
+        mode: schedule.mode,
+        message: schedule.message,
+        refreshedAt: new Date().toISOString(),
+      },
+      { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to refresh schedule events." },
+      { status: 503, headers: { "Cache-Control": "private, no-store, max-age=0" } },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   const unsafe = rejectUnsafeMutationRequest(request);
   if (unsafe) return unsafe;
