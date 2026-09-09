@@ -170,6 +170,24 @@ function sortedUniqueEvents(events: ScheduleEvent[]) {
   return [...byId.values()].sort((a, b) => a.startAt.localeCompare(b.startAt));
 }
 
+function normalizedMonthStart(value?: string) {
+  const match = /^(\d{4})-(\d{2})(?:$|-)/.exec(String(value || "").trim());
+  if (!match) return monthStartKey();
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return monthStartKey();
+  return `${match[1]}-${match[2]}-01`;
+}
+
+function calendarDayEvents(events: ScheduleEvent[], dayKey: string) {
+  return events
+    .filter((event) => dateKey(event.startAt) === dayKey)
+    .sort((a, b) => {
+      if (a.source === "manual" && b.source !== "manual") return -1;
+      if (a.source !== "manual" && b.source === "manual") return 1;
+      return a.startAt.localeCompare(b.startAt);
+    });
+}
+
 function monthDays(monthDate: Date) {
   const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const mondayIndex = first.getDay() || 7;
@@ -219,15 +237,17 @@ function newDefaultEvent(user: ApprovedUser): ScheduleEvent {
 export function ScheduleWorkspace({
   currentUser,
   initialEvents,
+  initialMonth,
   dataMessage,
 }: {
   currentUser: ApprovedUser;
   initialEvents: ScheduleEvent[];
+  initialMonth?: string;
   dataMessage?: string;
 }) {
   const [events, setEvents] = useState(initialEvents);
   const [editor, setEditor] = useState(() => newDefaultEvent(currentUser));
-  const [monthCursor, setMonthCursor] = useState(() => monthStartKey());
+  const [monthCursor, setMonthCursor] = useState(() => normalizedMonthStart(initialMonth));
   const [selectedEventId, setSelectedEventId] = useState("");
   const [expandedDayKey, setExpandedDayKey] = useState("");
   const [editEvent, setEditEvent] = useState<ScheduleEvent | null>(null);
@@ -265,6 +285,15 @@ export function ScheduleWorkspace({
     const key = dateKey(event.startAt);
     return days.some((day) => day.isCurrentMonth && day.key === key);
   }).length;
+
+  const showCalendarMonth = useCallback((nextMonth: string) => {
+    const normalized = normalizedMonthStart(nextMonth);
+    setMonthCursor(normalized);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("month", normalized.slice(0, 7));
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   const refreshEvents = useCallback((options: { force?: boolean; announce?: boolean } = {}) => {
     if (refreshPromiseRef.current) return refreshPromiseRef.current;
@@ -348,6 +377,11 @@ export function ScheduleWorkspace({
   }
 
   function selectEvent(eventId: string) {
+    const event = events.find((item) => item.eventId === eventId);
+    if (event?.startAt) {
+      showCalendarMonth(monthStartKeyForValue(event.startAt));
+      setExpandedDayKey(dateKey(event.startAt));
+    }
     setSelectedEventId(eventId);
     setEditEvent(null);
   }
@@ -389,7 +423,7 @@ export function ScheduleWorkspace({
         setEvents((current) => [createdEvent, ...current.filter((event) => event.eventId !== createdEvent.eventId)]);
         setSelectedEventId(createdEvent.eventId);
         setExpandedDayKey(dateKey(createdEvent.startAt));
-        setMonthCursor(monthStartKeyForValue(createdEvent.startAt));
+        showCalendarMonth(monthStartKeyForValue(createdEvent.startAt));
         setEditor(newDefaultEvent(currentUser));
         setNotice("Schedule event saved to Google Sheet.");
         window.requestAnimationFrame(() => {
@@ -486,11 +520,9 @@ export function ScheduleWorkspace({
   }
 
   function changeMonth(offset: number) {
-    setMonthCursor((current) => {
-      const next = monthFromKey(current);
-      next.setMonth(next.getMonth() + offset);
-      return monthStartKey(next);
-    });
+    const next = monthFromKey(monthCursor);
+    next.setMonth(next.getMonth() + offset);
+    showCalendarMonth(monthStartKey(next));
   }
 
   return (
@@ -521,7 +553,7 @@ export function ScheduleWorkspace({
                 <RefreshCw className={isRefreshing ? "is-spinning" : ""} size={15} /> {isRefreshing ? "Refreshing" : "Refresh"}
               </button>
               <button aria-label="Previous month" onClick={() => changeMonth(-1)} type="button"><ChevronLeft size={16} /></button>
-              <button onClick={() => setMonthCursor(monthStartKey())} type="button">Today</button>
+              <button onClick={() => showCalendarMonth(monthStartKey())} type="button">Today</button>
               <button aria-label="Next month" onClick={() => changeMonth(1)} type="button"><ChevronRight size={16} /></button>
             </div>
           </div>
@@ -530,7 +562,7 @@ export function ScheduleWorkspace({
           </div>
           <div className="schedule-month-grid">
             {days.map((day) => {
-              const dayEvents = visibleEvents.filter((event) => dateKey(event.startAt) === day.key);
+              const dayEvents = calendarDayEvents(visibleEvents, day.key);
               const dayExpanded = expandedDayKey === day.key;
               const shownEvents = dayExpanded ? dayEvents : dayEvents.slice(0, 5);
               return (

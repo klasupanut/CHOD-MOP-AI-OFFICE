@@ -12,6 +12,7 @@ test("calendar exposes an authenticated no-store refresh endpoint", async () => 
   assert.match(route, /canAccessSchedule\(user\)/);
   assert.match(route, /listScheduleData\(\{ forceRefresh \}\)/);
   assert.match(route, /isStale: Boolean\(schedule\.isStale\)/);
+  assert.match(route, /\[schedule\] calendar loaded/);
   assert.match(route, /Cache-Control": "private, no-store, max-age=0"/);
 });
 
@@ -32,7 +33,9 @@ test("calendar refreshes visible sessions without aggressive Google polling", as
   assert.match(component, /window\.addEventListener\("focus", refreshWhenVisible\)/);
   assert.match(component, /fetch\(`\/api\/schedule\$\{options\.force \? "\?refresh=1" : ""\}`/);
   assert.match(component, /cache: "no-store"/);
-  assert.match(component, /setMonthCursor\(monthStartKeyForValue\(createdEvent\.startAt\)\)/);
+  assert.match(component, /showCalendarMonth\(monthStartKeyForValue\(createdEvent\.startAt\)\)/);
+  assert.match(component, /url\.searchParams\.set\("month", normalized\.slice\(0, 7\)\)/);
+  assert.match(component, /showCalendarMonth\(monthStartKeyForValue\(event\.startAt\)\)/);
   assert.match(component, /if \(payload\.isStale\)/);
   assert.match(component, /pendingCreatedEventsRef\.current\.set\(createdEvent\.eventId/);
   assert.match(component, /calendarRef\.current\?\.scrollIntoView/);
@@ -47,4 +50,16 @@ test("busy calendar days expose every event", async () => {
   assert.match(component, /className="schedule-more-button"/);
   assert.match(component, /dayExpanded \? "Show less"/);
   assert.match(css, /\.schedule-more-button\s*\{/);
+});
+
+test("calendar refresh restores the viewed or most recently created event month", async () => {
+  const page = await read("../src/app/calendar-schedule/page.tsx");
+  const component = await read("../src/components/workspace/ScheduleWorkspace.tsx");
+
+  assert.match(page, /searchParams: Promise<\{ month\?: string \}>/);
+  assert.match(page, /recentManualEventMonth\(scheduleData\.manualEvents, user\.name\)/);
+  assert.match(page, /initialMonth=/);
+  assert.match(component, /normalizedMonthStart\(initialMonth\)/);
+  assert.match(component, /calendarDayEvents\(visibleEvents, day\.key\)/);
+  assert.match(component, /a\.source === "manual" && b\.source !== "manual"/);
 });

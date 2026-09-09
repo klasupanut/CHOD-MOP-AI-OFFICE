@@ -73,6 +73,13 @@ export async function GET(request: Request) {
   try {
     const forceRefresh = new URL(request.url).searchParams.get("refresh") === "1";
     const schedule = await listScheduleData({ forceRefresh });
+    const manualMonths = [...new Set(schedule.manualEvents.map((event) => dateOnly(event.startAt).slice(0, 7)).filter(Boolean))].sort();
+    console.info("[schedule] calendar loaded", {
+      manualEventCount: schedule.manualEvents.length,
+      derivedEventCount: schedule.derivedEvents.length,
+      manualMonths,
+      isStale: Boolean(schedule.isStale),
+    });
     return NextResponse.json(
       {
         events: schedule.events,
