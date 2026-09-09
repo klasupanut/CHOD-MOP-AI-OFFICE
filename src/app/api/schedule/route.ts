@@ -78,6 +78,7 @@ export async function GET(request: Request) {
         events: schedule.events,
         mode: schedule.mode,
         message: schedule.message,
+        isStale: Boolean(schedule.isStale),
         refreshedAt: new Date().toISOString(),
       },
       { headers: { "Cache-Control": "private, no-store, max-age=0" } },
@@ -108,6 +109,7 @@ export async function POST(request: Request) {
       source: "manual",
     });
     invalidateLiveWorkspaceCaches();
+    console.info("[schedule] event created", { eventId: event.eventId, eventDate: dateOnly(event.startAt) });
     return NextResponse.json({ event, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(

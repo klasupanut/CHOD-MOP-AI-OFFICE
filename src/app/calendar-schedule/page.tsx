@@ -14,6 +14,7 @@ export default async function CalendarSchedulePage() {
   } catch (error) {
     scheduleData = {
       mode: "fallback",
+      isStale: true,
       events: [],
       manualEvents: [],
       derivedEvents: [],

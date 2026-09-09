@@ -58,6 +58,7 @@ export type ScheduleEvent = {
 export type ScheduleData = {
   mode: "google-sheet" | "not-configured" | "fallback";
   message: string;
+  isStale?: boolean;
   events: ScheduleEvent[];
   manualEvents: ScheduleEvent[];
   derivedEvents: ScheduleEvent[];

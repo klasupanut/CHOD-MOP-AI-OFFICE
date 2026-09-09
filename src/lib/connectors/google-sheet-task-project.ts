@@ -94,6 +94,7 @@ type TaskProjectData = {
 
 type TaskProjectScheduleData = TaskProjectData & {
   manualEvents: ScheduleEvent[];
+  isStale: boolean;
 };
 
 let taskProjectCache: { expiresAt: number; data: TaskProjectData } | null = null;
@@ -473,6 +474,7 @@ async function fetchTaskProjectScheduleData(): Promise<TaskProjectScheduleData> 
       projects: taskProjectData.projects,
       tasks: taskProjectData.tasks,
       manualEvents: [] as ScheduleEvent[],
+      isStale: false,
       message: "GOOGLE_SHEET_ID_TASK_PROJECT is not configured. Showing schedule from visible Task / Project dates only.",
     };
   }
@@ -486,6 +488,7 @@ async function fetchTaskProjectScheduleData(): Promise<TaskProjectScheduleData> 
     projects: projectRows.map(rowToProject).filter((item): item is ProjectRecord => Boolean(item)),
     tasks: taskRows.map(rowToTask).filter((item): item is TaskRecord => Boolean(item)),
     manualEvents: scheduleRows.map(rowToScheduleEvent).filter((item): item is ScheduleEvent => Boolean(item)),
+    isStale: false,
     message: "",
   };
 }
@@ -509,6 +512,7 @@ export async function listTaskProjectScheduleData(options: { forceRefresh?: bool
       if (taskProjectScheduleCache) {
         return {
           ...taskProjectScheduleCache.data,
+          isStale: true,
           message: "Using recently cached schedule data because Google Sheets is temporarily rate-limited.",
         };
       }
@@ -525,6 +529,7 @@ export async function listScheduleData(options: { forceRefresh?: boolean } = {})
   const derivedEvents = deriveScheduleEventsFromTasksProjects(data.tasks, data.projects);
   return {
     mode: data.mode,
+    isStale: data.isStale,
     events: [...data.manualEvents, ...derivedEvents].sort((a, b) => a.startAt.localeCompare(b.startAt)),
     manualEvents: data.manualEvents,
     derivedEvents,

@@ -39,6 +39,7 @@ const characterNameMap = {
   foreman: "Foreman",
 } as const;
 const scheduleRefreshIntervalMs = 60_000;
+const pendingEventRetentionMs = 5 * 60_000;
 
 const eventIconMap: Record<ScheduleEventType, LucideIcon> = {
   Meeting: Users,
@@ -163,6 +164,12 @@ function monthLabel(date: Date) {
   return date.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 }
 
+function sortedUniqueEvents(events: ScheduleEvent[]) {
+  const byId = new Map<string, ScheduleEvent>();
+  events.forEach((event) => byId.set(event.eventId, event));
+  return [...byId.values()].sort((a, b) => a.startAt.localeCompare(b.startAt));
+}
+
 function monthDays(monthDate: Date) {
   const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const mondayIndex = first.getDay() || 7;
@@ -229,6 +236,8 @@ export function ScheduleWorkspace({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshPromiseRef = useRef<Promise<boolean> | null>(null);
   const lastRefreshAtRef = useRef(Date.now());
+  const pendingCreatedEventsRef = useRef(new Map<string, { event: ScheduleEvent; expiresAt: number }>());
+  const calendarRef = useRef<HTMLElement | null>(null);
   const [isPending, startTransition] = useTransition();
   const currentMonth = useMemo(() => monthFromKey(monthCursor), [monthCursor]);
   const days = useMemo(() => monthDays(currentMonth), [currentMonth]);
@@ -267,10 +276,28 @@ export function ScheduleWorkspace({
           cache: "no-store",
           credentials: "same-origin",
         });
-        const payload = (await response.json()) as { events?: ScheduleEvent[]; error?: string; message?: string };
+        const payload = (await response.json()) as { events?: ScheduleEvent[]; error?: string; message?: string; isStale?: boolean };
         if (!response.ok) throw new Error(payload.error || "Unable to refresh calendar events.");
-        setEvents(Array.isArray(payload.events) ? payload.events : []);
         lastRefreshAtRef.current = Date.now();
+        if (payload.isStale) {
+          if (options.announce) {
+            setNotice(payload.message || "Google Sheet is temporarily delayed. Keeping the current calendar view.");
+          }
+          return false;
+        }
+
+        const freshEvents = Array.isArray(payload.events) ? payload.events : [];
+        const freshIds = new Set(freshEvents.map((event) => event.eventId));
+        const now = Date.now();
+        const pendingEvents: ScheduleEvent[] = [];
+        pendingCreatedEventsRef.current.forEach((pending, eventId) => {
+          if (freshIds.has(eventId) || pending.expiresAt <= now) {
+            pendingCreatedEventsRef.current.delete(eventId);
+          } else {
+            pendingEvents.push(pending.event);
+          }
+        });
+        setEvents(sortedUniqueEvents([...freshEvents, ...pendingEvents]));
         if (options.announce) {
           setNotice(payload.message || "Calendar refreshed from Google Sheet.");
         }
@@ -291,7 +318,8 @@ export function ScheduleWorkspace({
   }, []);
 
   useEffect(() => {
-    setEvents(initialEvents);
+    const pendingEvents = [...pendingCreatedEventsRef.current.values()].map((pending) => pending.event);
+    setEvents(sortedUniqueEvents([...initialEvents, ...pendingEvents]));
   }, [initialEvents]);
 
   useEffect(() => {
@@ -354,13 +382,19 @@ export function ScheduleWorkspace({
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "Unable to create schedule event.");
         const createdEvent = payload.event as ScheduleEvent;
+        pendingCreatedEventsRef.current.set(createdEvent.eventId, {
+          event: createdEvent,
+          expiresAt: Date.now() + pendingEventRetentionMs,
+        });
         setEvents((current) => [createdEvent, ...current.filter((event) => event.eventId !== createdEvent.eventId)]);
         setSelectedEventId(createdEvent.eventId);
         setExpandedDayKey(dateKey(createdEvent.startAt));
         setMonthCursor(monthStartKeyForValue(createdEvent.startAt));
         setEditor(newDefaultEvent(currentUser));
         setNotice("Schedule event saved to Google Sheet.");
-        window.setTimeout(() => void refreshEvents({ force: true }), 750);
+        window.requestAnimationFrame(() => {
+          calendarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "Unable to create schedule event.");
       }
@@ -378,7 +412,10 @@ export function ScheduleWorkspace({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Unable to update schedule event.");
-      setEvents((current) => current.map((event) => (event.eventId === eventId ? { ...event, ...payload.event } : event)));
+      const updatedEvent = payload.event as ScheduleEvent;
+      const pending = pendingCreatedEventsRef.current.get(eventId);
+      if (pending) pendingCreatedEventsRef.current.set(eventId, { ...pending, event: updatedEvent });
+      setEvents((current) => current.map((event) => (event.eventId === eventId ? { ...event, ...updatedEvent } : event)));
       setNotice(status === "Done" ? "Event marked as done. Alert cleared." : `Event status updated to ${status}.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Unable to update schedule event.");
@@ -406,7 +443,10 @@ export function ScheduleWorkspace({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Unable to update schedule event.");
-      setEvents((current) => current.map((event) => (event.eventId === editEvent.eventId ? { ...event, ...payload.event } : event)));
+      const updatedEvent = payload.event as ScheduleEvent;
+      const pending = pendingCreatedEventsRef.current.get(editEvent.eventId);
+      if (pending) pendingCreatedEventsRef.current.set(editEvent.eventId, { ...pending, event: updatedEvent });
+      setEvents((current) => current.map((event) => (event.eventId === editEvent.eventId ? { ...event, ...updatedEvent } : event)));
       setEditEvent(null);
       setNotice("Schedule event updated.");
     } catch (error) {
@@ -433,6 +473,7 @@ export function ScheduleWorkspace({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Unable to delete schedule event.");
+      pendingCreatedEventsRef.current.delete(selectedEvent.eventId);
       setEvents((current) => current.filter((event) => event.eventId !== selectedEvent.eventId));
       setSelectedEventId("");
       setEditEvent(null);
@@ -471,7 +512,7 @@ export function ScheduleWorkspace({
       </section>
 
       <div className="schedule-layout">
-        <section className="workspace-main-card schedule-calendar-card">
+        <section className="workspace-main-card schedule-calendar-card" ref={calendarRef}>
           <div className="workspace-section-title">
             <div><span>MONTHLY CALENDAR</span><h2>{monthLabel(currentMonth)}</h2></div>
             <div className="schedule-month-controls">
