@@ -30,6 +30,9 @@ test("schedule connector can bypass its instance cache on demand", async () => {
   assert.match(connector, /append landed outside the canonical/);
   assert.match(connector, /\{ tab: SCHEDULE_TAB, startColumn: "N", rangeColumns: "AC" \}/);
   assert.match(connector, /\^EVT-/);
+  assert.match(connector, /async function findScheduleEventRow\(eventId: string\)/);
+  assert.match(connector, /startColumn: "N", endColumn: "AC"/);
+  assert.match(connector, /clearRow\(SCHEDULE_TAB, rowNumber, endColumn, SCHEDULE_HEADERS\.length, startColumn\)/);
   assert.match(connector, /Google Sheet append confirmed/);
 });
 
