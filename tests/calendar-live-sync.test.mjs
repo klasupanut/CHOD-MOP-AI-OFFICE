@@ -26,6 +26,10 @@ test("schedule connector can bypass its instance cache on demand", async () => {
   assert.match(connector, /if \(taskProjectSchedulePromise\) return taskProjectSchedulePromise/);
   assert.match(connector, /isStale: true,[\s\S]*Using recently cached schedule data/);
   assert.match(connector, /includeValuesInResponse=true/);
+  assert.match(connector, /encodeURIComponent\(`\$\{tab\}!A:A`\)/);
+  assert.match(connector, /append landed outside the canonical/);
+  assert.match(connector, /\{ tab: SCHEDULE_TAB, startColumn: "N", rangeColumns: "AC" \}/);
+  assert.match(connector, /\^EVT-/);
   assert.match(connector, /Google Sheet append confirmed/);
 });
 

@@ -385,10 +385,10 @@ async function readTabRows(tab: string, rangeColumns: string) {
   return rows;
 }
 
-async function readTabRowsBatch(ranges: Array<{ tab: string; rangeColumns: string }>) {
+async function readTabRowsBatch(ranges: Array<{ tab: string; rangeColumns: string; startColumn?: string }>) {
   await ensureTaskProjectSheets();
   const query = new URLSearchParams();
-  ranges.forEach(({ tab, rangeColumns }) => query.append("ranges", `${tab}!A2:${rangeColumns}`));
+  ranges.forEach(({ tab, rangeColumns, startColumn = "A" }) => query.append("ranges", `${tab}!${startColumn}2:${rangeColumns}`));
   const response = await sheetsFetch(`/values:batchGet?${query.toString()}`);
   const payload = (await response.json()) as { valueRanges?: Array<{ values?: unknown[][] }> };
   return ranges.map((_, index) => payload.valueRanges?.[index]?.values || []);
@@ -401,21 +401,12 @@ function clearTaskProjectReadCache() {
   taskProjectSchedulePromise = null;
 }
 
-function columnName(columnCount: number) {
-  let value = Math.max(1, columnCount);
-  let name = "";
-  while (value > 0) {
-    value -= 1;
-    name = String.fromCharCode(65 + (value % 26)) + name;
-    value = Math.floor(value / 26);
-  }
-  return name;
-}
-
 async function appendRows(tab: string, rows: unknown[][]) {
   await ensureTaskProjectSheets();
-  const lastColumn = columnName(Math.max(...rows.map((row) => row.length), 1));
-  const range = encodeURIComponent(`${tab}!A:${lastColumn}`);
+  // Anchor table detection to column A. A broad A:P/A:R range can make the
+  // Sheets append API select an unrelated table farther right and place the
+  // row in N:AC, which makes it invisible to canonical readers.
+  const range = encodeURIComponent(`${tab}!A:A`);
   const response = await sheetsFetch(`/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS&includeValuesInResponse=true&responseValueRenderOption=UNFORMATTED_VALUE`, {
     method: "POST",
     body: JSON.stringify({ values: rows }),
@@ -423,8 +414,12 @@ async function appendRows(tab: string, rows: unknown[][]) {
   const payload = (await response.json()) as {
     updates?: { updatedRange?: string; updatedData?: { values?: unknown[][] } };
   };
+  const updatedRange = payload.updates?.updatedRange || "";
+  if (!updatedRange.startsWith(`${tab}!A`)) {
+    throw new Error(`Google Sheet append landed outside the canonical ${tab} columns (${updatedRange || "unknown range"}).`);
+  }
   return {
-    updatedRange: payload.updates?.updatedRange || "",
+    updatedRange,
     values: payload.updates?.updatedData?.values || [],
   };
 }
@@ -497,16 +492,32 @@ async function fetchTaskProjectScheduleData(): Promise<TaskProjectScheduleData> 
       message: "GOOGLE_SHEET_ID_TASK_PROJECT is not configured. Showing schedule from visible Task / Project dates only.",
     };
   }
-  const [projectRows, taskRows, scheduleRows] = await readTabRowsBatch([
+  const [projectRows, taskRows, scheduleRows, misplacedScheduleRows] = await readTabRowsBatch([
     { tab: PROJECTS_TAB, rangeColumns: "R" },
     { tab: TASKS_TAB, rangeColumns: "P" },
     { tab: SCHEDULE_TAB, rangeColumns: "P" },
+    // Compatibility read for events previously appended to N:AC by the broad
+    // append range bug. This is read-only and keeps those real events visible
+    // to every account without moving or deleting Sheet data. It stays in the
+    // same batch request to avoid increasing Google Sheets read quota usage.
+    { tab: SCHEDULE_TAB, startColumn: "N", rangeColumns: "AC" },
   ]);
+  const misplacedEvents = misplacedScheduleRows
+    .filter((row) => /^EVT-/i.test(safeString(row[0])))
+    .map(rowToScheduleEvent)
+    .filter((item): item is ScheduleEvent => Boolean(item));
+  const canonicalEvents = scheduleRows
+    .map(rowToScheduleEvent)
+    .filter((item): item is ScheduleEvent => Boolean(item));
+  const manualEvents = [...misplacedEvents, ...canonicalEvents].reduce((events, event) => {
+    events.set(event.eventId, event);
+    return events;
+  }, new Map<string, ScheduleEvent>());
   return {
     mode: "google-sheet" as const,
     projects: projectRows.map(rowToProject).filter((item): item is ProjectRecord => Boolean(item)),
     tasks: taskRows.map(rowToTask).filter((item): item is TaskRecord => Boolean(item)),
-    manualEvents: scheduleRows.map(rowToScheduleEvent).filter((item): item is ScheduleEvent => Boolean(item)),
+    manualEvents: [...manualEvents.values()],
     isStale: false,
     message: "",
   };
