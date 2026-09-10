@@ -17,6 +17,22 @@ test("calendar exposes an authenticated no-store refresh endpoint", async () => 
   assert.match(route, /Cache-Control": "private, no-store, max-age=0"/);
 });
 
+test("calendar mutations use the same shared module access rule", async () => {
+  const route = await read("../src/app/api/schedule/route.ts");
+  const patchHandler = route.slice(route.indexOf("export async function PATCH"), route.indexOf("export async function DELETE"));
+  const deleteHandler = route.slice(route.indexOf("export async function DELETE"));
+
+  assert.doesNotMatch(route, /getApiUser\("Calendar \/ Schedule"\)/);
+  assert.match(patchHandler, /const user = await getApiUser\(\)/);
+  assert.match(patchHandler, /if \(!canAccessSchedule\(user\)\)/);
+  assert.match(patchHandler, /listScheduleData\(\{ forceRefresh: true \}\)/);
+  assert.match(deleteHandler, /const user = await getApiUser\(\)/);
+  assert.match(deleteHandler, /if \(!canAccessSchedule\(user\)\)/);
+  assert.match(deleteHandler, /listScheduleData\(\{ forceRefresh: true \}\)/);
+  assert.doesNotMatch(deleteHandler, /samePerson\(event\.owner/);
+  assert.match(deleteHandler, /\[schedule\] event deleted/);
+});
+
 test("schedule connector can bypass its instance cache on demand", async () => {
   const connector = await read("../src/lib/connectors/google-sheet-task-project.ts");
 

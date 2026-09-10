@@ -105,6 +105,7 @@ export async function POST(request: Request) {
 
   const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canAccessSchedule(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const body = (await request.json()) as { event?: ScheduleEvent };
@@ -131,14 +132,15 @@ export async function PATCH(request: Request) {
   const unsafe = rejectUnsafeMutationRequest(request);
   if (unsafe) return unsafe;
 
-  const user = await getApiUser("Calendar / Schedule");
+  const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canAccessSchedule(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const body = (await request.json()) as { eventId?: string; status?: ScheduleStatus; event?: Partial<ScheduleEvent> };
     if (!body.eventId) throw new Error("Event ID is required.");
 
-    const schedule = await listScheduleData();
+    const schedule = await listScheduleData({ forceRefresh: true });
     const event = schedule.events.find((item) => item.eventId === body.eventId);
     if (!event) throw new Error("Schedule event not found.");
 
@@ -247,14 +249,15 @@ export async function DELETE(request: Request) {
   const unsafe = rejectUnsafeMutationRequest(request);
   if (unsafe) return unsafe;
 
-  const user = await getApiUser("Calendar / Schedule");
+  const user = await getApiUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canAccessSchedule(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const body = (await request.json()) as { eventId?: string };
     if (!body.eventId) throw new Error("Event ID is required.");
 
-    const schedule = await listScheduleData();
+    const schedule = await listScheduleData({ forceRefresh: true });
     const event = schedule.events.find((item) => item.eventId === body.eventId);
     if (!event) throw new Error("Schedule event not found.");
     if (event.source !== "manual") {
@@ -264,14 +267,12 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const owner = userDisplayName(user);
-    const canManageAll = canManageAllSchedule(user);
-    if (!canManageAll && !samePerson(event.owner, owner)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
+    // Calendar is a shared team workspace. Any approved user who can access
+    // Calendar may delete a manual event; task/project-derived events remain
+    // protected above and must be changed at their source module.
     const deletedEvent = await deleteScheduleEventInSheet(event.eventId);
     invalidateLiveWorkspaceCaches();
+    console.info("[schedule] event deleted", { eventId: deletedEvent.eventId, eventDate: dateOnly(deletedEvent.startAt) });
     return NextResponse.json({ event: deletedEvent, mode: "google-sheet" });
   } catch (error) {
     return NextResponse.json(
