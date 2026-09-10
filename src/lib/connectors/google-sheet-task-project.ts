@@ -401,13 +401,32 @@ function clearTaskProjectReadCache() {
   taskProjectSchedulePromise = null;
 }
 
+function columnName(columnCount: number) {
+  let value = Math.max(1, columnCount);
+  let name = "";
+  while (value > 0) {
+    value -= 1;
+    name = String.fromCharCode(65 + (value % 26)) + name;
+    value = Math.floor(value / 26);
+  }
+  return name;
+}
+
 async function appendRows(tab: string, rows: unknown[][]) {
   await ensureTaskProjectSheets();
-  const range = encodeURIComponent(`${tab}!A:Z`);
-  await sheetsFetch(`/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+  const lastColumn = columnName(Math.max(...rows.map((row) => row.length), 1));
+  const range = encodeURIComponent(`${tab}!A:${lastColumn}`);
+  const response = await sheetsFetch(`/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS&includeValuesInResponse=true&responseValueRenderOption=UNFORMATTED_VALUE`, {
     method: "POST",
     body: JSON.stringify({ values: rows }),
   });
+  const payload = (await response.json()) as {
+    updates?: { updatedRange?: string; updatedData?: { values?: unknown[][] } };
+  };
+  return {
+    updatedRange: payload.updates?.updatedRange || "",
+    values: payload.updates?.updatedData?.values || [],
+  };
 }
 
 async function clearRow(tab: string, rowNumber: number, lastColumn: string, columnCount: number) {
@@ -494,30 +513,43 @@ async function fetchTaskProjectScheduleData(): Promise<TaskProjectScheduleData> 
 }
 
 export async function listTaskProjectScheduleData(options: { forceRefresh?: boolean } = {}): Promise<TaskProjectScheduleData> {
+  const remember = (data: TaskProjectScheduleData) => {
+    taskProjectScheduleCache = { expiresAt: Date.now() + READ_CACHE_MS, data };
+    taskProjectCache = {
+      expiresAt: Date.now() + READ_CACHE_MS,
+      data: { mode: data.mode, projects: data.projects, tasks: data.tasks, message: data.message },
+    };
+    return data;
+  };
+  const cachedFallback = (error: unknown) => {
+    if (taskProjectScheduleCache) {
+      return {
+        ...taskProjectScheduleCache.data,
+        isStale: true,
+        message: "Using recently cached schedule data because Google Sheets is temporarily rate-limited.",
+      } satisfies TaskProjectScheduleData;
+    }
+    throw error;
+  };
+
+  // A browser refresh or explicit Calendar refresh must bypass both the cache
+  // and an older in-flight read. Vercel instances do not share cache invalidation.
+  if (options.forceRefresh) {
+    try {
+      return remember(await fetchTaskProjectScheduleData());
+    } catch (error) {
+      return cachedFallback(error);
+    }
+  }
+
   if (!options.forceRefresh && taskProjectScheduleCache && taskProjectScheduleCache.expiresAt > Date.now()) {
     return taskProjectScheduleCache.data;
   }
   if (taskProjectSchedulePromise) return taskProjectSchedulePromise;
 
   taskProjectSchedulePromise = fetchTaskProjectScheduleData()
-    .then((data) => {
-      taskProjectScheduleCache = { expiresAt: Date.now() + READ_CACHE_MS, data };
-      taskProjectCache = {
-        expiresAt: Date.now() + READ_CACHE_MS,
-        data: { mode: data.mode, projects: data.projects, tasks: data.tasks, message: data.message },
-      };
-      return data;
-    })
-    .catch((error) => {
-      if (taskProjectScheduleCache) {
-        return {
-          ...taskProjectScheduleCache.data,
-          isStale: true,
-          message: "Using recently cached schedule data because Google Sheets is temporarily rate-limited.",
-        };
-      }
-      throw error;
-    })
+    .then(remember)
+    .catch(cachedFallback)
     .finally(() => {
       taskProjectSchedulePromise = null;
     });
@@ -666,9 +698,15 @@ export async function createScheduleEventInSheet(input: ScheduleEvent) {
     lastUpdate: input.lastUpdate || now,
     source: "manual",
   };
-  await appendRows(SCHEDULE_TAB, [scheduleEventToRow(event)]);
+  const appendResult = await appendRows(SCHEDULE_TAB, [scheduleEventToRow(event)]);
+  const persistedEvent = rowToScheduleEvent(appendResult.values[0] || []) || event;
+  console.info("[schedule] Google Sheet append confirmed", {
+    eventId: event.eventId,
+    updatedRange: appendResult.updatedRange,
+    readBackMatched: persistedEvent.eventId === event.eventId,
+  });
   clearTaskProjectReadCache();
-  return event;
+  return persistedEvent;
 }
 
 export async function updateScheduleEventStatusInSheet(eventId: string, status: ScheduleStatus) {

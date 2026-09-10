@@ -78,6 +78,7 @@ export async function GET(request: Request) {
       manualEventCount: schedule.manualEvents.length,
       derivedEventCount: schedule.derivedEvents.length,
       manualMonths,
+      forceRefresh,
       isStale: Boolean(schedule.isStale),
     });
     return NextResponse.json(

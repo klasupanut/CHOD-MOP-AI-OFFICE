@@ -13,6 +13,7 @@ test("calendar exposes an authenticated no-store refresh endpoint", async () => 
   assert.match(route, /listScheduleData\(\{ forceRefresh \}\)/);
   assert.match(route, /isStale: Boolean\(schedule\.isStale\)/);
   assert.match(route, /\[schedule\] calendar loaded/);
+  assert.match(route, /forceRefresh,/);
   assert.match(route, /Cache-Control": "private, no-store, max-age=0"/);
 });
 
@@ -21,8 +22,11 @@ test("schedule connector can bypass its instance cache on demand", async () => {
 
   assert.match(connector, /listScheduleData\(options: \{ forceRefresh\?: boolean \} = \{\}\)/);
   assert.match(connector, /listTaskProjectScheduleData\(options\)/);
+  assert.match(connector, /if \(options\.forceRefresh\) \{[\s\S]*fetchTaskProjectScheduleData\(\)/);
   assert.match(connector, /if \(taskProjectSchedulePromise\) return taskProjectSchedulePromise/);
   assert.match(connector, /isStale: true,[\s\S]*Using recently cached schedule data/);
+  assert.match(connector, /includeValuesInResponse=true/);
+  assert.match(connector, /Google Sheet append confirmed/);
 });
 
 test("calendar refreshes visible sessions without aggressive Google polling", async () => {
@@ -38,6 +42,10 @@ test("calendar refreshes visible sessions without aggressive Google polling", as
   assert.match(component, /showCalendarMonth\(monthStartKeyForValue\(event\.startAt\)\)/);
   assert.match(component, /if \(payload\.isStale\)/);
   assert.match(component, /pendingCreatedEventsRef\.current\.set\(createdEvent\.eventId/);
+  assert.match(component, /pendingEventStorageKey = "chod-calendar-pending-events-v1"/);
+  assert.match(component, /window\.sessionStorage\.setItem/);
+  assert.match(component, /readStoredPendingEvents\(\)/);
+  assert.match(component, /void refreshEvents\(\{ force: true \}\)/);
   assert.match(component, /calendarRef\.current\?\.scrollIntoView/);
   assert.doesNotMatch(component, /setTimeout\(\(\) => void refreshEvents/);
 });
@@ -58,6 +66,7 @@ test("calendar refresh restores the viewed or most recently created event month"
 
   assert.match(page, /searchParams: Promise<\{ month\?: string \}>/);
   assert.match(page, /recentManualEventMonth\(scheduleData\.manualEvents, user\.name\)/);
+  assert.match(page, /listScheduleData\(\{ forceRefresh: true \}\)/);
   assert.match(page, /initialMonth=/);
   assert.match(component, /normalizedMonthStart\(initialMonth\)/);
   assert.match(component, /calendarDayEvents\(visibleEvents, day\.key\)/);

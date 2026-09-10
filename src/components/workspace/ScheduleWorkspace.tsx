@@ -39,7 +39,10 @@ const characterNameMap = {
   foreman: "Foreman",
 } as const;
 const scheduleRefreshIntervalMs = 60_000;
-const pendingEventRetentionMs = 5 * 60_000;
+const pendingEventRetentionMs = 30 * 60_000;
+const pendingEventStorageKey = "chod-calendar-pending-events-v1";
+
+type PendingCreatedEvent = { event: ScheduleEvent; expiresAt: number };
 
 const eventIconMap: Record<ScheduleEventType, LucideIcon> = {
   Meeting: Users,
@@ -170,6 +173,28 @@ function sortedUniqueEvents(events: ScheduleEvent[]) {
   return [...byId.values()].sort((a, b) => a.startAt.localeCompare(b.startAt));
 }
 
+function readStoredPendingEvents() {
+  if (typeof window === "undefined") return new Map<string, PendingCreatedEvent>();
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(pendingEventStorageKey) || "[]") as PendingCreatedEvent[];
+    const now = Date.now();
+    return new Map(parsed
+      .filter((item) => item?.event?.eventId && item.event.title && item.event.startAt && item.expiresAt > now)
+      .map((item) => [item.event.eventId, item]));
+  } catch {
+    return new Map<string, PendingCreatedEvent>();
+  }
+}
+
+function storePendingEvents(events: Map<string, PendingCreatedEvent>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(pendingEventStorageKey, JSON.stringify([...events.values()]));
+  } catch {
+    // Session storage is only a short-lived UI safeguard; Google Sheet remains authoritative.
+  }
+}
+
 function normalizedMonthStart(value?: string) {
   const match = /^(\d{4})-(\d{2})(?:$|-)/.exec(String(value || "").trim());
   if (!match) return monthStartKey();
@@ -256,7 +281,7 @@ export function ScheduleWorkspace({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshPromiseRef = useRef<Promise<boolean> | null>(null);
   const lastRefreshAtRef = useRef(Date.now());
-  const pendingCreatedEventsRef = useRef(new Map<string, { event: ScheduleEvent; expiresAt: number }>());
+  const pendingCreatedEventsRef = useRef(new Map<string, PendingCreatedEvent>());
   const calendarRef = useRef<HTMLElement | null>(null);
   const [isPending, startTransition] = useTransition();
   const currentMonth = useMemo(() => monthFromKey(monthCursor), [monthCursor]);
@@ -326,6 +351,7 @@ export function ScheduleWorkspace({
             pendingEvents.push(pending.event);
           }
         });
+        storePendingEvents(pendingCreatedEventsRef.current);
         setEvents(sortedUniqueEvents([...freshEvents, ...pendingEvents]));
         if (options.announce) {
           setNotice(payload.message || "Calendar refreshed from Google Sheet.");
@@ -350,6 +376,14 @@ export function ScheduleWorkspace({
     const pendingEvents = [...pendingCreatedEventsRef.current.values()].map((pending) => pending.event);
     setEvents(sortedUniqueEvents([...initialEvents, ...pendingEvents]));
   }, [initialEvents]);
+
+  useEffect(() => {
+    const storedEvents = readStoredPendingEvents();
+    storedEvents.forEach((pending, eventId) => pendingCreatedEventsRef.current.set(eventId, pending));
+    if (storedEvents.size) {
+      setEvents((current) => sortedUniqueEvents([...current, ...[...storedEvents.values()].map((pending) => pending.event)]));
+    }
+  }, []);
 
   useEffect(() => {
     const refreshWhenVisible = () => {
@@ -420,6 +454,7 @@ export function ScheduleWorkspace({
           event: createdEvent,
           expiresAt: Date.now() + pendingEventRetentionMs,
         });
+        storePendingEvents(pendingCreatedEventsRef.current);
         setEvents((current) => [createdEvent, ...current.filter((event) => event.eventId !== createdEvent.eventId)]);
         setSelectedEventId(createdEvent.eventId);
         setExpandedDayKey(dateKey(createdEvent.startAt));
@@ -429,6 +464,7 @@ export function ScheduleWorkspace({
         window.requestAnimationFrame(() => {
           calendarRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         });
+        void refreshEvents({ force: true });
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "Unable to create schedule event.");
       }
@@ -449,6 +485,7 @@ export function ScheduleWorkspace({
       const updatedEvent = payload.event as ScheduleEvent;
       const pending = pendingCreatedEventsRef.current.get(eventId);
       if (pending) pendingCreatedEventsRef.current.set(eventId, { ...pending, event: updatedEvent });
+      storePendingEvents(pendingCreatedEventsRef.current);
       setEvents((current) => current.map((event) => (event.eventId === eventId ? { ...event, ...updatedEvent } : event)));
       setNotice(status === "Done" ? "Event marked as done. Alert cleared." : `Event status updated to ${status}.`);
     } catch (error) {
@@ -480,6 +517,7 @@ export function ScheduleWorkspace({
       const updatedEvent = payload.event as ScheduleEvent;
       const pending = pendingCreatedEventsRef.current.get(editEvent.eventId);
       if (pending) pendingCreatedEventsRef.current.set(editEvent.eventId, { ...pending, event: updatedEvent });
+      storePendingEvents(pendingCreatedEventsRef.current);
       setEvents((current) => current.map((event) => (event.eventId === editEvent.eventId ? { ...event, ...updatedEvent } : event)));
       setEditEvent(null);
       setNotice("Schedule event updated.");
@@ -508,6 +546,7 @@ export function ScheduleWorkspace({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Unable to delete schedule event.");
       pendingCreatedEventsRef.current.delete(selectedEvent.eventId);
+      storePendingEvents(pendingCreatedEventsRef.current);
       setEvents((current) => current.filter((event) => event.eventId !== selectedEvent.eventId));
       setSelectedEventId("");
       setEditEvent(null);

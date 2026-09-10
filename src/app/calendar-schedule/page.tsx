@@ -38,7 +38,7 @@ export default async function CalendarSchedulePage({
 
   let scheduleData: Awaited<ReturnType<typeof listScheduleData>>;
   try {
-    scheduleData = await listScheduleData();
+    scheduleData = await listScheduleData({ forceRefresh: true });
   } catch (error) {
     scheduleData = {
       mode: "fallback",
