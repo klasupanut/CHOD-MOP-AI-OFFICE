@@ -161,7 +161,7 @@ test("server dashboards and embedded quotation analytics share the exclusion rul
   assert.match(bundle, /chodRestorationTitle/);
   assert.match(bundle, /,le=chodRecognizedQuotation\(oe\)/);
   assert.match(bundle, /conditional RESTORATION WORK categories are excluded/);
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260811-quotation-creation-trend/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260924-short-external-note-fit/);
 });
 
 test("Value Comparison uses signed value and the companion card shows quotation creation trend", () => {

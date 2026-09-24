@@ -32,11 +32,11 @@ test("quotation summary labels span quantities and unit-price columns", () => {
 test("signature labels have a fixed gap below the optional note box", () => {
   assert.match(
     bundle,
-    /data-testid":"signature-section",className:"mt-auto grid grid-cols-2 gap-\[22mm\] text-center text-\[12px\]",style:\{paddingTop:"8mm",paddingBottom:"4mm"\}/,
+    /data-testid":"signature-section",className:"mt-auto grid grid-cols-2 gap-\[22mm\] text-center text-\[12px\]",style:\{paddingTop:chodCompactExternalNote\?"5mm":"8mm",paddingBottom:"4mm"\}/,
   );
   assert.doesNotMatch(bundle, /pt-\[6mm\]/);
 });
 
 test("quotation asset cache key includes the latest PDF layout release", () => {
-  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260811-quotation-creation-trend/);
+  assert.match(indexHtml, /index-HmUxnN6T\.js\?v=20260924-short-external-note-fit/);
 });
