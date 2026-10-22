@@ -8,6 +8,7 @@ const checks = [
   { path: "/tasks", status: 307, location: "/login" },
   { path: "/projects", status: 307, location: "/login" },
   { path: "/fit-out-project", status: 307, location: "/login" },
+  { path: "/renovation", status: 307, location: "/login" },
   { path: "/calendar-schedule", status: 307, location: "/login" },
   { path: "/planner", status: 307, location: "/login" },
   { path: "/planner/workspace", status: 307, location: "/login" },

@@ -1120,6 +1120,16 @@ a { color: inherit; text-decoration: none; }
   background: #f1f5f9;
 }
 
+.warehouse-status-embedded-frame,
+.warehouse-status-embedded-frame iframe {
+  background: #071016;
+}
+
+.warehouse-status-embedded-frame .embedded-module-loading {
+  color: #dff8ff;
+  background: rgba(3, 16, 24, .94);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .embedded-module-spinner { animation-duration: 1.8s; }
 }

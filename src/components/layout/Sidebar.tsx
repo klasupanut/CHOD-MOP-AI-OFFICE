@@ -31,7 +31,7 @@ const nav: Array<{ label: "Office" | "Planner" | ModulePermission; icon: LucideI
   { label: "Calendar / Schedule", icon: CalendarDays, href: "/calendar-schedule", displayLabel: "Calendar" },
   { label: "Planner", icon: Workflow, href: "/planner" },
   { label: "PM Loop", icon: Gauge, pendingConnector: true },
-  { label: "Renovation", icon: Wrench, pendingConnector: true },
+  { label: "Renovation", icon: Wrench, href: "/renovation" },
   { label: "Fit-out Project", icon: Hammer, href: "/fit-out-project" },
   { label: "Solar Projects", icon: SunMedium, pendingConnector: true },
   { label: "Quotations", icon: BriefcaseBusiness, href: "/quotations" },
