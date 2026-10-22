@@ -34,15 +34,16 @@ const PROJECT_CHAENGWATTANA = "CHODBIZ CHAENGWATTANA";
 const PROJECT_KM8_P1 = "CHOD BIZ BANGNA KM.8 P.1";
 const PROJECT_KM8_P2 = "CHOD BIZ BANGNA KM.8 P.2";
 const PROJECT_PTS4 = "CHODBIZ PUTTHAMONTHON SAI 4";
+const embeddedSiteImages = window.warehouseSiteImages || {};
 const projectImageAssets = Object.freeze({
-  [PROJECT_CHAENGWATTANA]: "./assets/project-images/chaengwattana.png?v=20261022-cover-1",
-  [PROJECT_CHOD1]: "./assets/project-images/chod1.png",
-  [PROJECT_CHOD2]: "./assets/project-images/chod2.png",
-  [PROJECT_CHOD3]: "./assets/project-images/chod3.png",
-  [PROJECT_CHOD5]: "./assets/project-images/rayong.png?v=20261022-cover-1",
-  [PROJECT_PTS4]: "./assets/project-images/sai4.png?v=20261022-cover-1",
-  [PROJECT_KM8_P1]: "./assets/project-images/km8-p1.png?v=20261022-cover-1",
-  [PROJECT_KM8_P2]: "./assets/project-images/km8-p2.png?v=20261022-cover-1"
+  [PROJECT_CHAENGWATTANA]: embeddedSiteImages.chaengwattana || "",
+  [PROJECT_CHOD1]: embeddedSiteImages.chod1 || "",
+  [PROJECT_CHOD2]: embeddedSiteImages.chod2 || "",
+  [PROJECT_CHOD3]: embeddedSiteImages.chod3 || "",
+  [PROJECT_CHOD5]: embeddedSiteImages.rayong || "",
+  [PROJECT_PTS4]: embeddedSiteImages.sai4 || "",
+  [PROJECT_KM8_P1]: embeddedSiteImages.km8P1 || "",
+  [PROJECT_KM8_P2]: embeddedSiteImages.km8P2 || ""
 });
 const MAP_ZOOM_MIN = 1;
 const MAP_ZOOM_MAX = 3;

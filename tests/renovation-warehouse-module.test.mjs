@@ -25,6 +25,16 @@ test("Warehouse module retains the live read-only Google Sheet source", async ()
   assert.doesNotMatch(app, /sheets\.googleapis\.com\/v4\/spreadsheets[\s\S]*method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
 });
 
+test("Site cover images are compressed WebP data URIs embedded in HTML", async () => {
+  const app = await read("../warehouse-status-map-dist/app.js");
+  const html = await read("../warehouse-status-map-dist/index.html");
+  assert.match(app, /window\.warehouseSiteImages/);
+  assert.doesNotMatch(app, /assets\/project-images/);
+  assert.match(html, /id="warehouse-site-images"/);
+  assert.equal((html.match(/data:image\/webp;base64,/g) || []).length, 8);
+  assert.ok(Buffer.byteLength(html, "utf8") < 400 * 1024, "Embedded site images made index.html too large");
+});
+
 test("Warehouse production bundle excludes obsolete CAD and PDF source artifacts", async () => {
   const root = new URL("../warehouse-status-map-dist/", import.meta.url);
   const entries = await readdir(root, { recursive: true });
