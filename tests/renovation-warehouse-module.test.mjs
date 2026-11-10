@@ -25,6 +25,23 @@ test("Warehouse module retains the live read-only Google Sheet source", async ()
   assert.doesNotMatch(app, /sheets\.googleapis\.com\/v4\/spreadsheets[\s\S]*method:\s*["'](?:POST|PUT|PATCH|DELETE)/i);
 });
 
+test("Renovation site plan exports a self-contained 16:9 PNG without the live clock", async () => {
+  const app = await read("../warehouse-status-map-dist/app.js");
+  const html = await read("../warehouse-status-map-dist/index.html");
+
+  assert.match(html, /id="exportPngBtn"/);
+  assert.match(html, /styles\.css\?v=20261110-png-export-1/);
+  assert.match(html, /app\.js\?v=20261110-png-export-1/);
+  assert.match(app, /const PNG_EXPORT_WIDTH = 1920/);
+  assert.match(app, /const PNG_EXPORT_HEIGHT = 1080/);
+  assert.match(app, /createExportMapImage\(contentWidth, mapHeight\)/);
+  assert.match(app, /embedExportPlanImage\(map\)/);
+  assert.match(app, /canvasToPngBlob\(canvas\)/);
+  assert.match(app, /drawExportRightRail\(context/);
+  assert.doesNotMatch(app, /foreignObject/);
+  assert.doesNotMatch(app, /document\.querySelector\("\.app-shell"\)/);
+});
+
 test("Site cover images are compressed WebP data URIs embedded in HTML", async () => {
   const app = await read("../warehouse-status-map-dist/app.js");
   const html = await read("../warehouse-status-map-dist/index.html");

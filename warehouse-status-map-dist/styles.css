@@ -835,6 +835,30 @@ button:disabled {
   gap: 10px;
 }
 
+.export-png-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-color: rgba(47, 255, 199, 0.34);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.16), transparent 38%),
+    linear-gradient(135deg, rgba(47, 255, 199, 0.16), rgba(49, 216, 255, 0.1));
+  color: #eafff9;
+  white-space: nowrap;
+}
+
+.export-png-btn:hover {
+  border-color: rgba(47, 255, 199, 0.76);
+  background: linear-gradient(135deg, rgba(47, 255, 199, 0.24), rgba(49, 216, 255, 0.16));
+  box-shadow: 0 0 16px rgba(47, 255, 199, 0.14);
+}
+
+.export-png-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
 .map-toggle {
   display: inline-flex;
   align-items: center;

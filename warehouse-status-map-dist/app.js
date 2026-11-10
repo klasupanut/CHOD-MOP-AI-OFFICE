@@ -48,6 +48,8 @@ const projectImageAssets = Object.freeze({
 const MAP_ZOOM_MIN = 1;
 const MAP_ZOOM_MAX = 3;
 const MAP_ZOOM_STEP = 0.35;
+const PNG_EXPORT_WIDTH = 1920;
+const PNG_EXPORT_HEIGHT = 1080;
 const PROJECT_NAME = PROJECT_CHOD2;
 const DEFAULT_GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1I5Z_MjvqTZlkb7NJJMieP0_SKcNmervyP7w_KCHRpac/edit";
 const SHEET_URL_STORAGE_KEY = "warehouseDashboard.googleSheetUrl";
@@ -474,6 +476,7 @@ const els = {
   unitTable: document.querySelector("#unitTable"),
   refreshRegisterBtn: document.querySelector("#refreshRegisterBtn"),
   exportCsvBtn: document.querySelector("#exportCsvBtn"),
+  exportPngBtn: document.querySelector("#exportPngBtn"),
   visibleCount: document.querySelector("#visibleCount"),
   fitVisibleBtn: document.querySelector("#fitVisibleBtn"),
   zoomInBtn: document.querySelector("#zoomInBtn"),
@@ -2033,6 +2036,352 @@ function refreshUnitRegister() {
   setDataStatus("Unit register refreshed from current local data. Google Sheet URL is not configured.", true);
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result), { once: true });
+    reader.addEventListener("error", () => reject(reader.error || new Error("Unable to read the plan image.")), { once: true });
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function getExportCss() {
+  const localStyles = [...document.querySelectorAll('link[rel="stylesheet"]')]
+    .map((link) => link.href)
+    .filter((href) => {
+      try {
+        return new URL(href, document.baseURI).origin === window.location.origin;
+      } catch {
+        return false;
+      }
+    });
+  const cssParts = await Promise.all(localStyles.map(async (href) => {
+    const response = await fetch(href, { credentials: "same-origin" });
+    if (!response.ok) throw new Error(`Unable to load export styles (${response.status}).`);
+    return response.text();
+  }));
+  return cssParts.join("\n");
+}
+
+async function embedExportPlanImage(exportRoot) {
+  const image = exportRoot.querySelector("#masterPlanImage");
+  if (!image || image.hidden) return;
+  const href = image.getAttribute("href") || image.getAttribute("xlink:href");
+  if (!href || href.startsWith("data:")) return;
+  const response = await fetch(new URL(href, document.baseURI), { credentials: "same-origin" });
+  if (!response.ok) throw new Error(`Unable to load the site plan (${response.status}).`);
+  const dataUrl = await blobToDataUrl(await response.blob());
+  image.setAttribute("href", dataUrl);
+  image.removeAttribute("xlink:href");
+}
+
+function loadExportImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image), { once: true });
+    image.addEventListener("error", () => reject(new Error("The browser could not render the PNG frame.")), { once: true });
+    image.src = url;
+  });
+}
+
+function canvasToPngBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("The browser could not create the PNG file.")), "image/png", 1);
+  });
+}
+
+function roundedRectPath(context, x, y, width, height, radius = 10) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+  context.lineTo(x + safeRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
+  context.closePath();
+}
+
+function drawExportPanel(context, x, y, width, height, radius = 11) {
+  const fill = context.createLinearGradient(x, y, x + width, y + height);
+  fill.addColorStop(0, "rgba(12, 29, 38, 0.98)");
+  fill.addColorStop(1, "rgba(5, 16, 23, 0.99)");
+  roundedRectPath(context, x, y, width, height, radius);
+  context.fillStyle = fill;
+  context.fill();
+  context.strokeStyle = "rgba(84, 204, 226, 0.34)";
+  context.lineWidth = 1.2;
+  context.stroke();
+}
+
+function drawExportHeading(context, text, x, y) {
+  context.fillStyle = "#31d8ff";
+  context.fillRect(x, y - 12, 4, 14);
+  context.fillStyle = "#dff7fb";
+  context.font = '700 16px "Segoe UI", Arial, sans-serif';
+  context.textBaseline = "alphabetic";
+  context.fillText(text, x + 12, y);
+}
+
+function drawExportPill(context, text, x, y, width, height) {
+  roundedRectPath(context, x, y, width, height, 8);
+  context.fillStyle = "rgba(49, 216, 255, 0.09)";
+  context.fill();
+  context.strokeStyle = "rgba(132, 245, 255, 0.32)";
+  context.stroke();
+  context.fillStyle = "#e5fbff";
+  context.font = '700 12px "Segoe UI", Arial, sans-serif';
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, x + width / 2, y + height / 2 + 0.5);
+  context.textAlign = "start";
+  context.textBaseline = "alphabetic";
+}
+
+function drawExportGrid(context, x, y, width, height) {
+  context.save();
+  roundedRectPath(context, x, y, width, height, 10);
+  context.clip();
+  const fill = context.createRadialGradient(x + width * 0.62, y + height * 0.25, 0, x + width * 0.62, y + height * 0.25, width * 0.68);
+  fill.addColorStop(0, "#0d2631");
+  fill.addColorStop(0.46, "#091923");
+  fill.addColorStop(1, "#061017");
+  context.fillStyle = fill;
+  context.fillRect(x, y, width, height);
+  context.strokeStyle = "rgba(49, 216, 255, 0.055)";
+  context.lineWidth = 1;
+  for (let lineX = x; lineX <= x + width; lineX += 44) {
+    context.beginPath();
+    context.moveTo(lineX, y);
+    context.lineTo(lineX, y + height);
+    context.stroke();
+  }
+  for (let lineY = y; lineY <= y + height; lineY += 44) {
+    context.beginPath();
+    context.moveTo(x, lineY);
+    context.lineTo(x + width, lineY);
+    context.stroke();
+  }
+  context.restore();
+  roundedRectPath(context, x, y, width, height, 10);
+  context.strokeStyle = "rgba(132, 245, 255, 0.16)";
+  context.stroke();
+}
+
+async function createExportMapImage(width, height) {
+  const map = els.unitMap.cloneNode(true);
+  map.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  map.setAttribute("width", String(width));
+  map.setAttribute("height", String(height));
+  map.setAttribute("viewBox", getPlanDefaultViewBox(getActivePlanConfig()));
+  map.removeAttribute("style");
+  await embedExportPlanImage(map);
+
+  const defs = map.querySelector("defs") || map.insertBefore(document.createElementNS("http://www.w3.org/2000/svg", "defs"), map.firstChild);
+  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = await getExportCss();
+  defs.appendChild(style);
+
+  const serialized = new XMLSerializer().serializeToString(map);
+  const url = URL.createObjectURL(new Blob([serialized], { type: "image/svg+xml;charset=utf-8" }));
+  try {
+    return { image: await loadExportImage(url), url };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
+function drawExportMetric(context, label, value, color, x, y, width, height) {
+  roundedRectPath(context, x, y, width, height, 9);
+  const fill = context.createLinearGradient(x, y, x + width, y + height);
+  fill.addColorStop(0, `${color}2b`);
+  fill.addColorStop(1, "rgba(7, 20, 28, 0.94)");
+  context.fillStyle = fill;
+  context.fill();
+  context.strokeStyle = `${color}76`;
+  context.stroke();
+  context.fillStyle = "#9ab2bc";
+  context.font = '700 11px "Segoe UI", Arial, sans-serif';
+  context.fillText(label.toUpperCase(), x + 12, y + 20);
+  context.fillStyle = color;
+  context.font = '800 27px "Segoe UI", Arial, sans-serif';
+  context.fillText(String(value), x + 12, y + 50);
+}
+
+function getExportLegendGroups() {
+  const sections = [...els.legend.querySelectorAll(".floor-legend-section")];
+  const groups = sections.length ? sections : [els.legend];
+  return groups.map((section) => ({
+    title: section.querySelector("h4")?.textContent?.trim() || (sections.length ? "" : "Status"),
+    items: [...section.querySelectorAll(".legend-item")].map((item) => ({
+      label: item.querySelector("span:not(.legend-count)")?.textContent?.trim() || item.textContent.trim(),
+      count: item.querySelector(".legend-count")?.textContent?.trim() || "",
+      color: getComputedStyle(item).getPropertyValue("--status-color").trim() || "#31d8ff",
+      dashed: item.classList.contains("is-planned")
+    }))
+  })).filter((group) => group.title || group.items.length);
+}
+
+function drawExportRightRail(context, x, y, width, height) {
+  const gap = 14;
+  const coverageHeight = 82;
+  const summaryHeight = 340;
+  const legendY = y + coverageHeight + gap + summaryHeight + gap;
+  const legendHeight = height - coverageHeight - summaryHeight - gap * 2;
+
+  drawExportPanel(context, x, y, width, coverageHeight);
+  drawExportHeading(context, "DATA COVERAGE", x + 14, y + 29);
+  context.fillStyle = "#31d8ff";
+  context.font = '800 30px "Segoe UI", Arial, sans-serif';
+  context.textAlign = "right";
+  context.fillText(`${els.occupancyRate.textContent.trim()}%`, x + width - 14, y + 57);
+  context.textAlign = "start";
+
+  const summaryY = y + coverageHeight + gap;
+  drawExportPanel(context, x, summaryY, width, summaryHeight);
+  drawExportHeading(context, "Category Summary", x + 14, summaryY + 29);
+  const metrics = [
+    ["Total Units", els.totalUnits.textContent.trim(), "#31d8ff"],
+    ["Recorded", els.availableUnits.textContent.trim(), "#60bfff"],
+    ["Needs Attention", els.soldUnits.textContent.trim(), "#ff879a"],
+    ["No Data", els.readyUnits.textContent.trim(), "#869bad"]
+  ];
+  metrics.forEach((metric, index) => drawExportMetric(context, metric[0], metric[1], metric[2], x + 14, summaryY + 46 + index * 70, width - 28, 58));
+
+  drawExportPanel(context, x, legendY, width, legendHeight);
+  drawExportHeading(context, "Legend", x + 14, legendY + 29);
+  let cursorY = legendY + 54;
+  const bottom = legendY + legendHeight - 12;
+  getExportLegendGroups().forEach((group) => {
+    if (cursorY + 20 > bottom) return;
+    if (group.title) {
+      context.fillStyle = "#9bb5bf";
+      context.font = '700 11px "Segoe UI", Arial, sans-serif';
+      context.fillText(group.title, x + 14, cursorY);
+      cursorY += 14;
+    }
+    group.items.forEach((item) => {
+      if (cursorY + 30 > bottom) return;
+      roundedRectPath(context, x + 14, cursorY, width - 28, 26, 7);
+      context.fillStyle = "rgba(8, 25, 33, 0.76)";
+      context.fill();
+      context.strokeStyle = `${item.color}58`;
+      context.setLineDash(item.dashed ? [4, 3] : []);
+      context.stroke();
+      context.setLineDash([]);
+      roundedRectPath(context, x + 22, cursorY + 8, 18, 10, 3);
+      context.fillStyle = item.color;
+      context.fill();
+      context.fillStyle = "#d8edf2";
+      context.font = '700 10px "Segoe UI", Arial, sans-serif';
+      context.fillText(item.label.toUpperCase(), x + 48, cursorY + 17, width - 92);
+      if (item.count) {
+        context.textAlign = "right";
+        context.fillText(item.count, x + width - 22, cursorY + 17);
+        context.textAlign = "start";
+      }
+      cursorY += 31;
+    });
+    cursorY += 5;
+  });
+}
+
+async function exportSiteMapPng() {
+  if (els.projectFilter.value === "all") {
+    setDataStatus("Select a site before exporting a 16:9 PNG.", true);
+    return;
+  }
+
+  const originalLabel = els.exportPngBtn.querySelector("span")?.textContent || "PNG 16:9";
+  els.exportPngBtn.disabled = true;
+  const label = els.exportPngBtn.querySelector("span");
+  if (label) label.textContent = "Preparing...";
+
+  let pngUrl = "";
+  let mapUrl = "";
+  try {
+    await document.fonts?.ready;
+    const canvas = document.createElement("canvas");
+    canvas.width = PNG_EXPORT_WIDTH;
+    canvas.height = PNG_EXPORT_HEIGHT;
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("Canvas export is not supported by this browser.");
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    const pageGradient = context.createLinearGradient(0, 0, PNG_EXPORT_WIDTH, PNG_EXPORT_HEIGHT);
+    pageGradient.addColorStop(0, "#07141b");
+    pageGradient.addColorStop(0.6, "#071119");
+    pageGradient.addColorStop(1, "#040b10");
+    context.fillStyle = pageGradient;
+    context.fillRect(0, 0, PNG_EXPORT_WIDTH, PNG_EXPORT_HEIGHT);
+
+    const margin = 18;
+    const gap = 14;
+    const railWidth = 268;
+    const frameHeight = PNG_EXPORT_HEIGHT - margin * 2;
+    const mapCardWidth = PNG_EXPORT_WIDTH - margin * 2 - gap - railWidth;
+    drawExportPanel(context, margin, margin, mapCardWidth, frameHeight, 12);
+
+    const contentX = margin + 14;
+    const contentWidth = mapCardWidth - 28;
+    const titleY = margin + 34;
+    context.fillStyle = "#e7f5f8";
+    context.font = '800 28px "Segoe UI", Arial, sans-serif';
+    context.fillText(els.projectTitle.textContent.trim(), contentX, titleY, contentWidth - 360);
+    context.fillStyle = "#a3bbc4";
+    context.font = '500 14px "Segoe UI", Arial, sans-serif';
+    context.fillText(els.projectSubtitle.textContent.trim(), contentX, titleY + 27);
+
+    const controlsY = margin + 22;
+    const overviewWidth = 86;
+    const smallButtonWidth = 38;
+    const controlsRight = margin + mapCardWidth - 14;
+    drawExportPill(context, "Overview", controlsRight - overviewWidth, controlsY, overviewWidth, 36);
+    drawExportPill(context, "+", controlsRight - overviewWidth - 5 - smallButtonWidth, controlsY, smallButtonWidth, 36);
+    drawExportPill(context, "−", controlsRight - overviewWidth - 10 - smallButtonWidth * 2, controlsY, smallButtonWidth, 36);
+    context.fillStyle = "#9ab2bc";
+    context.font = '500 13px "Segoe UI", Arial, sans-serif';
+    context.textAlign = "right";
+    context.fillText(els.visibleCount.textContent.trim(), controlsRight - overviewWidth - smallButtonWidth * 2 - 24, controlsY + 23);
+    context.textAlign = "start";
+
+    const mapY = margin + 82;
+    const mapHeight = frameHeight - 96;
+    drawExportGrid(context, contentX, mapY, contentWidth, mapHeight);
+    const mapAsset = await createExportMapImage(contentWidth, mapHeight);
+    mapUrl = mapAsset.url;
+    context.save();
+    roundedRectPath(context, contentX, mapY, contentWidth, mapHeight, 10);
+    context.clip();
+    context.drawImage(mapAsset.image, contentX, mapY, contentWidth, mapHeight);
+    context.restore();
+
+    drawExportRightRail(context, margin + mapCardWidth + gap, margin, railWidth, frameHeight);
+
+    const png = await canvasToPngBlob(canvas);
+    pngUrl = URL.createObjectURL(png);
+    const link = document.createElement("a");
+    link.href = pngUrl;
+    link.download = `renovation-${slugify(els.projectFilter.value)}-${slugify(getActiveCategory().name)}-${getExportTimestamp()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setDataStatus(`Exported ${els.projectFilter.value} as a 1920 x 1080 PNG.`);
+  } catch (error) {
+    console.error("PNG export failed", error);
+    setDataStatus(`PNG export failed: ${error.message}`, true);
+  } finally {
+    if (mapUrl) URL.revokeObjectURL(mapUrl);
+    if (pngUrl) window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
+    els.exportPngBtn.disabled = false;
+    if (label) label.textContent = originalLabel;
+  }
+}
+
 function exportVisibleUnitsCsv() {
   if (!filteredRows.length) {
     setDataStatus("No visible units to export.", true);
@@ -2747,6 +3096,7 @@ els.sheetUrlInput.addEventListener("paste", (event) => {
 els.connectSheetBtn.addEventListener("click", () => connectSheetUrl());
 els.refreshRegisterBtn.addEventListener("click", refreshUnitRegister);
 els.exportCsvBtn.addEventListener("click", exportVisibleUnitsCsv);
+els.exportPngBtn.addEventListener("click", exportSiteMapPng);
 els.operationCategories.addEventListener("click", (event) => {
   const button = event.target.closest("[data-category]");
   if (button) selectCategory(button.dataset.category);
