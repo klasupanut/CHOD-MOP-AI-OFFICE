@@ -7,7 +7,7 @@ import {
 import {
   RENOVATION_PILOT_OPERATION,
   RENOVATION_PILOT_PROJECT,
-  RENOVATION_STATUS_VALUES,
+  RENOVATION_WRITABLE_STATUS_VALUES,
   RenovationStatusError,
 } from "@/lib/renovation/status-schema";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
@@ -18,7 +18,7 @@ function statusConfig() {
     enabled,
     project: RENOVATION_PILOT_PROJECT,
     operation: RENOVATION_PILOT_OPERATION,
-    statuses: RENOVATION_STATUS_VALUES,
+    statuses: RENOVATION_WRITABLE_STATUS_VALUES,
     reason: enabled
       ? "Live Slab Renovation writeback is enabled for CHOD 2."
       : "Live write is locked. Set RENOVATION_WRITE_MODE=enabled after the service account has Editor access.",

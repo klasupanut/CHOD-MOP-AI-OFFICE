@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   columnIndexToLetter,
+  normalizeWritableRenovationStatus,
   RENOVATION_PILOT_PROJECT,
   RenovationStatusError,
   resolveRenovationMutationTarget,
@@ -59,6 +60,10 @@ test("Renovation writeback rejects stale, duplicate, missing, and unsupported ta
     ], "A1", "Unknown"),
     /Unsupported Slab Renovation Status/,
   );
+  assert.throws(
+    () => normalizeWritableRenovationStatus(""),
+    /cannot be cleared from the web app/,
+  );
 });
 
 test("Renovation API is authenticated, same-origin guarded, and disabled by default", async () => {
@@ -69,6 +74,7 @@ test("Renovation API is authenticated, same-origin guarded, and disabled by defa
   assert.match(route, /getApiUser\("Renovation"\)/);
   assert.match(route, /rejectUnsafeMutationRequest\(request\)/);
   assert.match(route, /isRenovationWriteEnabled\(\)/);
+  assert.match(route, /RENOVATION_WRITABLE_STATUS_VALUES/);
   assert.match(connector, /import "server-only"/);
   assert.match(connector, /includeValuesInResponse=true/);
   assert.match(connector, /updatedCells !== 1/);

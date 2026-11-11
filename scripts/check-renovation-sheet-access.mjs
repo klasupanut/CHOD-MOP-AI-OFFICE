@@ -72,6 +72,16 @@ async function main() {
   if (!fileResponse.ok) {
     const detail = await fileResponse.json().catch(() => ({}));
     const reason = detail?.error?.errors?.[0]?.reason || detail?.error?.status || "unknown";
+    if (reason === "accessNotConfigured") {
+      console.log(JSON.stringify({
+        configured: true,
+        driveStatus: fileResponse.status,
+        reason,
+        canEdit: null,
+        note: "Drive API capability check is unavailable; this does not disable the Sheets write API.",
+      }));
+      return;
+    }
     console.log(JSON.stringify({ configured: true, driveStatus: fileResponse.status, reason, canEdit: false }));
     process.exitCode = 1;
     return;

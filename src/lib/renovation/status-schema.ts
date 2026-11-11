@@ -13,6 +13,11 @@ export const RENOVATION_STATUS_VALUES = [
   "Planned Work",
 ] as const;
 
+export const RENOVATION_WRITABLE_STATUS_VALUES = [
+  "Completed / Past Work",
+  "Planned Work",
+] as const;
+
 export type RenovationStatusValue = (typeof RENOVATION_STATUS_VALUES)[number];
 
 export type RenovationMutationTarget = {
@@ -48,6 +53,18 @@ export function normalizeRenovationStatus(value: unknown): RenovationStatusValue
     throw new RenovationStatusError("Unsupported Slab Renovation Status value.");
   }
   return match;
+}
+
+export function normalizeWritableRenovationStatus(value: unknown) {
+  const status = normalizeRenovationStatus(value);
+  if (!RENOVATION_WRITABLE_STATUS_VALUES.includes(
+    status as (typeof RENOVATION_WRITABLE_STATUS_VALUES)[number],
+  )) {
+    throw new RenovationStatusError(
+      "Choose Completed / Past Work or Planned Work. Existing status cannot be cleared from the web app.",
+    );
+  }
+  return status as (typeof RENOVATION_WRITABLE_STATUS_VALUES)[number];
 }
 
 function findUniqueColumn(headers: unknown[], aliases: readonly string[], label: string) {

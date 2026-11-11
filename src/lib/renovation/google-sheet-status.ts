@@ -4,6 +4,7 @@ import { createSign } from "node:crypto";
 import {
   columnIndexToLetter,
   normalizeRenovationStatus,
+  normalizeWritableRenovationStatus,
   RENOVATION_PILOT_OPERATION,
   RENOVATION_PILOT_PROJECT,
   RenovationStatusError,
@@ -143,7 +144,7 @@ export async function updateRenovationSlabStatus(input: RenovationStatusUpdateIn
     throw new RenovationStatusError("Live write is enabled only for Slab Renovation.", 403);
   }
 
-  const nextStatus = normalizeRenovationStatus(input.status);
+  const nextStatus = normalizeWritableRenovationStatus(input.status);
   const tab = quoteRenovationSheetTitle(RENOVATION_PILOT_PROJECT);
   const readRange = encodeURIComponent(`${tab}!A1:AZ`);
   const readResponse = await sheetsFetch(
