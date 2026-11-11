@@ -2122,15 +2122,29 @@ button:disabled {
 }
 
 .slab-status-editor select,
+.slab-status-editor input,
+.slab-status-editor textarea,
 .slab-status-editor button {
   min-height: 36px;
 }
 
-.slab-status-editor select {
+.slab-status-editor select,
+.slab-status-editor input,
+.slab-status-editor textarea {
+  width: 100%;
   min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(132, 245, 255, 0.26);
+  border-radius: 7px;
   border-color: rgba(132, 245, 255, 0.26);
   background: rgba(7, 20, 27, 0.96);
   color: #e9fbff;
+  font: inherit;
+}
+
+.slab-status-editor textarea {
+  min-height: 70px;
+  resize: vertical;
 }
 
 .slab-status-editor button {
@@ -2159,9 +2173,38 @@ button:disabled {
   color: #ffb4aa;
 }
 
+.renovation-editor__fields {
+  display: grid;
+  gap: 10px;
+}
+
+.renovation-editor__field {
+  display: grid;
+  gap: 5px;
+}
+
+.renovation-editor__field.is-changed label::after {
+  content: " • changed";
+  color: #7cfbd8;
+  font-size: 9px;
+}
+
+.slab-status-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.slab-status-editor__actions button {
+  min-width: 132px;
+}
+
 @media (max-width: 520px) {
   .slab-status-editor__controls {
     grid-template-columns: 1fr;
+  }
+
+  .slab-status-editor__actions button {
+    width: 100%;
   }
 }
 

@@ -2,12 +2,11 @@ import { NextResponse } from "next/server";
 import { getApiUser } from "@/lib/auth/api";
 import {
   isRenovationWriteEnabled,
-  updateRenovationSlabStatus,
+  updateRenovationFields,
 } from "@/lib/renovation/google-sheet-status";
 import {
-  RENOVATION_PILOT_OPERATION,
-  RENOVATION_PILOT_PROJECT,
-  RENOVATION_WRITABLE_STATUS_VALUES,
+  RENOVATION_OPERATION_DEFINITIONS,
+  RENOVATION_PROJECTS,
   RenovationStatusError,
 } from "@/lib/renovation/status-schema";
 import { rejectUnsafeMutationRequest } from "@/lib/security/request-guards";
@@ -16,11 +15,32 @@ function statusConfig() {
   const enabled = isRenovationWriteEnabled();
   return {
     enabled,
-    project: RENOVATION_PILOT_PROJECT,
-    operation: RENOVATION_PILOT_OPERATION,
-    statuses: RENOVATION_WRITABLE_STATUS_VALUES,
+    projects: RENOVATION_PROJECTS,
+    operations: Object.fromEntries(
+      Object.entries(RENOVATION_OPERATION_DEFINITIONS).map(([operationId, operation]) => [
+        operationId,
+        {
+          id: operation.id,
+          label: operation.label,
+          fields: operation.fields.map((field) => ({
+            key: field.key,
+            label: field.label,
+            kind: field.kind,
+            options: field.kind === "boolean"
+              ? [
+                { value: "TRUE", label: field.trueLabel || "Yes" },
+                { value: "FALSE", label: field.falseLabel || "No" },
+              ]
+              : (field.options || []).map((value) => ({ value, label: value })),
+            maxLength: field.maxLength,
+            step: field.step,
+            multiline: Boolean(field.multiline),
+          })),
+        },
+      ]),
+    ),
     reason: enabled
-      ? "Live Slab Renovation writeback is enabled for CHOD 2."
+      ? "Google Sheet live write is enabled for renovation fields."
       : "Live write is locked. Set RENOVATION_WRITE_MODE=enabled after the service account has Editor access.",
   };
 }
@@ -51,21 +71,30 @@ export async function PATCH(request: Request) {
       project?: string;
       operation?: string;
       unitId?: string;
-      status?: unknown;
-      expectedStatus?: unknown;
+      changes?: Array<{
+        field?: unknown;
+        value?: unknown;
+        expectedValue?: unknown;
+      }>;
     };
-    const result = await updateRenovationSlabStatus({
+    const result = await updateRenovationFields({
       project: String(body.project || "").trim(),
       operation: String(body.operation || "").trim(),
       unitId: String(body.unitId || "").trim(),
-      status: body.status,
-      expectedStatus: body.expectedStatus,
+      changes: Array.isArray(body.changes)
+        ? body.changes.map((change) => ({
+          field: change.field,
+          value: change.value,
+          expectedValue: change.expectedValue,
+        }))
+        : [],
     });
     console.info("Renovation status writeback completed", {
       actor: user.email,
       project: result.project,
       unitId: result.unitId,
-      status: result.status,
+      operation: result.operation,
+      fields: result.changedFields,
       changed: result.changed,
     });
     return NextResponse.json({ ok: true, result }, {

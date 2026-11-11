@@ -3,14 +3,13 @@ import "server-only";
 import { createSign } from "node:crypto";
 import {
   columnIndexToLetter,
-  normalizeRenovationStatus,
-  normalizeWritableRenovationStatus,
-  RENOVATION_PILOT_OPERATION,
-  RENOVATION_PILOT_PROJECT,
-  RenovationStatusError,
+  displayRenovationFieldValue,
+  normalizeRenovationOperation,
+  normalizeRenovationProject,
   quoteRenovationSheetTitle,
-  resolveRenovationMutationTarget,
-  type RenovationStatusValue,
+  resolveRenovationMutationTargets,
+  RenovationStatusError,
+  type RenovationFieldChangeInput,
 } from "@/lib/renovation/status-schema";
 import {
   asGooglePrivateKeyError,
@@ -128,84 +127,113 @@ async function sheetsFetch(pathname: string, init?: RequestInit) {
   return response;
 }
 
-export type RenovationStatusUpdateInput = {
+export type RenovationFieldsUpdateInput = {
   project: string;
   operation: string;
   unitId: string;
-  status: unknown;
-  expectedStatus: unknown;
+  changes: RenovationFieldChangeInput[];
 };
 
-export async function updateRenovationSlabStatus(input: RenovationStatusUpdateInput) {
-  if (input.project !== RENOVATION_PILOT_PROJECT) {
-    throw new RenovationStatusError("Live write is enabled only for CHOD 2 pilot data.", 403);
-  }
-  if (input.operation !== RENOVATION_PILOT_OPERATION) {
-    throw new RenovationStatusError("Live write is enabled only for Slab Renovation.", 403);
-  }
-
-  const nextStatus = normalizeWritableRenovationStatus(input.status);
-  const tab = quoteRenovationSheetTitle(RENOVATION_PILOT_PROJECT);
+export async function updateRenovationFields(input: RenovationFieldsUpdateInput) {
+  const project = normalizeRenovationProject(input.project);
+  const operation = normalizeRenovationOperation(input.operation);
+  const tab = quoteRenovationSheetTitle(project);
   const readRange = encodeURIComponent(`${tab}!A1:AZ`);
   const readResponse = await sheetsFetch(
-    `/values/${readRange}?majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE`,
+    `/values/${readRange}?majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`,
   );
   const readPayload = (await readResponse.json()) as { values?: unknown[][] };
-  const target = resolveRenovationMutationTarget(
+  const target = resolveRenovationMutationTargets(
     readPayload.values || [],
     input.unitId,
-    input.expectedStatus,
+    operation,
+    input.changes,
+  );
+  const changedFields = target.fields.filter((item) => item.changed);
+  const confirmedValues = Object.fromEntries(
+    target.fields.map((item) => [item.field.key, item.nextValue]),
   );
 
-  if (target.currentStatus === nextStatus) {
+  if (!changedFields.length) {
     return {
-      project: RENOVATION_PILOT_PROJECT,
-      operation: RENOVATION_PILOT_OPERATION,
+      project,
+      operation,
       unitId: String(input.unitId).trim(),
-      status: nextStatus,
+      values: confirmedValues,
+      changedFields: [] as string[],
       changed: false,
     };
   }
 
-  const column = columnIndexToLetter(target.statusColumnIndex);
-  const exactRange = `${tab}!${column}${target.rowNumber}`;
-  const encodedRange = encodeURIComponent(exactRange);
-  const updateResponse = await sheetsFetch(
-    `/values/${encodedRange}?valueInputOption=RAW&includeValuesInResponse=true&responseValueRenderOption=UNFORMATTED_VALUE`,
-    {
-      method: "PUT",
-      body: JSON.stringify({ values: [[nextStatus]] }),
-    },
-  );
+  const ranges = changedFields.map((item) => {
+    const column = columnIndexToLetter(item.columnIndex);
+    return {
+      field: item,
+      cell: `${column}${target.rowNumber}`,
+      range: `${tab}!${column}${target.rowNumber}`,
+    };
+  });
+  const updateResponse = await sheetsFetch("/values:batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({
+      valueInputOption: "RAW",
+      includeValuesInResponse: true,
+      responseValueRenderOption: "UNFORMATTED_VALUE",
+      responseDateTimeRenderOption: "SERIAL_NUMBER",
+      data: ranges.map((item) => ({
+        range: item.range,
+        majorDimension: "ROWS",
+        values: [[item.field.googleValue]],
+      })),
+    }),
+  });
   const updatePayload = (await updateResponse.json()) as {
-    updatedRange?: string;
-    updatedRows?: number;
-    updatedColumns?: number;
-    updatedCells?: number;
-    updatedData?: { values?: unknown[][] };
+    totalUpdatedCells?: number;
+    responses?: Array<{
+      updatedRange?: string;
+      updatedRows?: number;
+      updatedColumns?: number;
+      updatedCells?: number;
+      updatedData?: { values?: unknown[][] };
+    }>;
   };
-  const confirmedStatus = normalizeRenovationStatus(
-    updatePayload.updatedData?.values?.[0]?.[0],
-  );
-  const confirmedCell = String(updatePayload.updatedRange || "").split("!").at(-1);
-  if (
-    updatePayload.updatedRows !== 1
-    || updatePayload.updatedColumns !== 1
-    || updatePayload.updatedCells !== 1
-    || confirmedCell !== `${column}${target.rowNumber}`
-    || confirmedStatus !== nextStatus
-  ) {
+
+  if (updatePayload.totalUpdatedCells !== ranges.length
+    || updatePayload.responses?.length !== ranges.length) {
     throw new RenovationStatusError(
-      "Google Sheets did not confirm the exact one-cell renovation update.",
+      "Google Sheets did not confirm every renovation field update.",
       502,
     );
   }
 
+  updatePayload.responses.forEach((response, index) => {
+    const expected = ranges[index];
+    const confirmedCell = String(response.updatedRange || "").split("!").at(-1);
+    const confirmedValue = displayRenovationFieldValue(
+      expected.field.field,
+      response.updatedData?.values?.[0]?.[0],
+    );
+    if (
+      response.updatedRows !== 1
+      || response.updatedColumns !== 1
+      || response.updatedCells !== 1
+      || confirmedCell !== expected.cell
+      || confirmedValue.toLowerCase() !== expected.field.nextValue.toLowerCase()
+    ) {
+      throw new RenovationStatusError(
+        `Google Sheets did not confirm the exact ${expected.field.field.label} cell update.`,
+        502,
+      );
+    }
+    confirmedValues[expected.field.field.key] = confirmedValue;
+  });
+
   return {
-    project: RENOVATION_PILOT_PROJECT,
-    operation: RENOVATION_PILOT_OPERATION,
+    project,
+    operation,
     unitId: String(input.unitId).trim(),
-    status: confirmedStatus as RenovationStatusValue,
+    values: confirmedValues,
+    changedFields: changedFields.map((item) => item.field.key),
     changed: true,
   };
 }

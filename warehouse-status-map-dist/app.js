@@ -53,7 +53,6 @@ const PNG_EXPORT_HEIGHT = 1080;
 const PROJECT_NAME = PROJECT_CHOD2;
 const DEFAULT_GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1I5Z_MjvqTZlkb7NJJMieP0_SKcNmervyP7w_KCHRpac/edit";
 const RENOVATION_STATUS_API = "/api/renovation/status";
-const DEFAULT_SLAB_STATUS_VALUES = ["", "Completed / Past Work", "Planned Work"];
 const SHEET_URL_STORAGE_KEY = "warehouseDashboard.googleSheetUrl";
 const SHEET_SYNC_TIMEOUT_MS = 25000;
 const PROJECT_SHEETS = [
@@ -430,9 +429,8 @@ let selectedShapeParent = null;
 let renovationWriteConfig = {
   state: "loading",
   enabled: false,
-  project: PROJECT_CHOD2,
-  operation: "slab",
-  statuses: [...DEFAULT_SLAB_STATUS_VALUES],
+  projects: [],
+  operations: {},
   reason: "Checking live write access..."
 };
 let renovationWritePending = false;
@@ -502,10 +500,11 @@ const els = {
   allProjectDashboard: document.querySelector("#allProjectDashboard"),
   projectPlanPending: document.querySelector("#projectPlanPending"),
   detailCard: document.querySelector("#detailCard"),
-  slabStatusEditor: document.querySelector("#slabStatusEditor"),
-  slabStatusSelect: document.querySelector("#slabStatusSelect"),
-  saveSlabStatusBtn: document.querySelector("#saveSlabStatusBtn"),
-  slabStatusWriteMessage: document.querySelector("#slabStatusWriteMessage"),
+  renovationEditor: document.querySelector("#renovationEditor"),
+  renovationEditorTitle: document.querySelector("#renovationEditorTitle"),
+  renovationFields: document.querySelector("#renovationFields"),
+  saveRenovationBtn: document.querySelector("#saveRenovationBtn"),
+  renovationWriteMessage: document.querySelector("#renovationWriteMessage"),
   occupancyRate: document.querySelector("#occupancyRate"),
   totalUnits: document.querySelector("#totalUnits"),
   availableUnits: document.querySelector("#availableUnits"),
@@ -2541,7 +2540,7 @@ function renderDetail() {
     els.detailCard.classList.remove("is-open");
     els.detailTitle.textContent = "Select a unit";
     els.operationDetails.replaceChildren();
-    els.slabStatusEditor.hidden = true;
+    els.renovationEditor.hidden = true;
     return;
   }
 
@@ -2558,35 +2557,111 @@ function renderDetail() {
   els.operationDetails.innerHTML = fields.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
   els.operationEmptyState.hidden = isSlab ? operations.hasFloorData(row, "warehouse") : getOperationVisual(row).recorded;
   els.operationEmptyState.textContent = `No ${isSlab ? "warehouse floor" : category.name.toLowerCase()} data in the connected sheet.`;
-  renderSlabStatusEditor(row, category);
+  renderRenovationEditor(row, category);
 }
 
-function renderSlabStatusEditor(row, category) {
-  const isPilot = category.id === "slab" && row.project === PROJECT_CHOD2;
-  els.slabStatusEditor.hidden = !isPilot;
-  if (!isPilot) return;
+function normalizeRenovationEditorValue(field, value) {
+  const text = String(value ?? "").trim();
+  if (field?.kind === "boolean") {
+    const key = text.toLowerCase();
+    if (["true", "yes", "1", "checked", "renovated", "completed"].includes(key)) return "TRUE";
+    if (["false", "no", "0", "unchecked", "not renovated", "notrenovated", "not completed"].includes(key)) return "FALSE";
+  }
+  if (field?.kind === "number" && text) {
+    const numeric = Number(text.replaceAll(",", ""));
+    if (Number.isFinite(numeric)) return String(numeric);
+  }
+  return text;
+}
 
-  const currentStatus = String(row.operations?.slabRenovationStatus || "").trim();
-  const statuses = renovationWriteConfig.statuses.includes(currentStatus)
-    ? renovationWriteConfig.statuses
-    : [...renovationWriteConfig.statuses, currentStatus];
-  els.slabStatusSelect.innerHTML = statuses.map((value) =>
-    `<option value="${escapeHtml(value)}">${escapeHtml(value || "Not recorded")}</option>`).join("");
-  els.slabStatusSelect.value = currentStatus;
-  els.slabStatusSelect.dataset.currentStatus = currentStatus;
+function renderRenovationField(field, row) {
+  const rawValue = row.operations?.[field.key] ?? "";
+  const currentValue = normalizeRenovationEditorValue(field, rawValue);
+  const inputId = `renovation-field-${field.key}`;
+  const common = `id="${escapeHtml(inputId)}" data-renovation-field="${escapeHtml(field.key)}" data-current-value="${escapeHtml(currentValue)}" aria-describedby="renovationWriteMessage"`;
+  let control = "";
 
+  if (field.kind === "select" || field.kind === "boolean") {
+    const configuredOptions = Array.isArray(field.options) ? field.options : [];
+    const options = configuredOptions.some((option) => String(option.value).toLowerCase() === currentValue.toLowerCase()) || !currentValue
+      ? configuredOptions
+      : [{ value: currentValue, label: `${currentValue} (current)` }, ...configuredOptions];
+    control = `<select ${common}>
+      <option value="" ${currentValue ? "disabled" : "selected disabled"}>Select...</option>
+      ${options.map((option) => `<option value="${escapeHtml(option.value)}" ${String(option.value).toLowerCase() === currentValue.toLowerCase() ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+    </select>`;
+  } else if (field.multiline) {
+    control = `<textarea ${common} maxlength="${Number(field.maxLength || 500)}">${escapeHtml(currentValue)}</textarea>`;
+  } else {
+    const type = field.kind === "date" ? "date" : field.kind === "number" || field.kind === "year" ? "number" : "text";
+    const attributes = field.kind === "year"
+      ? 'min="1900" max="2099" step="1"'
+      : field.kind === "number"
+        ? `step="${escapeHtml(field.step || "any")}"`
+        : `maxlength="${Number(field.maxLength || 200)}"`;
+    control = `<input ${common} type="${type}" value="${escapeHtml(currentValue)}" ${attributes} />`;
+  }
+
+  return `<div class="renovation-editor__field" data-renovation-field-row="${escapeHtml(field.key)}">
+    <label for="${escapeHtml(inputId)}">${escapeHtml(field.label)}</label>
+    ${control}
+  </div>`;
+}
+
+function getRenovationOperationConfig(categoryId = activeCategoryId) {
+  return renovationWriteConfig.operations?.[categoryId] || null;
+}
+
+function getRenovationEditorChanges() {
+  const operation = getRenovationOperationConfig();
+  if (!operation) return [];
+  return operation.fields.flatMap((field) => {
+    const input = els.renovationFields.querySelector(`[data-renovation-field="${field.key}"]`);
+    if (!input) return [];
+    const expectedValue = normalizeRenovationEditorValue(field, input.dataset.currentValue || "");
+    const value = normalizeRenovationEditorValue(field, input.value);
+    if (!value || value.toLowerCase() === expectedValue.toLowerCase()) return [];
+    return [{ field: field.key, value, expectedValue }];
+  });
+}
+
+function updateRenovationEditorState({ clearFeedback = false } = {}) {
   const canWrite = renovationWriteConfig.state === "ready" && renovationWriteConfig.enabled;
-  els.slabStatusSelect.disabled = !canWrite || renovationWritePending;
-  els.saveSlabStatusBtn.disabled = !canWrite || renovationWritePending || els.slabStatusSelect.value === currentStatus;
-  els.saveSlabStatusBtn.textContent = renovationWritePending ? "Saving..." : "Save status";
+  const changes = getRenovationEditorChanges();
+  els.renovationFields.querySelectorAll("[data-renovation-field]").forEach((input) => {
+    input.disabled = !canWrite || renovationWritePending;
+    const field = getRenovationOperationConfig()?.fields.find((item) => item.key === input.dataset.renovationField);
+    const current = normalizeRenovationEditorValue(field, input.dataset.currentValue || "");
+    const next = normalizeRenovationEditorValue(field, input.value);
+    input.closest(".renovation-editor__field")?.classList.toggle("is-changed", Boolean(next) && next.toLowerCase() !== current.toLowerCase());
+  });
+  els.saveRenovationBtn.disabled = !canWrite || renovationWritePending || !changes.length;
+  els.saveRenovationBtn.textContent = renovationWritePending ? "Saving..." : `Save changes${changes.length ? ` (${changes.length})` : ""}`;
+  if (clearFeedback) renovationWriteFeedback = null;
+  if (clearFeedback || !renovationWriteFeedback) {
+    els.renovationWriteMessage.textContent = renovationWriteConfig.reason;
+    els.renovationWriteMessage.classList.toggle("is-error", renovationWriteConfig.state === "error");
+    els.renovationWriteMessage.classList.remove("is-success");
+  }
+}
 
-  const feedback = renovationWriteFeedback && rowMatchesUnit(row, renovationWriteFeedback.unitId)
+function renderRenovationEditor(row, category) {
+  const operation = getRenovationOperationConfig(category.id);
+  const projectEnabled = renovationWriteConfig.projects.includes(row.project);
+  els.renovationEditor.hidden = !operation || !projectEnabled;
+  if (!operation || !projectEnabled) return;
+
+  els.renovationEditorTitle.textContent = `Update ${operation.label || category.name}`;
+  els.renovationFields.innerHTML = operation.fields.map((field) => renderRenovationField(field, row)).join("");
+  const feedback = renovationWriteFeedback
+    && rowMatchesUnit(row, renovationWriteFeedback.unitId)
+    && renovationWriteFeedback.operation === category.id
     ? renovationWriteFeedback
     : null;
-  const message = feedback?.message || renovationWriteConfig.reason;
-  els.slabStatusWriteMessage.textContent = message;
-  els.slabStatusWriteMessage.classList.toggle("is-error", feedback?.kind === "error" || renovationWriteConfig.state === "error");
-  els.slabStatusWriteMessage.classList.toggle("is-success", feedback?.kind === "success");
+  els.renovationWriteMessage.textContent = feedback?.message || renovationWriteConfig.reason;
+  els.renovationWriteMessage.classList.toggle("is-error", feedback?.kind === "error" || renovationWriteConfig.state === "error");
+  els.renovationWriteMessage.classList.toggle("is-success", feedback?.kind === "success");
+  updateRenovationEditorState();
 }
 
 async function loadRenovationWriteConfig() {
@@ -2607,9 +2682,8 @@ async function loadRenovationWriteConfig() {
     renovationWriteConfig = {
       state: "ready",
       enabled: Boolean(payload.enabled),
-      project: payload.project || PROJECT_CHOD2,
-      operation: payload.operation || "slab",
-      statuses: Array.isArray(payload.statuses) && payload.statuses.length ? payload.statuses.map((value) => String(value)) : [...DEFAULT_SLAB_STATUS_VALUES],
+      projects: Array.isArray(payload.projects) ? payload.projects.map((value) => String(value)) : [],
+      operations: payload.operations && typeof payload.operations === "object" ? payload.operations : {},
       reason: payload.reason || (payload.enabled ? "Live write is ready." : "Live write is locked.")
     };
   } catch (error) {
@@ -2623,31 +2697,34 @@ async function loadRenovationWriteConfig() {
   renderDetail();
 }
 
-function updateLocalSlabStatus(project, unitId, status) {
+function updateLocalRenovationFields(project, unitId, values) {
   const updateRows = (rows) => rows.forEach((row) => {
     if (!rowMatchesProject(row, project) || !rowMatchesUnit(row, unitId)) return;
-    row.operations = { ...(row.operations || {}), slabRenovationStatus: status };
+    row.operations = { ...(row.operations || {}), ...values };
   });
   updateRows(syncedUnitRows);
   updateRows(unitRows);
 }
 
-async function saveSelectedSlabStatus() {
+async function saveSelectedRenovationFields() {
   if (renovationWritePending || !renovationWriteConfig.enabled) return;
-  const row = unitRows.find((item) => rowMatchesUnit(item, selectedUnitId) && row.project === PROJECT_CHOD2);
-  if (!row || activeCategoryId !== "slab") return;
-
-  const expectedStatus = String(row.operations?.slabRenovationStatus || "").trim();
-  const nextStatus = els.slabStatusSelect.value;
-  if (nextStatus === expectedStatus) return;
+  const selectedProject = els.projectFilter.value;
+  const row = unitRows.find((item) => rowMatchesUnit(item, selectedUnitId) && rowMatchesProject(item, selectedProject))
+    || unitRows.find((item) => rowMatchesUnit(item, selectedUnitId));
+  const changes = getRenovationEditorChanges();
+  if (!row || !changes.length || !renovationWriteConfig.projects.includes(row.project)) return;
+  const operationId = activeCategoryId;
 
   renovationWritePending = true;
   renovationWriteFeedback = {
     kind: "pending",
     unitId: row.unitId || row.unitNo,
-    message: `Saving ${row.unitNo} to Google Sheet...`
+    operation: operationId,
+    message: `Saving ${changes.length} field${changes.length === 1 ? "" : "s"} for ${row.unitNo}...`
   };
-  renderSlabStatusEditor(row, getActiveCategory());
+  els.renovationWriteMessage.textContent = renovationWriteFeedback.message;
+  els.renovationWriteMessage.classList.remove("is-error", "is-success");
+  updateRenovationEditorState();
 
   try {
     const response = await fetch(RENOVATION_STATUS_API, {
@@ -2656,20 +2733,20 @@ async function saveSelectedSlabStatus() {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         project: row.project,
-        operation: "slab",
+        operation: operationId,
         unitId: row.unitNo || row.unitId,
-        status: nextStatus,
-        expectedStatus
+        changes
       })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || payload.detail || `Save failed (${response.status}).`);
-    const savedStatus = String(payload.result?.status || "");
-    updateLocalSlabStatus(row.project, row.unitNo || row.unitId, savedStatus);
+    const savedValues = payload.result?.values && typeof payload.result.values === "object" ? payload.result.values : {};
+    updateLocalRenovationFields(row.project, row.unitNo || row.unitId, savedValues);
     renovationWriteFeedback = {
       kind: "success",
       unitId: row.unitId || row.unitNo,
-      message: `Saved ${row.unitNo}: ${savedStatus || "Not recorded"}.`
+      operation: operationId,
+      message: `Saved ${row.unitNo}: ${payload.result?.changedFields?.length || 0} field${payload.result?.changedFields?.length === 1 ? "" : "s"} updated.`
     };
     renovationWritePending = false;
     applyFilters();
@@ -2678,9 +2755,13 @@ async function saveSelectedSlabStatus() {
     renovationWriteFeedback = {
       kind: "error",
       unitId: row.unitId || row.unitNo,
-      message: error?.message || "Unable to save renovation status."
+      operation: operationId,
+      message: error?.message || "Unable to save renovation data."
     };
-    renderSlabStatusEditor(row, getActiveCategory());
+    els.renovationWriteMessage.textContent = renovationWriteFeedback.message;
+    els.renovationWriteMessage.classList.add("is-error");
+    els.renovationWriteMessage.classList.remove("is-success");
+    updateRenovationEditorState();
   }
 }
 
@@ -3241,16 +3322,9 @@ els.connectSheetBtn.addEventListener("click", () => connectSheetUrl());
 els.refreshRegisterBtn.addEventListener("click", refreshUnitRegister);
 els.exportCsvBtn.addEventListener("click", exportVisibleUnitsCsv);
 els.exportPngBtn.addEventListener("click", exportSiteMapPng);
-els.slabStatusSelect.addEventListener("change", () => {
-  const currentStatus = els.slabStatusSelect.dataset.currentStatus || "";
-  els.saveSlabStatusBtn.disabled = renovationWritePending
-    || !renovationWriteConfig.enabled
-    || els.slabStatusSelect.value === currentStatus;
-  renovationWriteFeedback = null;
-  els.slabStatusWriteMessage.textContent = renovationWriteConfig.reason;
-  els.slabStatusWriteMessage.classList.remove("is-error", "is-success");
-});
-els.saveSlabStatusBtn.addEventListener("click", saveSelectedSlabStatus);
+els.renovationFields.addEventListener("input", () => updateRenovationEditorState({ clearFeedback: true }));
+els.renovationFields.addEventListener("change", () => updateRenovationEditorState({ clearFeedback: true }));
+els.saveRenovationBtn.addEventListener("click", saveSelectedRenovationFields);
 els.operationCategories.addEventListener("click", (event) => {
   const button = event.target.closest("[data-category]");
   if (button) selectCategory(button.dataset.category);
