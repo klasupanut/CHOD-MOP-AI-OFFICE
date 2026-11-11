@@ -30,8 +30,8 @@ test("Renovation site plan exports a self-contained 16:9 PNG without the live cl
   const html = await read("../warehouse-status-map-dist/index.html");
 
   assert.match(html, /id="exportPngBtn"/);
-  assert.match(html, /styles\.css\?v=20261110-png-export-1/);
-  assert.match(html, /app\.js\?v=20261110-png-export-1/);
+  assert.match(html, /styles\.css\?v=20261111-renovation-write-1/);
+  assert.match(html, /app\.js\?v=20261111-renovation-write-1/);
   assert.match(app, /const PNG_EXPORT_WIDTH = 1920/);
   assert.match(app, /const PNG_EXPORT_HEIGHT = 1080/);
   assert.match(app, /createExportMapImage\(contentWidth, mapHeight\)/);

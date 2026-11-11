@@ -14,6 +14,7 @@
     "preflight:repair": "powershell -ExecutionPolicy Bypass -File scripts\\preflight-chod.ps1 -Repair",
     "smoke:routes": "node scripts/smoke-routes.mjs",
     "cleanup:test": "powershell -ExecutionPolicy Bypass -File \"C:\\Users\\User\\.codex\\skills\\chod-mock-data-cleanup\\scripts\\cleanup-chod-test-artifacts.ps1\"",
+    "check:renovation-access": "node scripts/check-renovation-sheet-access.mjs",
     "tunnel:cloudflare": "cloudflared tunnel --url http://localhost:3010",
     "tunnel:chod": "cloudflared tunnel --url http://localhost:3010",
     "build": "next build",

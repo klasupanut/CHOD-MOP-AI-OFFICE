@@ -2062,6 +2062,109 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.slab-status-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 13px;
+  border: 1px solid rgba(47, 255, 199, 0.3);
+  border-radius: 9px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(47, 255, 199, 0.14), transparent 44%),
+    rgba(5, 22, 27, 0.9);
+}
+
+.slab-status-editor[hidden] {
+  display: none;
+}
+
+.slab-status-editor__heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.slab-status-editor__heading .eyebrow {
+  margin: 0 0 2px;
+  color: #7cfbd8;
+}
+
+.slab-status-editor h4 {
+  margin: 0;
+  color: #effffa;
+  font-size: 15px;
+}
+
+.slab-status-editor__pilot {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid rgba(47, 255, 199, 0.34);
+  border-radius: 999px;
+  background: rgba(47, 255, 199, 0.08);
+  color: #8affdf;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.slab-status-editor label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.slab-status-editor__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.slab-status-editor select,
+.slab-status-editor button {
+  min-height: 36px;
+}
+
+.slab-status-editor select {
+  min-width: 0;
+  border-color: rgba(132, 245, 255, 0.26);
+  background: rgba(7, 20, 27, 0.96);
+  color: #e9fbff;
+}
+
+.slab-status-editor button {
+  padding: 0 12px;
+  border-color: rgba(47, 255, 199, 0.42);
+  background: linear-gradient(135deg, rgba(47, 255, 199, 0.22), rgba(49, 216, 255, 0.12));
+  color: #eafff9;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.slab-status-editor__message {
+  min-height: 16px;
+  margin: 0;
+  color: rgba(205, 246, 255, 0.7);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.slab-status-editor__message.is-success {
+  color: #76f7d2;
+}
+
+.slab-status-editor__message.is-error {
+  color: #ffb4aa;
+}
+
+@media (max-width: 520px) {
+  .slab-status-editor__controls {
+    grid-template-columns: 1fr;
+  }
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
