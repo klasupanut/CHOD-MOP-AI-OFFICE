@@ -333,13 +333,13 @@ const projectPlanConfigs = {
     rotation: "clockwise90",
     layerTransform: "matrix(0 1 -1 0 1190.52002 0)",
     image: {
-      href: "./assets/master-plans/chod5-masterplan-sharp.png?v=20261022-1",
+      href: "./assets/master-plans/chod5-masterplan-aerial-v2.webp?v=20261112-1",
       x: 0,
       y: 0,
-      width: 841.92004,
-      height: 1190.52002,
-      preserveAspectRatio: "xMinYMin meet",
-      transform: "matrix(0 1 -1 0 1190.52002 0)"
+      width: 1190.52002,
+      height: 841.92004,
+      preserveAspectRatio: "none",
+      transform: ""
     }
   },
   [PROJECT_CHAENGWATTANA]: {
