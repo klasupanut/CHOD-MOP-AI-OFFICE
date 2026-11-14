@@ -313,7 +313,7 @@ const projectPlanConfigs = {
     rotation: "clockwise90MirrorX",
     layerTransform: "matrix(0 -1 -1 0 770.28 824.88)",
     image: {
-      href: "./assets/master-plans/chod3-masterplan-aerial-v1.webp?v=20261112-2",
+      href: "./assets/master-plans/chod3-masterplan-aerial-v1.webp?v=20261114-3",
       x: 0,
       y: 0,
       width: 770.28,
