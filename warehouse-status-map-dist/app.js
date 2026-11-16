@@ -272,13 +272,13 @@ const projectPlanConfigs = {
     rotation: "counterClockwise90",
     layerTransform: "matrix(0 -1 1 0 0 841.92)",
     image: {
-      href: "./assets/master-plans/chod1-masterplan-sharp.png?v=20261022-1",
+      href: "./assets/master-plans/chod1-masterplan-aerial-v1.webp?v=20261116-1",
       x: 0,
       y: 0,
-      width: 841.92,
-      height: 1190.52,
-      preserveAspectRatio: "xMinYMin meet",
-      transform: "matrix(0 -1 1 0 0 841.92)"
+      width: 1190.52,
+      height: 841.92,
+      preserveAspectRatio: "none",
+      transform: ""
     }
   },
   [PROJECT_CHOD2]: {
