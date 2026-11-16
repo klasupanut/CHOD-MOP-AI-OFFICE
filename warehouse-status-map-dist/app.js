@@ -293,12 +293,12 @@ const projectPlanConfigs = {
     useCentroidLabels: true,
     debugLines: chod2PlanDebugLines,
     image: {
-      href: "./assets/master-plans/chod2-masterplan-sharp.png?v=20261022-1",
+      href: "./assets/master-plans/chod2-masterplan-aerial-v1.webp?v=20261116-1",
       x: 0,
       y: 0,
       width: chod2PlanViewBox.width,
       height: chod2PlanViewBox.height,
-      preserveAspectRatio: "xMinYMin meet",
+      preserveAspectRatio: "none",
       transform: ""
     }
   },

@@ -31,7 +31,7 @@ test("Renovation site plan exports a self-contained 16:9 PNG without the live cl
 
   assert.match(html, /id="exportPngBtn"/);
   assert.match(html, /styles\.css\?v=20261111-renovation-write-2/);
-  assert.match(html, /app\.js\?v=20261114-aerial-plans-4/);
+  assert.match(html, /app\.js\?v=20261116-aerial-plans-5/);
   assert.match(app, /const PNG_EXPORT_WIDTH = 1920/);
   assert.match(app, /const PNG_EXPORT_HEIGHT = 1080/);
   assert.match(app, /createExportMapImage\(contentWidth, mapHeight\)/);
@@ -40,6 +40,18 @@ test("Renovation site plan exports a self-contained 16:9 PNG without the live cl
   assert.match(app, /drawExportRightRail\(context/);
   assert.doesNotMatch(app, /foreignObject/);
   assert.doesNotMatch(app, /document\.querySelector\("\.app-shell"\)/);
+});
+
+test("CHOD 2 uses the CAD-registered aerial background beneath all 123 SVG units", async () => {
+  const app = await read("../warehouse-status-map-dist/app.js");
+  const aerial = new URL(
+    "../warehouse-status-map-dist/assets/master-plans/chod2-masterplan-aerial-v1.webp",
+    import.meta.url,
+  );
+
+  assert.match(app, /chod2-masterplan-aerial-v1\.webp\?v=20261116-1/);
+  assert.match(app, /mapWidth: chod2PlanViewBox\.width,[\s\S]*mapHeight: chod2PlanViewBox\.height,[\s\S]*preserveAspectRatio: "none",[\s\S]*transform: ""/);
+  assert.ok((await stat(aerial)).size < 2 * 1024 * 1024, "CHOD 2 aerial background is too large");
 });
 
 test("CHOD 3 uses the CAD-registered aerial background beneath all 57 SVG units", async () => {
